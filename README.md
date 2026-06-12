@@ -1,0 +1,77 @@
+# Lumengate
+
+Privacy-preserving compliance for Stellar. Prove eligibility with zero-knowledge proofs, verify on Soroban, and settle USDC/EURC without putting identity on-chain.
+
+## What it does
+
+- **Issuer service** — Stellar Ed25519-signed credentials, Merkle roots, revocation, auditor disclosures
+- **Noir circuits** — Eligibility + proof-of-funds (UltraHonk, 4 public inputs, private note binding)
+- **Soroban contracts** — Policy verifier (external UltraHonk), credential registry, RWA adapter, SAC admin, compliant DEX/payroll, auditor registry, smart account scaffold
+- **React app** — Wallet connect, credential request, in-browser proving, compliant transfers
+
+**Network:** Stellar Soroban testnet only.
+
+## Repository layout
+
+| Path | Purpose |
+|------|---------|
+| `contracts/` | Soroban Rust contracts |
+| `circuits/` | Noir eligibility + proof-of-funds |
+| `issuer-service/` | Express issuer API (Render) |
+| `app/` | Vite/React frontend (Vercel) |
+| `scripts/` | Deploy, regression, circuit build |
+| `vendor/rs-soroban-ultrahonk/` | External UltraHonk verifier (vendored) |
+| `deployments.json` | Testnet contract IDs (public) |
+
+## Quick start (local)
+
+### Prerequisites
+
+- Node.js 20+
+- Rust + `stellar` CLI
+- `nargo` + `bb` (Noir / Barretenberg)
+
+### Backend
+
+```bash
+cp issuer-service/.env.example issuer-service/.env   # fill from your testnet keys
+cd issuer-service && npm install && npm start
+```
+
+### Frontend
+
+```bash
+cp app/.env.example app/.env.local   # set VITE_* contract IDs + issuer URL
+cd app && npm install && npm run dev
+```
+
+### Contracts & circuits
+
+```bash
+# Build contracts
+for d in contracts/*/; do (cd "$d" && stellar contract build --optimize); done
+
+# Build eligibility circuit + copy to app
+node scripts/generate_prover_toml.js
+bash scripts/build_circuit.sh
+
+# Regression (requires funded testnet wallets in .env)
+bash scripts/regression_test.sh
+```
+
+## Deployment
+
+- **Frontend:** Vercel — root `app/`, see `app/.env.example`
+- **Backend:** Render — `render.yaml`, root `issuer-service/`
+
+Contract IDs for testnet are in `deployments.json`. Set all `VITE_*` and issuer env vars in your hosting dashboards; never commit `.env`.
+
+## Security
+
+- No secrets in git — use `.env.example` templates only
+- Testnet deployment — not production mainnet
+- Revocation and nullifier replay protection enforced on-chain
+
+## License
+
+See repository license file if present; hackathon / evaluation use unless otherwise specified.
