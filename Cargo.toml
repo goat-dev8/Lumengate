@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "vendor/rs-soroban-ultrahonk/crates/ultrahonk-soroban-verifier",
+    "vendor/rs-soroban-ultrahonk/crates/test-utils",
+    "vendor/rs-soroban-ultrahonk/contracts/rs-soroban-ultrahonk",
+    "contracts/issuer_registry",
+    "contracts/credential_registry",
+    "contracts/policy_verifier",
+    "contracts/rwa_token",
+    "contracts/rwa_adapter",
+    "contracts/compliance_sac_admin",
+    "contracts/auditor_registry",
+    "contracts/compliant_dex",
+    "contracts/compliant_payroll",
+    "contracts/compliance_policy",
+    "contracts/lumengate_smart_account",
+]
+exclude = [
+    "vendor/rs-soroban-ultrahonk/contracts/tornado_classic",
+    "vendor/rs-soroban-ultrahonk/contracts/identity",
+]
+
+[workspace.dependencies]
+soroban-sdk = { version = "26.0.1", default-features = false }
+ultrahonk_soroban_verifier = { path = "vendor/rs-soroban-ultrahonk/crates/ultrahonk-soroban-verifier", default-features = false }
+stellar-access = "=0.7.2"
+stellar-macros = "=0.7.2"
+stellar-accounts = "=0.7.2"
+stellar-contract-utils = "=0.7.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true
