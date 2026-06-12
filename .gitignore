@@ -1,0 +1,112 @@
+# --- Secrets & local env (never commit) ---
+.env
+.env.*
+!.env.example
+app/.env
+app/.env.*
+!app/.env.example
+issuer-service/.env
+issuer-service/.env.*
+!issuer-service/.env.example
+
+# --- Internal documentation & planning (README.md is the only public doc) ---
+*.md
+!README.md
+!contracts/**/README.md
+!vendor/**/README.md
+!app/node_modules/**/README.md
+!issuer-service/node_modules/**/README.md
+
+# --- Reports, audits, gap analysis, masterplans ---
+*_REPORT.md
+*_REPORTS/
+FINAL_*
+BLOCKER_*
+LUMENGATE_*
+MASTER_*
+STELLAR_MASTER_*
+TOP_50_*
+THREAT_MODEL.md
+DESIGN*.md
+REQUIREMENTS.md
+RESEARCH_*
+DEMO_*
+CRITICAL_*
+MISSING_*
+SUMMARY.md
+Lumengate_*.md
+EXECUTION_*
+VISUAL_*
+FRONTEND_*
+
+# --- Cloned research & documentation repos ---
+research/
+.firecrawl/
+
+# --- Cursor / AI working files ---
+.cursor/
+*.Zone.Identifier
+
+# --- Build outputs ---
+target/
+**/target/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.deploy/
+.contract_id
+*.wasm
+
+# --- Runtime / local data ---
+issuer-service/data/
+!issuer-service/fixtures/
+!issuer-service/fixtures/**
+
+# --- Logs, caches, temp ---
+*.log
+logs/
+.cache/
+.tmp/
+tmp/
+temp/
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Generated circuit build artifacts (browser JSON is committed for Vercel) ---
+circuits/**/target/
+circuits/**/Prover.toml
+app/dist/
+
+# --- Playwright / test artifacts ---
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# --- Screenshots & exports ---
+research/runtime-screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+!app/public/**/*.svg
+!app/src/**/*.svg
+
+# --- Downloads & datasets ---
+downloads/
+datasets/
+exports/
+crawls/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.iml
+
+# --- Coverage ---
+coverage/
+.nyc_output/
