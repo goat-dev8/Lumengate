@@ -1,0 +1,34 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+
+export default defineConfig({
+  envDir: '..',
+  plugins: [
+    react(),
+    nodePolyfills({
+      globals: { Buffer: true, global: true, process: true },
+      protocolImports: true,
+    }),
+  ],
+  build: {
+    outDir: 'dist',
+    target: 'esnext',
+    sourcemap: false,
+  },
+  optimizeDeps: {
+    exclude: ['@aztec/bb.js'],
+  },
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
+  },
+});
