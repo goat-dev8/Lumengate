@@ -1,0 +1,59 @@
+{
+  "network": "testnet",
+  "issuer_registry": "CBOG4MRPEGNFZJJ5QKYOTYPJMDYGZ5E5OOOE3CZKQWADEOK4U6AR36WY",
+  "credential_registry": "CBMYDVRZWDRZ4MUPX2VTIXA7DEO2OGI4IR34DFSFMTBABGECGYNW2D7I",
+  "policy_verifier": "CCPXV7ZZV4BFNKMOQNPEFMBJCQGKCQWEAKMBMHQOSADZD6KQHHK65KFE",
+  "rwa_token": "CB6PFMGCUDVTNCK44MKIRJRCRRW66QDBPVTMIQVT4UDUVRB5UA6ADQOB",
+  "policy_id": 1,
+  "transactions": {
+    "policy_registered": "33f0cd2b11fe181b3241b03c0ae50546d836821092cdf588d9308cd0e7472f22",
+    "root_updated": "bec337af3e449f9401bbf05c99d0e56864f13ceae82bfd568c366124f2c512f8",
+    "revocation_root_updated": "842248b3278df5588499d633b13ce49fbfc23782e455b66169b2b1b4b3f9fe11",
+    "verify_proof_bn254": "d8ad6bf7cab377add2630729ac512c9f624acaff45450faf0c4c8a2e3d2f1bd1",
+    "eligible_mint": "06574d1292d55117b9598e5d161c9b0bf92129150102bbfb5dbd1521b896f99f",
+    "holder_frozen_legacy_rwa": "6bc13294009187864cd23696db1ddf3b924f8817f5ca2fce52fcd47c0f07a11c",
+    "holder_frozen": "9ecf813721dc32acfd941d44b9b91d59f18fad14902de173fab228aa7e2e67f6",
+    "is_frozen_read": "63c3d6476ac318b8b6f3cfa97c720d6313b0098e60a075bfd448fe1dbc6c5bf0",
+    "transfer_gated": "7e4da0559644b01f46bb952a7c7fa795e912cbf3ce9916b0e54faac1f3f01dde",
+    "pof_verify": "5d4d7a6e6a0abbb23563dd9dc9d0da7b6633814d05c1d1ee1f5188f415a04e32",
+    "policy_2_registered": "81ac6bb8b47ebbba43c50887ea3f7d2b0f0c480ade572a5edd98c0e3747886a5",
+    "rwa_mint": "f4b425aef79266ca113763cd6fe34dfebab3debe078e51df31157dc697bc8499",
+    "v3_vk_register_eligibility": "5a57deec1f38b8dbeda25ee0c9babbd45db544c480abb087d02a97746921bfa1",
+    "v3_vk_register_pof": "99841f19261c3088e9e7a758d931940d65df85b429cfb9a3bdd6968145d3521e",
+    "v3_verify_proof": "fb0f7acbc2ec2eeb734b571d9716ac402a6fd2b235a6705190a8f93f7604a932",
+    "v3_sac_admin_deploy": "e65efc1cc7f016f934bafe6a82e84478873ade7e3e857e869b8ae333c38d97cb",
+    "v3_sac_admin_eurc": "6b9be6794fa299b1844cd2522af0371be9c3a76410c5d389310840d0ca8c7801",
+    "phase0_hardened_pv": "dd401a3edd82fe09d80359728def01eeed384372e02b3d4984759f3d23e3419a",
+    "phase0_hardened_cr": "86c1f052a96ba1b1c2168d720db385eaca2829e781bbfb140adb1d8103b99a4e",
+    "phase0_hardened_cr_rev": "644bdf21bf09d15cf673a7c26154265fa4b142c361044c4be2827bdc6c88d47a",
+    "external_pv": "510f79fafe8b1329e133dc8c9b92fbd6060b83ed3b1aff4372b8b7207261ae33",
+    "external_verify": "bc01accd2abd8416c18226c133c27b02109aec573af04e28f0ceb32deaf5e439",
+    "ed25519_issuer_revoke": "d9d08591bbcfe1a0eca249d4c35f77d19d2fbf7a8bed29290b14b5b1c3a07293",
+    "ed25519_issuer_add": "65bf2064db8ebeab63469815810cb2d29489ff0043a98cad3efd2a75b06d8689"
+  },
+  "integration": {
+    "wallet_field": "200",
+    "from": "GD6DQPNNYXCRQ5JFUVDUEQHCK6L6FLQVCDSCUEQNIK3J5G5AN3JAHRLL",
+    "to": "GDFKWJXRBIGO5SUEPTCZEYVIPFSFVXNUNTMP6NHPC6QBNQGAD6GQG3MO",
+    "on_chain_roots": [
+      "0f6d65423aaab0026cd4139e26d94cf61d2ff2309e4201c5131b464640f81e7b",
+      "151e1f66eeb82f00af0d965d38a95b30cdc1ccf819d4f75c885b69a6879e0b76"
+    ],
+    "balances_after_transfer": {
+      "eligible": 900,
+      "freighter": 100
+    }
+  },
+  "explorer_base": "https://stellar.expert/explorer/testnet",
+  "rwa_adapter": "CBMQRJX5L5AEPUJGSTAEQ4YXERWYZSPLCSGE72GHYJBIMJ5TDFX77GNS",
+  "policy_id_2": 2,
+  "compliance_sac_admin": "CA44EO4ID5DDIYD7GTPRGDDNKERZT3H54WHXCOMNAM4KP7XVENTY3XA4",
+  "eurc_sac": "CCB5GB2KXRF7H3C5KGRDSA3OWO2BHAI6EVIPMPPUDBI5SAXTGQPE6CVH",
+  "auditor_registry": "CAS2JXTCUO3LFBAL2JIX2Z6VKSGYB5X6JP6X26SXKK56XT7SB5KEUHCN",
+  "compliant_dex": "CBNYBSDLE5LHWGQPTBP3SSBH4MF2LIFB5F7M52OCROPMT7P37EHYE3WN",
+  "compliant_payroll": "CBMJNDW5EKU55O4WPMROEPH4CA3CW7RCGM62644O24RV6ZR5BWHN3NRM",
+  "compliance_policy": "CCOSQHPEI7X5DWT4CCRUE7R4DFZI5IQV4Z74EVQWXELTESP4MOCYMKMK",
+  "lumengate_smart_account": "CAAWL5GMVZ5JCA4YJ55GKLHQPHVHFID76KNF5QY2HFOOB3EBGVYY3WIO",
+  "ultrahonk_verifier_eligibility": "CB3WFVTTT4HZAFXK6JMMW773BRG3R73RLZH6Z3EJKXDQDNOOJAVOYXSR",
+  "ultrahonk_verifier_pof": "CD4PQWJOA7HUHR6KZYGVC23Z3VNHIOJW44QT4Y2SR2POKETNMRNOCILI"
+}
