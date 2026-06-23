@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: lumengate-issuer
+    runtime: node
+    plan: free
+    rootDir: issuer-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ISSUER_ID
+        value: "2"
+      - key: STELLAR_NETWORK_NAME
+        value: testnet
+      - key: ISSUER_ED25519_SECRET
+        sync: false
+      - key: REVOKE_API_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: ISSUER_REGISTRY_ID
+        sync: false
+      - key: CREDENTIAL_REGISTRY_ID
+        sync: false
+      - key: AUDITOR_REGISTRY_ID
+        sync: false
+      - key: CONTRACT_ADMIN_SECRET_KEY
+        sync: false
