@@ -9,6 +9,7 @@ import {
   type TransactionResult,
 } from 'smart-account-kit';
 import type { DeploymentConfig } from './config';
+import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 
 export { passkeyUserName } from './passkeyUserHandle';
@@ -278,6 +279,7 @@ export async function createPersonalSmartAccount(
     : undefined;
 
   patchWalletContextRulesLookup(kit, config, created);
+  patchPasskeyAuthPayloadV07(kit);
 
   return {
     smartAccountAddress: created.contractId,
@@ -310,6 +312,7 @@ export async function connectPersonalSmartAccount(
       'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
     );
   }
+  patchPasskeyAuthPayloadV07(kit);
   return kit;
 }
 
