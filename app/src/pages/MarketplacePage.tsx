@@ -335,7 +335,8 @@ export function MarketplacePage() {
 
       const settlementAsset = offering.settlementAsset === 'usdc' ? 'usdc' : 'rwa';
       const scope = ASSET_SCOPES[settlementAsset];
-      const scopedProof = activeProof ?? (await ensureProofForAsset(settlementAsset));
+      const scopedProof =
+        activeProof ?? (await ensureProofForAsset(settlementAsset)).proof;
       const pid = Number(scopedProof.publicInputs.policyId);
 
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(scopedProof), pid, scope);

@@ -68,6 +68,7 @@ import {
   type SignableTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
+import { buildFundSmartAccountUsdcXdr } from '../lib/smartAccountFunding';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -79,7 +80,11 @@ type AppContextValue = {
   settlementAddress: string | null;
   smartAccountCreating: boolean;
   createSmartAccount: () => Promise<SmartAccountState>;
-  ensureProofForAsset: (asset: SettlementAsset) => Promise<ProofBundle>;
+  ensureProofForAsset: (asset: SettlementAsset) => Promise<{
+    proof: ProofBundle;
+    credential: IssuerCredentialResponse;
+  }>;
+  fundSmartAccountUsdc: (amount: string) => Promise<string>;
   connecting: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -720,10 +725,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const ensureProofForAsset = useCallback(
-    async (asset: SettlementAsset): Promise<ProofBundle> => {
+    async (
+      asset: SettlementAsset,
+    ): Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse }> => {
       const scope = ASSET_SCOPES[asset];
-      if (proof && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
-        return proof;
+      if (proof && credential && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
+        return { proof, credential };
       }
       if (!credential) throw new Error('Request a passport before settlement');
       const scopedCredential = credentialForScope(credential, scope);
@@ -735,7 +742,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         detail: `Asset scope ${scope.assetId}, action scope ${scope.actionId}`,
         status: 'success',
       });
-      return bundle;
+      return { proof: bundle, credential: scopedCredential };
     },
     [credential, proof, setProof, pushActivity],
   );
@@ -1002,6 +1009,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [kit, config, address, smartAccount],
   );
 
+  const fundSmartAccountUsdc = useCallback(
+    async (amount: string): Promise<string> => {
+      if (!address) throw new Error('Connect wallet first');
+      if (!settlementAddress) throw new Error('Create your smart account first');
+      const xdr = await buildFundSmartAccountUsdcXdr(config, address, settlementAddress, amount);
+      const hash = await signAndSubmit(xdr);
+      pushActivity({
+        kind: 'verify',
+        title: 'Smart account funded',
+        detail: `${amount} USDC → ${settlementAddress.slice(0, 8)}…`,
+        txHash: hash,
+        status: 'success',
+      });
+      return hash;
+    },
+    [address, settlementAddress, config, signAndSubmit, pushActivity],
+  );
+
   const value: AppContextValue = {
     config,
     address,
@@ -1038,6 +1063,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProof,
     setPofProof,
     ensureProofForAsset,
+    fundSmartAccountUsdc,
     generatePofProofForWallet,
     setPolicyKey,
     setSelectedOfferingId,

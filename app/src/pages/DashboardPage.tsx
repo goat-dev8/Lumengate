@@ -6,8 +6,9 @@ import { Button } from '../components/ui/Button';
 import { OfferingIllustration } from '../components/fintech/OfferingIllustration';
 import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
-import { readBalance, readComplianceAdminUsdcBalance } from '../lib/contracts';
+import { readBalance } from '../lib/contracts';
 import { derivePassportPhase, phaseLabel } from '../lib/passportLifecycle';
+import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { LiveOnStellarStrip } from '../components/product/LiveOnStellarStrip';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
@@ -31,11 +32,11 @@ export function DashboardPage() {
     proofLifecycle,
     beginProofRecovery,
     settlementAddress,
+    fundSmartAccountUsdc,
   } = useApp();
   const navigate = useNavigate();
   const { offerings } = useOfferings();
   const [balance, setBalance] = useState<string | null>(null);
-  const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const settlementOwner = currentSettlementOwner(config, address, settlementAddress);
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
@@ -62,11 +63,6 @@ export function DashboardPage() {
         setBalance(null);
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
-    if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, settlementOwner)
-        .then((snap) => setUsdcBalance(snap.formatted))
-        .catch(() => setUsdcBalance(null));
-    }
   }, [settlementOwner, config]);
 
   const lastSettlement = useMemo(() => {
@@ -112,29 +108,14 @@ export function DashboardPage() {
       <div className="mt-2">
         <ProductProgress steps={productSteps} />
       </div>
-      {settlementAddress ? (
-        <section className="mt-4 rounded-xl border border-brand-200 bg-brand-50/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-navy">Fund Smart Account</p>
-              <p className="mt-1 text-xs text-slate-muted">Deposit address</p>
-              <p className="mt-1 break-all font-mono text-xs text-slate-ink">{settlementAddress}</p>
-            </div>
-            <div className="grid gap-2 text-right text-sm sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-slate-muted">RWA</p>
-                <p className="font-semibold text-navy">{balanceError ? 'RPC error' : balance ?? '...'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-muted">USDC</p>
-                <p className="font-semibold text-navy">{usdcBalance ?? '...'}</p>
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-slate-muted">
-            Funding status: {BigInt(balance ?? '0') > 0n || Number(usdcBalance ?? '0') > 0 ? 'funded' : 'waiting for deposit'}
-          </p>
-        </section>
+      {settlementAddress && address ? (
+        <div className="mt-4">
+          <FundSmartAccountPanel
+            config={config}
+            smartAccountAddress={settlementAddress}
+            onFundUsdc={fundSmartAccountUsdc}
+          />
+        </div>
       ) : null}
       {proofSpent ? (
         <div className="mt-4">

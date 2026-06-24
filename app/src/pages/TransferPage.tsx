@@ -14,6 +14,7 @@ import { Badge } from '../components/ui/Badge';
 
 import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
@@ -63,6 +64,7 @@ export function TransferPage() {
     smartAccountCreating,
     createSmartAccount,
     ensureProofForAsset,
+    fundSmartAccountUsdc,
   } = useApp();
 
   const navigate = useNavigate();
@@ -79,6 +81,8 @@ export function TransferPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [confirmingEligibility, setConfirmingEligibility] = useState(false);
+  const [balanceRefresh, setBalanceRefresh] = useState(0);
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
   const advanced = useAdvancedMode();
@@ -111,7 +115,7 @@ export function TransferPage() {
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
-  }, [address, settlementAddress, config, txHash, asset]);
+  }, [address, settlementAddress, config, txHash, asset, balanceRefresh]);
 
   useEffect(() => {
     if (asset === 'usdc' && config.marketplaceSettlementAddress && !to) {
@@ -179,10 +183,16 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     try {
-      const scopedProof = activeProof ?? (await ensureProofForAsset(asset));
+      let scopedCredential = credential;
+      let scopedProof = activeProof;
+      if (!scopedProof) {
+        const ensured = await ensureProofForAsset(asset);
+        scopedProof = ensured.proof;
+        scopedCredential = ensured.credential;
+      }
       const freshLifecycle = await syncProofLifecycleOnChain(
         config,
-        credential,
+        scopedCredential,
         scopedProof,
         consumedTxHash,
       );
@@ -260,6 +270,28 @@ export function TransferPage() {
 
 
 
+  const sendReady =
+    proofLifecycle.lifecycle === 'ready' &&
+    Boolean(activeProof) &&
+    proofMatchesCredential(proof, credential);
+
+  const handleConfirmForAsset = async () => {
+    if (!credential) {
+      handleRecovery();
+      return;
+    }
+    setConfirmingEligibility(true);
+    setError(null);
+    try {
+      await ensureProofForAsset(asset);
+      await syncProofLifecycle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConfirmingEligibility(false);
+    }
+  };
+
   const balanceLabel =
     asset === 'usdc'
       ? usdcBalance !== null
@@ -269,11 +301,9 @@ export function TransferPage() {
         ? eurcBalance !== null
           ? `${eurcBalance} EURC`
           : 'EURC unavailable'
-      : rwaBalance !== null
-        ? `${rwaBalance} treasury units`
-        : 'Loading…';
-
-
+        : rwaBalance !== null
+          ? `${rwaBalance} treasury units`
+          : 'Loading…';
 
   return (
 
@@ -306,6 +336,15 @@ export function TransferPage() {
           </Card>
         ) : null}
 
+        {address && smartAccount && settlementAddress ? (
+          <FundSmartAccountPanel
+            config={config}
+            smartAccountAddress={settlementAddress}
+            onFundUsdc={fundSmartAccountUsdc}
+            onFunded={() => setBalanceRefresh((n: number) => n + 1)}
+          />
+        ) : null}
+
         {proofLifecycle.lifecycle === 'invalid' || proofLifecycle.lifecycle === 'consumed' ? (
           <ProofLifecyclePanel
             state={proofLifecycle}
@@ -313,6 +352,22 @@ export function TransferPage() {
             onBeginRecovery={handleRecovery}
             onRefreshProof={() => syncProofLifecycle()}
           />
+        ) : !sendReady && credential && smartAccount ? (
+          <Card className="border-brand-200 bg-brand-50/40">
+            <CardHeader title="Confirm for this asset" badge={<Badge tone="brand">Action needed</Badge>} />
+            <p className="text-sm text-slate-muted">
+              Each asset type needs its own private confirmation. Confirm eligibility for{' '}
+              {friendlyAssetName(asset)} before sending — this runs locally in your browser (~30s).
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button loading={confirmingEligibility} onClick={handleConfirmForAsset}>
+                Confirm eligibility for {friendlyAssetName(asset)}
+              </Button>
+              <Button variant="secondary" onClick={handleRecovery}>
+                Renew passport
+              </Button>
+            </div>
+          </Card>
         ) : (
           <>
             <ProofLifecyclePanel state={proofLifecycle} config={config} compact />
@@ -420,6 +475,16 @@ export function TransferPage() {
 
                 <p className="text-sm text-slate-muted">Connect wallet to transfer.</p>
 
+              ) : asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
+
+                <div className="rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 text-sm text-slate-muted">
+                  Treasury units are minted when you invest on Marketplace — they are not deposited like USDC.
+                  {' '}
+                  <button type="button" className="text-brand underline" onClick={() => navigate('/app/marketplace')}>
+                    Browse investments
+                  </button>
+                </div>
+
               ) : (
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -484,7 +549,7 @@ export function TransferPage() {
 
                 loading={loading}
 
-                disabled={!address || !credential || !smartAccount || !to || !amount}
+                disabled={!address || !credential || !smartAccount || !to || !amount || !sendReady}
 
                 onClick={handleTransfer}
 

@@ -17,6 +17,7 @@ import {
 import { friendlyIssuerError } from '../lib/advancedMode';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
@@ -60,6 +61,7 @@ export function VerifyPage() {
     smartAccountCreating,
     createSmartAccount,
     settlementAddress,
+    fundSmartAccountUsdc,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -253,13 +255,13 @@ export function VerifyPage() {
               Create passkey smart account
             </Button>
           </Card>
-        ) : address && smartAccount ? (
-          <Card>
-            <CardHeader title="Smart account ready" badge={<Badge tone="ok">Settlement owner</Badge>} />
-            <p className="font-mono text-xs break-all text-slate-muted">
-              Deposit address: {settlementAddress}
-            </p>
-          </Card>
+        ) : address && smartAccount && settlementAddress ? (
+          <FundSmartAccountPanel
+            config={config}
+            smartAccountAddress={settlementAddress}
+            onFundUsdc={fundSmartAccountUsdc}
+            compact
+          />
         ) : null}
 
         {showCredentialStep ? (
