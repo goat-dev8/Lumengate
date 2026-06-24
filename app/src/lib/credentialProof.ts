@@ -14,3 +14,11 @@ export function proofMatchesCredential(
 export function credentialNullifierPreview(credential: IssuerCredentialResponse): string {
   return credential.credential.nullifier;
 }
+
+/** Hex nullifier for on-chain PolicyVerifier spent checks. */
+export function nullifierHexFromCredential(credential: IssuerCredentialResponse): string {
+  const raw = credential.proverInputs?.nullifier ?? credential.credential.nullifier;
+  const text = String(raw);
+  if (text.startsWith('0x')) return text;
+  return `0x${BigInt(text).toString(16).padStart(64, '0')}`;
+}

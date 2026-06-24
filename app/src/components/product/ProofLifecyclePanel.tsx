@@ -1,4 +1,3 @@
-import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { ProofLifecycleState } from '../../lib/proofLifecycle';
 import { recoveryPlanAfterNullifierSpent } from '../../lib/proofRecovery';
 import { Button } from '../ui/Button';
@@ -6,6 +5,7 @@ import { Badge } from '../ui/Badge';
 import { Card, CardHeader } from '../ui/Card';
 import { explorerTxUrl } from '../../lib/utils';
 import type { DeploymentConfig } from '../../lib/config';
+import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 
 type Props = {
   state: ProofLifecycleState;
@@ -17,28 +17,6 @@ type Props = {
 
 export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshProof, compact }: Props) {
   if (state.lifecycle === 'none') {
-    if (state.consumedTxHash && state.reason) {
-      return (
-        <Card className="border-brand-200 bg-brand-50/40">
-          <CardHeader title="Recovery in progress" badge={<Badge tone="brand">Next step</Badge>} />
-          <p className="text-sm text-slate-muted">{state.reason}</p>
-          {state.consumedTxHash ? (
-            <p className="mt-2 text-sm">
-              Previous settlement:{' '}
-              <a
-                href={explorerTxUrl(config.explorerBaseUrl, state.consumedTxHash)}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-brand underline"
-              >
-                {state.consumedTxHash.slice(0, 12)}…
-              </a>
-            </p>
-          ) : null}
-          <p className="mt-3 text-sm font-medium text-navy">Continue below — request a new passport first.</p>
-        </Card>
-      );
-    }
     return (
       <Card>
         <CardHeader title="Proof required" badge={<Badge>Action needed</Badge>} />
@@ -99,10 +77,8 @@ export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshP
           <Button
             type="button"
             onClick={() => {
-              if (onBeginRecovery) {
-                onBeginRecovery();
-                document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
-              }
+              onBeginRecovery?.();
+              document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
             }}
             disabled={!onBeginRecovery}
           >

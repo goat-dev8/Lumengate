@@ -1,8 +1,8 @@
 import type { DeploymentConfig } from './config';
 import type { IssuerCredentialResponse } from './config';
 import type { ProofBundle } from './contracts';
-import { nullifierHexFromBundle, readNullifierSpent } from './contracts';
-import { proofMatchesCredential } from './credentialProof';
+import { readNullifierSpent } from './contracts';
+import { nullifierHexFromCredential, proofMatchesCredential } from './credentialProof';
 
 export type ProofLifecycle = 'none' | 'ready' | 'consumed' | 'invalid';
 
@@ -12,22 +12,17 @@ export type ProofLifecycleState = {
   reason: string | null;
 };
 
+/** Offline snapshot — use syncProofLifecycleOnChain for authoritative state. */
 export function deriveProofLifecycle(
   credential: IssuerCredentialResponse | null,
   proof: ProofBundle | null,
-  consumedTxHash: string | null = null,
+  settlementTxHash: string | null = null,
 ): ProofLifecycleState {
+  void settlementTxHash;
   if (!credential) {
     return { lifecycle: 'none', consumedTxHash: null, reason: null };
   }
   if (!proof) {
-    if (consumedTxHash) {
-      return {
-        lifecycle: 'consumed',
-        consumedTxHash,
-        reason: 'Proof consumed by a previous settlement.',
-      };
-    }
     return { lifecycle: 'none', consumedTxHash: null, reason: null };
   }
   if (!proofMatchesCredential(proof, credential)) {
@@ -37,43 +32,68 @@ export function deriveProofLifecycle(
       reason: 'Proof does not match current passport — regenerate proof.',
     };
   }
-  if (consumedTxHash) {
-    return {
-      lifecycle: 'consumed',
-      consumedTxHash,
-      reason: 'Proof consumed by a previous settlement.',
-    };
-  }
   return { lifecycle: 'ready', consumedTxHash: null, reason: null };
 }
 
-/** Sync lifecycle with on-chain nullifier spent set (source of truth). */
+/**
+ * Source of truth: PolicyVerifier.is_nullifier_spent for THIS credential's nullifier.
+ * Do NOT infer consumed from historical settlement tx alone — that blocked fresh passports.
+ */
 export async function syncProofLifecycleOnChain(
   config: DeploymentConfig,
   credential: IssuerCredentialResponse | null,
   proof: ProofBundle | null,
-  consumedTxHash: string | null,
+  settlementTxHash: string | null,
 ): Promise<ProofLifecycleState> {
-  const base = deriveProofLifecycle(credential, proof, consumedTxHash);
-  if (base.lifecycle !== 'ready' || !proof) return base;
+  if (!credential) {
+    return { lifecycle: 'none', consumedTxHash: null, reason: null };
+  }
 
+  const policyId = Number(
+    credential.proverInputs?.policy_id ?? credential.credential.policyId ?? 1,
+  );
+  let nullifierSpent = false;
   try {
-    const spent = await readNullifierSpent(
+    nullifierSpent = await readNullifierSpent(
       config,
-      nullifierHexFromBundle(proof),
-      Number(proof.publicInputs.policyId),
+      nullifierHexFromCredential(credential),
+      policyId,
     );
-    if (spent) {
+  } catch {
+    /* If RPC fails and we have a matching ready proof, keep ready */
+    if (proof && proofMatchesCredential(proof, credential)) {
+      return { lifecycle: 'ready', consumedTxHash: null, reason: null };
+    }
+  }
+
+  if (proof && proofMatchesCredential(proof, credential)) {
+    if (nullifierSpent) {
       return {
         lifecycle: 'consumed',
-        consumedTxHash,
+        consumedTxHash: settlementTxHash,
         reason: 'Proof consumed by a previous settlement.',
       };
     }
-  } catch {
-    /* keep ready — RPC may be temporarily unavailable */
+    return { lifecycle: 'ready', consumedTxHash: null, reason: null };
   }
-  return base;
+
+  if (proof && !proofMatchesCredential(proof, credential)) {
+    return {
+      lifecycle: 'invalid',
+      consumedTxHash: null,
+      reason: 'Proof does not match current passport — regenerate proof.',
+    };
+  }
+
+  if (nullifierSpent) {
+    return {
+      lifecycle: 'consumed',
+      consumedTxHash: settlementTxHash,
+      reason: 'This passport nullifier was already spent. Request a new passport.',
+    };
+  }
+
+  return { lifecycle: 'none', consumedTxHash: null, reason: null };
 }
 
 export function isProofUsable(state: ProofLifecycleState): boolean {

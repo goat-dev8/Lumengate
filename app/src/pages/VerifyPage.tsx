@@ -81,8 +81,7 @@ export function VerifyPage() {
   const advanced = useAdvancedMode();
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
-  const inRecovery =
-    proofLifecycle.lifecycle === 'none' && Boolean(proofLifecycle.consumedTxHash || proofLifecycle.reason);
+  const recoveryHint = proofLifecycle.lifecycle === 'none' && Boolean(proofLifecycle.reason);
 
   const flags = useMemo(
     () =>
@@ -134,7 +133,7 @@ export function VerifyPage() {
     }
     setCredLoading(true);
     setError(null);
-    recoveryLog('credential.request', { policyKey, walletField, inRecovery, proofConsumed });
+    recoveryLog('credential.request', { policyKey, walletField, proofConsumed, recoveryHint });
     try {
       await fetchIssuerHealth(config.issuerServiceUrl);
       recoveryLog('credential.api.health', { ok: true });
@@ -150,7 +149,7 @@ export function VerifyPage() {
       if (!matches) throw new Error('Compliance registry is syncing — wait a moment and retry.');
       pushActivity({
         kind: 'credential',
-        title: inRecovery || proofConsumed ? 'New passport issued' : 'Compliance passport issued',
+        title: recoveryHint || proofConsumed ? 'New passport issued' : 'Compliance passport issued',
         detail: 'Fresh nullifier ready — identity stays off-chain',
         status: 'success',
       });
@@ -222,8 +221,8 @@ export function VerifyPage() {
   };
 
   const showCredentialStep =
-    (currentStep === 'credential' || flags.credential || proofConsumed || inRecovery) && Boolean(address);
-  const needsNewPassport = proofConsumed || inRecovery || currentStep === 'credential' || !credential;
+    (currentStep === 'credential' || flags.credential || proofConsumed || recoveryHint) && Boolean(address);
+  const needsNewPassport = proofConsumed || recoveryHint || currentStep === 'credential' || !credential;
   const showProofStep =
     Boolean(credential) && !proofConsumed && flags.credential && (currentStep === 'proof' || flags.proof);
 
@@ -243,7 +242,7 @@ export function VerifyPage() {
 
         <PrivacyJourney compact />
 
-        {(proofConsumed || proofLifecycle.lifecycle === 'invalid' || inRecovery) && (
+        {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
@@ -251,6 +250,12 @@ export function VerifyPage() {
             onRefreshProof={() => syncProofLifecycle()}
           />
         )}
+
+        {recoveryHint ? (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 text-sm text-slate-muted">
+            {proofLifecycle.reason}
+          </div>
+        ) : null}
 
         <nav aria-label="Verification steps" className="grid gap-2 sm:grid-cols-5">
           {STEP_META.map((step) => {
@@ -334,7 +339,7 @@ export function VerifyPage() {
               badge={<Badge>{advanced ? 'Issuer attestation' : 'Off-chain'}</Badge>}
             />
             <p className="text-sm text-slate-muted">
-              {needsNewPassport && (proofConsumed || inRecovery)
+              {needsNewPassport && (proofConsumed || recoveryHint)
                 ? 'Your previous nullifier was spent on-chain. Request a new passport — the issuer assigns a fresh nullifier for your next settlement.'
                 : 'The issuer attests you meet policy requirements. Your name, jurisdiction, and sanctions status stay off-chain — only a cryptographic commitment is recorded.'}
             </p>
@@ -354,7 +359,7 @@ export function VerifyPage() {
             </label>
             {needsNewPassport ? (
               <Button className="mt-4" loading={credLoading || connecting} onClick={handleCredential}>
-                {proofConsumed || inRecovery ? 'Request new passport' : 'Request passport'}
+                {proofConsumed || recoveryHint ? 'Request new passport' : 'Request passport'}
               </Button>
             ) : null}
             {credential && flags.credential ? (

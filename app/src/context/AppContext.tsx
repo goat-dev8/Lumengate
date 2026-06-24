@@ -211,12 +211,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReplayBlocked(saved.replayBlocked ?? false);
     setReplayMessage(saved.replayMessage ?? null);
     setPassportActivatedState(saved.passportActivated ?? false);
-    setConsumedTxHash(saved.consumedTxHash ?? saved.receiptTransactions?.transfer ?? null);
+    setConsumedTxHash(saved.consumedTxHash ?? null);
     setProofLifecycle(
       saved.proofLifecycle
         ? {
             lifecycle: saved.proofLifecycle,
-            consumedTxHash: saved.consumedTxHash ?? saved.receiptTransactions?.transfer ?? null,
+            consumedTxHash: saved.consumedTxHash ?? null,
             reason:
               saved.proofLifecycle === 'consumed'
                 ? 'Proof consumed by a previous settlement.'
@@ -227,7 +227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         : deriveProofLifecycle(
             saved.credential,
             proofOk ? saved.proof : null,
-            saved.consumedTxHash ?? saved.receiptTransactions?.transfer ?? null,
+            saved.consumedTxHash ?? null,
           ),
     );
     if (saved.walletModuleId) {
@@ -287,40 +287,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [kit, restoreSession]);
 
   const syncProofLifecycle = useCallback(async () => {
-    const txHint = consumedTxHash ?? receiptTransactions.transfer ?? null;
-    const synced = await syncProofLifecycleOnChain(config, credential, proof, txHint);
+    const settlementTx = consumedTxHash;
+    const synced = await syncProofLifecycleOnChain(config, credential, proof, settlementTx);
     setProofLifecycle(synced);
     if (synced.lifecycle === 'consumed') {
       if (synced.consumedTxHash) setConsumedTxHash(synced.consumedTxHash);
       if (proof) setProofState(null);
+    } else if (synced.lifecycle === 'none' || synced.lifecycle === 'ready') {
+      if (!synced.consumedTxHash) setConsumedTxHash(null);
     }
     if (address && walletField) {
       persistSession({
         address,
         walletField,
         proofLifecycle: synced.lifecycle,
-        consumedTxHash: synced.consumedTxHash,
-        proof: synced.lifecycle === 'ready' ? proof : null,
+        consumedTxHash: synced.lifecycle === 'consumed' ? synced.consumedTxHash : null,
+        proof: synced.lifecycle === 'ready' ? proof : synced.lifecycle === 'consumed' ? null : proof,
       });
     }
-  }, [
-    config,
-    credential,
-    proof,
-    consumedTxHash,
-    receiptTransactions.transfer,
-    address,
-    walletField,
-    persistSession,
-  ]);
+  }, [config, credential, proof, consumedTxHash, address, walletField, persistSession]);
 
   useEffect(() => {
     if (!credential && !proof) {
-      setProofLifecycle(deriveProofLifecycle(null, null, consumedTxHash));
+      setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
       return;
     }
     syncProofLifecycle().catch(() => undefined);
-  }, [credential, proof, consumedTxHash, syncProofLifecycle]);
+  }, [credential, proof, syncProofLifecycle]);
 
   useEffect(() => {
     if (!credential || !proof) return;
@@ -532,7 +525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProofDurationSec(null);
       setConsumedTxHash(null);
       setPassportActivatedState(false);
-      setProofLifecycle(deriveProofLifecycle(cred, null, null));
+      setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
       persistSession({
         address,
         walletField,
@@ -546,6 +539,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         passportActivated: false,
         proofLifecycle: 'none',
       });
+      const synced = await syncProofLifecycleOnChain(config, cred, null, null);
+      setProofLifecycle(synced);
       pushActivity({
         kind: 'credential',
         title: 'Credential received',
@@ -554,7 +549,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return cred;
     },
-    [config.issuerServiceUrl, walletField, address, policyKey, selectedOfferingId, pushActivity, persistSession],
+    [config.issuerServiceUrl, config, walletField, address, policyKey, selectedOfferingId, pushActivity, persistSession],
   );
 
   const setProof = useCallback(
@@ -707,9 +702,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReplayMessage(null);
     setProofLifecycle({
       lifecycle: 'none',
-      consumedTxHash: previousTx,
+      consumedTxHash: null,
       reason: previousTx
-        ? `Previous settlement consumed your nullifier (${previousTx.slice(0, 12)}…). Request a new passport below.`
+        ? `Previous settlement ${previousTx.slice(0, 12)}… — request a new passport below.`
         : 'Request a new passport with a fresh nullifier, then generate proof.',
     });
 
@@ -721,7 +716,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pofProof: null,
       proofDurationSec: null,
       passportActivated: false,
-      consumedTxHash: previousTx,
+      consumedTxHash: null,
       proofLifecycle: 'none',
       replayBlocked: false,
       replayMessage: null,
