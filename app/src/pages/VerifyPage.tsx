@@ -15,6 +15,13 @@ import {
   publicInputsPanel,
   type ProveProgress,
 } from '../lib/prover';
+import {
+  createPasskey,
+  loadStoredPasskey,
+  passkeyEnvSummary,
+  passkeySupported,
+  type StoredPasskey,
+} from '../lib/passkeys';
 import { proofMatchesCredential } from '../lib/credentialProof';
 
 export function VerifyPage() {
@@ -36,7 +43,29 @@ export function VerifyPage() {
   const [proveLoading, setProveLoading] = useState(false);
   const [proveProgress, setProveProgress] = useState<ProveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [passkey, setPasskey] = useState<StoredPasskey | null>(() => loadStoredPasskey());
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const passkeyEnv = passkeyEnvSummary();
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+
+  const handlePasskey = async () => {
+    setPasskeyLoading(true);
+    setError(null);
+    try {
+      const created = await createPasskey(address || 'lumengate-user');
+      setPasskey(created);
+      pushActivity({
+        kind: 'credential',
+        title: 'Passkey secured',
+        detail: `Registered on ${passkeyEnv.rpId}`,
+        status: 'success',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
 
   const handleCredential = async () => {
     if (!address) {
@@ -98,6 +127,24 @@ export function VerifyPage() {
             Verified once, reuse everywhere. No personal data is shared on-chain.
           </p>
         </div>
+
+        <Card>
+          <CardHeader title="Passkey account" badge={<Badge tone="brand">Primary auth</Badge>} />
+          <p className="text-sm text-slate-muted">
+            Create a device passkey for seedless sign-in. RP ID: {passkeyEnv.rpId}
+            {!passkeyEnv.supported ? ' — requires HTTPS' : ''}
+          </p>
+          {passkey ? (
+            <p className="mt-3 text-sm text-brand">
+              <ShieldCheck className="mr-1 inline h-4 w-4" />
+              Passkey active on this device
+            </p>
+          ) : (
+            <Button className="mt-4" loading={passkeyLoading} disabled={!passkeySupported()} onClick={handlePasskey}>
+              Create passkey
+            </Button>
+          )}
+        </Card>
 
         <div className="flex gap-2">
           {(['credential', 'proof'] as const).map((s) => (

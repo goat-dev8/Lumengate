@@ -134,7 +134,7 @@ export function CredentialPage() {
             </div>
             {issuerMeta ? (
               <p className="mt-4 text-xs text-slate-muted">
-                Cross-chain issuer (Ethereum secp256k1):{' '}
+                Stellar Ed25519 issuer:{' '}
                 <span className="font-mono">{truncateMiddle(issuerMeta, 10, 8)}</span>
               </p>
             ) : null}

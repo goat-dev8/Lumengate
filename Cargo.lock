@@ -764,6 +764,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "governance-timelock"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-access",
+ "stellar-governance",
+ "stellar-macros",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1399,6 +1409,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-key-policy"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-accounts",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1689,6 +1707,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stellar-governance"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4828d07c8f3ae45483bdfd41e7e3aa43b4da3dbff1733d77c0f76bf247f01e6"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "stellar-macros"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1958,6 +1985,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5a015fe95f3504a94bb1462c717aae75253e39b9dd6c3fb1062c934535c64aa"
 dependencies = [
  "indexmap-nostd",
+]
+
+[[package]]
+name = "webauthn-verifier"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-accounts",
 ]
 
 [[package]]

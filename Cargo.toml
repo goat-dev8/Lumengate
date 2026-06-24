@@ -15,6 +15,9 @@ members = [
     "contracts/compliant_payroll",
     "contracts/compliance_policy",
     "contracts/lumengate_smart_account",
+    "contracts/webauthn_verifier",
+    "contracts/session_key_policy",
+    "contracts/governance_timelock",
 ]
 exclude = [
     "vendor/rs-soroban-ultrahonk/contracts/tornado_classic",
@@ -28,6 +31,7 @@ stellar-access = "=0.7.2"
 stellar-macros = "=0.7.2"
 stellar-accounts = "=0.7.2"
 stellar-contract-utils = "=0.7.2"
+stellar-governance = "=0.7.2"
 
 [profile.release]
 opt-level = "z"

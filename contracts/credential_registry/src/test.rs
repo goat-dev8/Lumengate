@@ -15,7 +15,10 @@ fn set_and_get_roots() {
     let rev = BytesN::from_array(&env, &[3u8; 32]);
     client.set_root(&admin, &root);
     client.set_revocation_root(&admin, &rev);
-    let (r, rr) = client.get_roots();
+    let note = BytesN::from_array(&env, &[4u8; 32]);
+    client.set_note_root(&admin, &note);
+    let (r, rr, nr) = client.get_roots();
     assert_eq!(r, root);
     assert_eq!(rr, rev);
+    assert_eq!(nr, note);
 }

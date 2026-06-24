@@ -358,6 +358,24 @@ export function TransferPage() {
 
           <>
 
+            <Card>
+              <CardHeader title="Private settlement layer" badge={<Badge tone="brand">Nethermind ASP</Badge>} />
+              <p className="text-sm text-slate-muted">
+                Unlinkable deposit/withdraw via Stellar Private Payments testnet pool. Eligibility proofs gate
+                compliant ASP membership before private USDC flows.
+              </p>
+              <dl className="mt-3 space-y-1 text-xs font-mono">
+                <div>
+                  <dt className="text-slate-muted">Privacy pool</dt>
+                  <dd className="break-all">{config.privacyPoolId}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-muted">ASP membership verifier</dt>
+                  <dd className="break-all">{config.aspMembershipVerifierId}</dd>
+                </div>
+              </dl>
+            </Card>
+
             <div className="flex flex-wrap gap-2">
 
               <Button variant={asset === 'rwa' ? 'primary' : 'secondary'} size="sm" onClick={() => setAsset('rwa')}>

@@ -2,20 +2,20 @@ import { ArrowDown } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 
 const STEPS = [
-  'Ethereum Issuer',
-  'Credential Signature (secp256k1)',
-  'Merkle Commitment',
-  'Stellar Credential Registry',
+  'Stellar Ed25519 issuer',
+  'Credential signature (off-chain)',
+  'Merkle + note commitments',
+  'Credential Registry roots',
   'Policy Verifier (UltraHonk / BN254)',
-  'RWA Marketplace Settlement',
+  'Compliant USDC settlement',
 ];
 
 export function CrossChainArchitecture({ showBadge = true }: { showBadge?: boolean }) {
   return (
     <div className="rounded-2xl border border-[#eef0f3] bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-navy">Cross-chain compliance architecture</h3>
-        {showBadge ? <Badge tone="ok">Cross-chain verified</Badge> : null}
+        <h3 className="text-sm font-semibold text-navy">Stellar-native compliance architecture</h3>
+        {showBadge ? <Badge tone="ok">Testnet verified</Badge> : null}
       </div>
       <div className="mt-4 space-y-1">
         {STEPS.map((label, i) => (

@@ -36,7 +36,7 @@ function readOnlyLedgerAccount(): Account {
   return new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
 }
 
-export async function readOnChainRoots(config: DeploymentConfig): Promise<{ root: string; revocationRoot: string }> {
+export async function readOnChainRoots(config: DeploymentConfig): Promise<{ root: string; revocationRoot: string; noteRoot: string }> {
   const s = server(config.rpcUrl);
   const contract = new Contract(config.credentialRegistryId);
   const tx = new TransactionBuilder(readOnlyLedgerAccount(), {
@@ -53,10 +53,11 @@ export async function readOnChainRoots(config: DeploymentConfig): Promise<{ root
   }
   const val = sim.result?.retval;
   if (!val) throw new Error('No return value from get_roots');
-  const tuple = scValToNative(val) as [Buffer | Uint8Array, Buffer | Uint8Array];
+  const tuple = scValToNative(val) as [Buffer | Uint8Array, Buffer | Uint8Array, Buffer | Uint8Array | undefined];
   return {
     root: `0x${bytesToHex(Uint8Array.from(tuple[0]))}`,
     revocationRoot: `0x${bytesToHex(Uint8Array.from(tuple[1]))}`,
+    noteRoot: `0x${bytesToHex(Uint8Array.from(tuple[2] ?? new Uint8Array(32)))}`,
   };
 }
 

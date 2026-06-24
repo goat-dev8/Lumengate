@@ -14,6 +14,8 @@ services:
         value: "2"
       - key: STELLAR_NETWORK_NAME
         value: testnet
+      - key: STELLAR_RPC_URL
+        value: https://soroban-testnet.stellar.org
       - key: ISSUER_ED25519_SECRET
         sync: false
       - key: REVOKE_API_KEY

@@ -3,7 +3,7 @@
 
 use dep::poseidon::poseidon2::Poseidon2;
 
-global TEST_NOTE_SECRET: Field = 12345;
+global TEST_NOTE_SECRET: Field = 318823512651796005784698282711234952579815818683886676077412632652998948480;
 global TEST_POLICY_ID: Field = 2;
 
 fn hash2(a: Field, b: Field) -> Field {

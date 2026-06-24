@@ -25,17 +25,17 @@ export function CredentialProvenance({
     <dl className="grid gap-3 text-sm md:grid-cols-2">
       <div className="rounded-xl bg-slate-50 p-3">
         <dt className="text-xs uppercase text-slate-muted">Credential source</dt>
-        <dd className="mt-1 font-medium">Lumengate issuer service → Ethereum secp256k1</dd>
+        <dd className="mt-1 font-medium">Lumengate issuer service → Stellar Ed25519</dd>
       </div>
       <div className="rounded-xl bg-slate-50 p-3">
         <dt className="text-xs uppercase text-slate-muted">Issuer</dt>
         <dd className="mt-1 break-all font-mono text-xs">
-          {credential?.issuerEthAddress ?? 'Request credential to bind issuer'}
+          {credential?.issuerStellarPublicKey ?? 'Request credential to bind issuer'}
         </dd>
       </div>
       <div className="rounded-xl bg-slate-50 p-3">
         <dt className="text-xs uppercase text-slate-muted">Signature status</dt>
-        <dd className="mt-1 font-medium">{signatureVerified ? 'Verified (circuit checks sig)' : 'Pending'}</dd>
+        <dd className="mt-1 font-medium">{signatureVerified ? 'Verified (Ed25519 issuer attestation)' : 'Pending'}</dd>
       </div>
       <div className="rounded-xl bg-slate-50 p-3">
         <dt className="text-xs uppercase text-slate-muted">Verification method</dt>

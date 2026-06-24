@@ -26,7 +26,7 @@ const FLOAT_CARDS = [
     icon: KeyRound,
     label: 'Step 1',
     title: 'Credential signed',
-    meta: 'secp256k1 · off-chain',
+    meta: 'Ed25519 · off-chain',
     type: 'proof' as const,
   },
   {

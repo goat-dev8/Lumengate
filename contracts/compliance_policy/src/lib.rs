@@ -93,6 +93,24 @@ impl CompliancePolicy {
             },
         );
     }
+
+    /// Operator path: delegated smart-account admin binds proof without nested auth entries.
+    pub fn operator_bind_session_proof(
+        env: Env,
+        operator: Address,
+        smart_account: Address,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) {
+        operator.require_auth();
+        env.storage().persistent().set(
+            &(Symbol::new(&env, "proof"), smart_account),
+            &SessionProof {
+                proof,
+                public_inputs,
+            },
+        );
+    }
 }
 
 use soroban_sdk::contracttype;

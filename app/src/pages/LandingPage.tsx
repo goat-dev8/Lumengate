@@ -137,14 +137,14 @@ export function LandingPage() {
           <div ref={cross.ref} className={cn('lg-reveal lg-dark-section', cross.visible && 'lg-revealed')}>
             <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
               <div>
-                <SectionBadge suffix="03" label="Cross-chain" dark />
+                <SectionBadge suffix="03" label="Trust model" dark />
                 <h2 className="mt-4 text-3xl font-semibold md:text-4xl">
-                  Trust signed on Ethereum.{' '}
-                  <span className="font-serif italic text-[#c9f31d]">Enforced on Stellar.</span>
+                  Signed on Stellar.{' '}
+                  <span className="font-serif italic text-[#c9f31d]">Enforced on-chain.</span>
                 </h2>
                 <p className="mt-4 text-white/80 leading-relaxed">
-                  Issuer credentials use secp256k1 signatures verified inside the Noir circuit — no bridge, no
-                  wrapped assets, no identity leakage.
+                  Issuer credentials use Ed25519 signatures from the Lumengate issuer service — Stellar-native
+                  trust, verified off-chain at issuance and bound into ZK proofs without identity leakage.
                 </p>
               </div>
               <div className="grid gap-4">

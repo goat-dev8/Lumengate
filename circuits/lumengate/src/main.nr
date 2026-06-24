@@ -10,9 +10,11 @@ use dep::poseidon::poseidon2::Poseidon2;
 
 global MERKLE_DEPTH: u32 = 8;
 global EIGHTEEN_YEARS_SECONDS: u64 = 568036800;
-global TEST_NOTE_SECRET: Field = 231176051397445559696838846154889417802262672571900653406785947348929080430;
+global TEST_NOTE_SECRET: Field = 101823493355937260443936763317775500871746033762476692940189870501640516961;
+global TEST_NOTE_BLINDING: Field = 555555;
 global TEST_POLICY_ID: Field = 1;
 global TEST_REVOCATION_ACC: Field = 0;
+global TEST_NOTE_LEAVES: [Field; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 
 fn hash2(a: Field, b: Field) -> Field {
     Poseidon2::hash([a, b], 2)
@@ -166,6 +168,21 @@ fn nullifier_for_note() {
     let policy_id: Field = TEST_POLICY_ID;
     let nullifier = hash2(note_secret, policy_id);
     println(f"nullifier_note={nullifier}");
+}
+
+#[test]
+fn note_commitment_for_note() {
+    let note_commitment = hash2(TEST_NOTE_SECRET, TEST_NOTE_BLINDING);
+    println(f"note_commitment_note={note_commitment}");
+}
+
+#[test]
+fn note_root_from_leaves() {
+    let mut acc: Field = 0;
+    for i in 0..8 {
+        acc = hash2(acc, TEST_NOTE_LEAVES[i]);
+    }
+    println(f"note_root={acc}");
 }
 
 #[test]

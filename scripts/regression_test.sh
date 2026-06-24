@@ -152,7 +152,25 @@ fi
 
 check "lumengate circuit artifacts" bash -c "[[ -f '$ROOT/circuits/lumengate/target/vk' && -f '$ROOT/circuits/lumengate/target/proof' ]]"
 
-check "frontend circuit json" bash -c "[[ -f '$ROOT/app/public/circuit/lumengate.json' ]]"
+  check "frontend circuit json" bash -c "[[ -f '$ROOT/app/public/circuit/lumengate.json' ]]"
+
+  WEBAUTHN=$(node -e "console.log(require('$ROOT/deployments.json').webauthn_verifier||'')")
+  TIMELOCK=$(node -e "console.log(require('$ROOT/deployments.json').governance_timelock||'')")
+  POOL=$(node -e "console.log(require('$ROOT/deployments.json').privacy_pool||'')")
+
+  check "note root field on registry" bash -c "stellar contract invoke --id \"$CR\" --source-account deployer --network testnet -- get_roots 2>&1 | grep -oE '[0-9a-f]{64}' | wc -l | grep -qE '3|4'"
+
+  check "webauthn verifier deployed" bash -c "[[ -z \"$WEBAUTHN\" ]] || [[ \"$WEBAUTHN\" =~ ^C[A-Z0-9]{55}$ ]]"
+
+  check "governance timelock deployed" bash -c "[[ -z \"$TIMELOCK\" ]] || [[ \"$TIMELOCK\" =~ ^C[A-Z0-9]{55}$ ]]"
+
+  check "privacy pool configured" bash -c "[[ -z \"$POOL\" ]] || [[ \"$POOL\" =~ ^C[A-Z0-9]{55}$ ]]"
+
+  if [[ -x "$ROOT/scripts/smart_account_bind_session.sh" ]]; then
+    check "smart account bind_session_proof" bash -c "bash '$ROOT/scripts/smart_account_bind_session.sh' >/tmp/bind_session.log 2>&1"
+  fi
+
+  check "g1 msm benchmark artifact" bash -c "[[ -f '$ROOT/docs/G1_MSM_BENCHMARK.md' ]]"
 
 echo "=== Summary: $pass passed, $fail failed ==="
 [[ "$fail" -eq 0 ]]

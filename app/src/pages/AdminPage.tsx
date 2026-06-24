@@ -8,7 +8,7 @@ import { truncateMiddle } from '../lib/utils';
 import { RevokeCredentialPanel } from '../components/product/RevokeCredentialPanel';
 
 type AdminStatus = {
-  roots: { root: string; revocationRoot: string } | null;
+  roots: { root: string; revocationRoot: string; noteRoot?: string } | null;
   rootsError: string | null;
 };
 
@@ -63,6 +63,12 @@ export function AdminPage() {
                 <dt className="text-slate-muted">Revocation root</dt>
                 <dd className="break-all">{status.roots.revocationRoot}</dd>
               </div>
+              {status.roots.noteRoot ? (
+                <div>
+                  <dt className="text-slate-muted">Note commitment root</dt>
+                  <dd className="break-all">{status.roots.noteRoot}</dd>
+                </div>
+              ) : null}
             </dl>
           ) : (
             <p className="text-sm text-status-err">{status.rootsError || 'Loading…'}</p>

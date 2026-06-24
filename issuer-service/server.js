@@ -14,6 +14,7 @@ const {
 } = require('./lib/disclose');
 const { getIssuerById } = require('./lib/issuerRegistry');
 const { revokeCredential } = require('./lib/revoke');
+const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle');
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
 
 const app = express();
@@ -230,6 +231,14 @@ app.post('/credential', express.json(), async (req, res) => {
     });
   }
 
+  let noteMeta = null;
+  try {
+    noteMeta = appendNoteCommitment(built.noteSecret, built.noteBlinding);
+    syncNoteRootOnChain(noteMeta.noteRoot, process.env);
+  } catch (err) {
+    console.warn('Note root sync skipped:', err instanceof Error ? err.message : String(err));
+  }
+
   const cred = JSON.parse(readFileSync(CREDENTIAL_PATH, 'utf8'));
   const issuerSig = signCommitment(built.commitment);
   if (!verifyCommitmentSignature(built.commitment, issuerSig.signatureBase64)) {
@@ -256,6 +265,8 @@ app.post('/credential', express.json(), async (req, res) => {
     issuerSignatureBase64: issuerSig.signatureBase64,
     commitment: built.commitment,
     walletField,
+    noteCommitment: noteMeta?.commitment || null,
+    noteRoot: noteMeta?.noteRoot || chainRoots.noteRoot || null,
   });
 });
 

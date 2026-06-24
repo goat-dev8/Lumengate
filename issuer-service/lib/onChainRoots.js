@@ -37,6 +37,7 @@ async function readOnChainRoots(env) {
   return {
     root: `0x${bytesToHex(Buffer.from(tuple[0]))}`,
     revocationRoot: `0x${bytesToHex(Buffer.from(tuple[1]))}`,
+    noteRoot: `0x${bytesToHex(Buffer.from(tuple[2] ?? Buffer.alloc(32)))}`,
   };
 }
 

@@ -51,6 +51,9 @@ impl CredentialRegistry {
         env.storage()
             .persistent()
             .set(&Symbol::new(&env, "rev_root"), &empty);
+        env.storage()
+            .persistent()
+            .set(&Symbol::new(&env, "note_root"), &empty);
     }
 
     fn issuer_registry(env: &Env) -> Address {
@@ -117,7 +120,15 @@ impl CredentialRegistry {
         Ok(())
     }
 
-    pub fn get_roots(env: Env) -> (BytesN<32>, BytesN<32>) {
+    #[only_role(caller, "root_admin")]
+    pub fn set_note_root(env: Env, caller: Address, note_root: BytesN<32>) -> Result<(), Error> {
+        env.storage()
+            .persistent()
+            .set(&Symbol::new(&env, "note_root"), &note_root);
+        Ok(())
+    }
+
+    pub fn get_roots(env: Env) -> (BytesN<32>, BytesN<32>, BytesN<32>) {
         let root = env
             .storage()
             .persistent()
@@ -128,7 +139,12 @@ impl CredentialRegistry {
             .persistent()
             .get(&Symbol::new(&env, "rev_root"))
             .unwrap_or(BytesN::from_array(&env, &[0u8; 32]));
-        (root, rev)
+        let note = env
+            .storage()
+            .persistent()
+            .get(&Symbol::new(&env, "note_root"))
+            .unwrap_or(BytesN::from_array(&env, &[0u8; 32]));
+        (root, rev, note)
     }
 
     pub fn get_issuer_registry(env: Env) -> Address {

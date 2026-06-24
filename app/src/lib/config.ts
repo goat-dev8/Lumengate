@@ -27,6 +27,11 @@ export type DeploymentConfig = {
   compliantPayrollId?: string;
   compliancePolicyId?: string;
   lumengateSmartAccountId?: string;
+  webauthnVerifierId?: string;
+  sessionKeyPolicyId?: string;
+  governanceTimelockId?: string;
+  privacyPoolId?: string;
+  aspMembershipVerifierId?: string;
   auditorId: number;
 };
 
@@ -42,6 +47,11 @@ type DeploymentsFile = {
   compliant_payroll?: string;
   compliance_policy?: string;
   lumengate_smart_account?: string;
+  webauthn_verifier?: string;
+  session_key_policy?: string;
+  governance_timelock?: string;
+  privacy_pool?: string;
+  asp_membership?: string;
   eurc_sac?: string;
 };
 
@@ -127,6 +137,17 @@ export function loadDeploymentConfig(): DeploymentConfig {
     compliancePolicyId: optionalViteEnv('VITE_COMPLIANCE_POLICY_ID') || CANONICAL.compliance_policy,
     lumengateSmartAccountId:
       optionalViteEnv('VITE_LUMENGATE_SMART_ACCOUNT_ID') || CANONICAL.lumengate_smart_account,
+    webauthnVerifierId: optionalViteEnv('VITE_WEBAUTHN_VERIFIER_ID') || CANONICAL.webauthn_verifier,
+    sessionKeyPolicyId: optionalViteEnv('VITE_SESSION_KEY_POLICY_ID') || CANONICAL.session_key_policy,
+    governanceTimelockId: optionalViteEnv('VITE_TIMELOCK_CONTRACT_ID') || CANONICAL.governance_timelock,
+    privacyPoolId:
+      optionalViteEnv('VITE_PRIVACY_POOL_ID') ||
+      CANONICAL.privacy_pool ||
+      'CC4ID36B3B2UCKZOTGX2NY3VUI36IXCGHBUUPNDZBYTS7UGNSPIZ5P2A',
+    aspMembershipVerifierId:
+      optionalViteEnv('VITE_ASP_MEMBERSHIP_ID') ||
+      CANONICAL.asp_membership ||
+      'CBWS5GGCL4Q627GJ4HZ2SL5D2P2NXECFXKEPPTOSXOTR4EA7GTVZZWIH',
     auditorId: Number(optionalViteEnv('VITE_AUDITOR_ID') || 1),
   };
 }
@@ -187,7 +208,7 @@ export async function fetchIssuerHealth(baseUrl: string) {
 }
 
 export async function fetchIssuerRoots(baseUrl: string) {
-  return issuerFetch<{ root: string; revocationRoot: string }>(baseUrl, '/roots');
+  return issuerFetch<{ root: string; revocationRoot: string; noteRoot?: string }>(baseUrl, '/roots');
 }
 
 export async function fetchIssuerCredential(
@@ -217,6 +238,7 @@ export async function fetchIssuerMetadata(baseUrl: string) {
 export type OnChainRoots = {
   root: string;
   revocationRoot: string;
+  noteRoot?: string;
 };
 
 export function parseRootsTuple(raw: unknown): OnChainRoots {

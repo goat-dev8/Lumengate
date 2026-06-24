@@ -3,7 +3,7 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { cn } from '../../lib/cn';
 
 const NODES = [
-  { id: 'issuer', label: 'Issuer', sub: 'secp256k1 sign', x: 70, y: 200, layer: 'off' },
+  { id: 'issuer', label: 'Issuer', sub: 'Ed25519 sign', x: 70, y: 200, layer: 'off' },
   { id: 'credential', label: 'Credential', sub: 'Merkle commitment', x: 200, y: 100, layer: 'off' },
   { id: 'wallet', label: 'Wallet', sub: 'Wallets Kit · field', x: 200, y: 300, layer: 'off' },
   { id: 'noir', label: 'Noir', sub: 'Eligibility circuit', x: 380, y: 200, layer: 'local' },
