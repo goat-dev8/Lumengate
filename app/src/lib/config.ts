@@ -26,9 +26,6 @@ export type DeploymentConfig = {
   compliantDexId?: string;
   compliantPayrollId?: string;
   compliancePolicyId?: string;
-  lumengateSmartAccountId?: string;
-  webauthnVerifierId?: string;
-  sessionKeyPolicyId?: string;
   governanceTimelockId?: string;
   privacyPoolId?: string;
   aspMembershipVerifierId?: string;
@@ -46,9 +43,6 @@ type DeploymentsFile = {
   compliant_dex?: string;
   compliant_payroll?: string;
   compliance_policy?: string;
-  lumengate_smart_account?: string;
-  webauthn_verifier?: string;
-  session_key_policy?: string;
   governance_timelock?: string;
   privacy_pool?: string;
   asp_membership?: string;
@@ -135,10 +129,6 @@ export function loadDeploymentConfig(): DeploymentConfig {
     compliantDexId: optionalViteEnv('VITE_COMPLIANT_DEX_ID') || CANONICAL.compliant_dex,
     compliantPayrollId: optionalViteEnv('VITE_COMPLIANT_PAYROLL_ID') || CANONICAL.compliant_payroll,
     compliancePolicyId: optionalViteEnv('VITE_COMPLIANCE_POLICY_ID') || CANONICAL.compliance_policy,
-    lumengateSmartAccountId:
-      optionalViteEnv('VITE_LUMENGATE_SMART_ACCOUNT_ID') || CANONICAL.lumengate_smart_account,
-    webauthnVerifierId: optionalViteEnv('VITE_WEBAUTHN_VERIFIER_ID') || CANONICAL.webauthn_verifier,
-    sessionKeyPolicyId: optionalViteEnv('VITE_SESSION_KEY_POLICY_ID') || CANONICAL.session_key_policy,
     governanceTimelockId: optionalViteEnv('VITE_TIMELOCK_CONTRACT_ID') || CANONICAL.governance_timelock,
     privacyPoolId:
       optionalViteEnv('VITE_PRIVACY_POOL_ID') ||
@@ -220,26 +210,6 @@ export async function fetchIssuerCredential(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ walletField, policyKey }),
-  });
-}
-
-export async function registerSmartAccountPasskey(
-  baseUrl: string,
-  params: {
-    smartAccountId: string;
-    verifierId: string;
-    keyDataHex: string;
-  },
-) {
-  return issuerFetch<{
-    ok: boolean;
-    txHash: string;
-    smartAccountId: string;
-    verifierId: string;
-  }>(baseUrl, '/smart-account/passkeys', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
   });
 }
 

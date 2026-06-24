@@ -4,7 +4,6 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
 import { readOnChainRoots } from '../lib/contracts';
-import { readSmartAccountContextRules } from '../lib/smartAccount';
 import { truncateMiddle } from '../lib/utils';
 import { RevokeCredentialPanel } from '../components/product/RevokeCredentialPanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
@@ -12,8 +11,6 @@ import { AdvancedModeToggle, useAdvancedMode } from '../components/product/Advan
 type AdminStatus = {
   roots: { root: string; revocationRoot: string; noteRoot?: string } | null;
   rootsError: string | null;
-  smartRules: number | null;
-  smartRulesError: string | null;
 };
 
 export function AdminPage() {
@@ -22,8 +19,6 @@ export function AdminPage() {
   const [status, setStatus] = useState<AdminStatus>({
     roots: null,
     rootsError: null,
-    smartRules: null,
-    smartRulesError: null,
   });
 
   useEffect(() => {
@@ -34,15 +29,6 @@ export function AdminPage() {
           ...s,
           roots: null,
           rootsError: err instanceof Error ? err.message : String(err),
-        })),
-      );
-    readSmartAccountContextRules(config)
-      .then((smartRules) => setStatus((s) => ({ ...s, smartRules, smartRulesError: null })))
-      .catch((err) =>
-        setStatus((s) => ({
-          ...s,
-          smartRules: null,
-          smartRulesError: err instanceof Error ? err.message : String(err),
         })),
       );
   }, [config]);
@@ -57,7 +43,6 @@ export function AdminPage() {
     ['Eligible swap router', config.compliantDexId],
     ['Payroll settlement', config.compliantPayrollId],
     ['Compliance rules', config.compliancePolicyId],
-    ['Passkey settlement account', config.lumengateSmartAccountId],
   ].filter(([, id]) => Boolean(id));
 
   return (
@@ -80,14 +65,14 @@ export function AdminPage() {
             <Card>
               <CardHeader
                 title="Operator access"
-                badge={<Badge tone={status.smartRules && status.smartRules > 0 ? 'ok' : 'warn'}>
-                  {status.smartRules && status.smartRules > 0 ? 'Live' : 'Check setup'}
+                badge={<Badge tone={status.roots ? 'ok' : 'warn'}>
+                  {status.roots ? 'Live' : 'Check setup'}
                 </Badge>}
               />
               <p className="text-sm text-slate-muted">
-                {status.smartRules && status.smartRules > 0
-                  ? `Account contract has ${status.smartRules} active context rule${status.smartRules === 1 ? '' : 's'}.`
-                  : status.smartRulesError || 'Account contract rules are not available from RPC yet.'}
+                {status.roots
+                  ? 'Credential roots are reachable through live RPC.'
+                  : status.rootsError || 'Credential roots are not available from RPC yet.'}
               </p>
             </Card>
             <Card>
@@ -142,8 +127,7 @@ export function AdminPage() {
                 ))}
               </dl>
               <p className="mt-4 text-sm text-slate-muted">
-                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}. Account contract
-                context rules: {status.smartRules ?? 'unavailable'}.
+                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}.
               </p>
             </Card>
           </>

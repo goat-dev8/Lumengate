@@ -36,7 +36,7 @@ export function isStaleCredentialState(
 
 export type VerifyStepId = 'wallet' | 'credential' | 'proof' | 'ready';
 
-/** Four-step consumer verify flow — passkey is optional and not part of gating. */
+/** Four-step consumer verify flow. */
 export function verifyStepFlags(input: {
   address: boolean;
   credential: boolean;

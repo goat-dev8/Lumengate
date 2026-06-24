@@ -18,6 +18,7 @@ pub enum Error {
     InsufficientBalance = 3,
     VerificationFailed = 4,
     InvalidProof = 5,
+    InvalidAmount = 6,
 }
 
 #[contractevent]
@@ -149,8 +150,23 @@ impl RwaToken {
         proof: Bytes,
         public_inputs: Bytes,
     ) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         Self::require_not_frozen(&env, &to)?;
         let _policy_id = Self::verify_eligibility(&env, &to, &proof, &public_inputs)?;
+        let key = Self::balance_key(&to);
+        let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        env.storage().persistent().set(&key, &(bal + amount));
+        Ok(())
+    }
+
+    #[only_role(caller, "token_admin")]
+    pub fn admin_mint(env: Env, caller: Address, to: Address, amount: i128) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        Self::require_not_frozen(&env, &to)?;
         let key = Self::balance_key(&to);
         let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(bal + amount));
@@ -166,6 +182,9 @@ impl RwaToken {
         public_inputs: Bytes,
     ) -> Result<(), Error> {
         from.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         Self::require_not_frozen(&env, &from)?;
         Self::require_not_frozen(&env, &to)?;
         let policy_id = Self::verify_eligibility(&env, &from, &proof, &public_inputs)?;

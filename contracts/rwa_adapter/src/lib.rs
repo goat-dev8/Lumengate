@@ -56,14 +56,44 @@ impl RwaAdapter {
         proof: Bytes,
         public_inputs: Bytes,
     ) -> Result<bool, Error> {
+        Self::verify_with_mode(env, policy_id, proof, public_inputs, true)
+    }
+
+    pub fn check_passport(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> Result<bool, Error> {
+        Self::verify_with_mode(env, policy_id, proof, public_inputs, false)
+    }
+
+    /// Compatibility entrypoint for RwaToken, which invokes `verify` on its verifier address.
+    pub fn verify(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> Result<bool, Error> {
+        Self::verify_with_mode(env, policy_id, proof, public_inputs, true)
+    }
+
+    fn verify_with_mode(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+        spend_nullifier: bool,
+    ) -> Result<bool, Error> {
         let verifier = Self::verifier(&env);
         let mut args = Vec::new(&env);
         args.push_back(policy_id.into_val(&env));
         args.push_back(proof.into_val(&env));
         args.push_back(public_inputs.into_val(&env));
+        let function = if spend_nullifier { "verify" } else { "check" };
         let ok: bool = env.invoke_contract(
             &verifier,
-            &Symbol::new(&env, "check"),
+            &Symbol::new(&env, function),
             args,
         );
         if !ok {
@@ -78,7 +108,7 @@ impl RwaAdapter {
         proof: Bytes,
         public_inputs: Bytes,
     ) -> bool {
-        Self::verify_passport(env, policy_id, proof, public_inputs).unwrap_or(false)
+        Self::check_passport(env, policy_id, proof, public_inputs).unwrap_or(false)
     }
 }
 

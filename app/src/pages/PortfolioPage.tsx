@@ -131,7 +131,7 @@ export function PortfolioPage() {
             <InstitutionalWidget
               label="Settlement owner"
               value={truncateMiddle(settlementOwner ?? address, 6, 4)}
-              sub={settlementOwner === address ? 'Stellar wallet' : 'Smart account'}
+              sub="Stellar wallet"
             />
           </div>
 
