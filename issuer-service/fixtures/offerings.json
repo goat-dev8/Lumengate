@@ -1,0 +1,75 @@
+[
+  {
+    "id": "treasury-fund",
+    "title": "Tokenized Treasury Fund",
+    "category": "treasury",
+    "description": "Proof-gated RWA settlement on Stellar testnet. Eligibility verified privately; settlement enforced by PolicyVerifier at transfer time.",
+    "requiredPolicy": "general-eligibility",
+    "minimumAmount": "10",
+    "settlementAsset": "rwa",
+    "settlementRoute": "rwa",
+    "riskLevel": "Moderate",
+    "offeringStatus": "Open"
+  },
+  {
+    "id": "real-estate-fund",
+    "title": "Commercial Real Estate Token",
+    "category": "real-estate",
+    "description": "US-jurisdiction selective disclosure for tokenized real estate exposure. Same on-chain policy gate with stricter issuer attestation.",
+    "requiredPolicy": "us-jurisdiction",
+    "minimumAmount": "25",
+    "settlementAsset": "rwa",
+    "settlementRoute": "rwa",
+    "riskLevel": "Moderate",
+    "offeringStatus": "Limited"
+  },
+  {
+    "id": "private-credit",
+    "title": "Private Credit Note",
+    "category": "private-credit",
+    "description": "Accredited investor eligibility with proof-of-funds threshold. Institutional-grade compliance gate before RWA transfer.",
+    "requiredPolicy": "accredited-investor",
+    "minimumAmount": "50",
+    "fundsThreshold": "50",
+    "settlementAsset": "rwa",
+    "settlementRoute": "rwa",
+    "riskLevel": "Institutional",
+    "offeringStatus": "Institutional"
+  },
+  {
+    "id": "treasury-usdc",
+    "title": "USDC Treasury Settlement",
+    "category": "treasury",
+    "description": "Proof-gated USDC SAC settlement via ComplianceSacAdmin. Real testnet USDC moves with eligibility verified in zero knowledge.",
+    "requiredPolicy": "general-eligibility",
+    "minimumAmount": "1",
+    "settlementAsset": "usdc",
+    "settlementRoute": "sac",
+    "riskLevel": "Low",
+    "offeringStatus": "Open"
+  },
+  {
+    "id": "compliant-dex-swap",
+    "title": "CompliantDEX — USDC Swap",
+    "category": "treasury",
+    "description": "Swap into proof-gated USDC through CompliantDEX. One registry, shared IssuerRegistry and RwaAdapter verification path.",
+    "requiredPolicy": "general-eligibility",
+    "minimumAmount": "1",
+    "settlementAsset": "usdc",
+    "settlementRoute": "dex",
+    "riskLevel": "Moderate",
+    "offeringStatus": "Open"
+  },
+  {
+    "id": "compliant-payroll",
+    "title": "CompliantPayroll — USDC Payout",
+    "category": "treasury",
+    "description": "Regulated payroll-style USDC payout with compliance verified before funds move. Demonstrates reusable compliance layer across dApps.",
+    "requiredPolicy": "sanctions-clear",
+    "minimumAmount": "1",
+    "settlementAsset": "usdc",
+    "settlementRoute": "payroll",
+    "riskLevel": "Low",
+    "offeringStatus": "Open"
+  }
+]

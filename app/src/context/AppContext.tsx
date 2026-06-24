@@ -33,6 +33,10 @@ import {
   loadWalletSession,
   saveWalletSession,
   migrateLegacySession,
+  loadLastWalletConnection,
+  saveLastWalletConnection,
+  clearLastWalletConnection,
+  clearWalletSession,
   type WalletSession,
 } from '../lib/session';
 import { proofMatchesCredential } from '../lib/credentialProof';
@@ -83,6 +87,8 @@ type AppContextValue = {
   activity: ActivityEntry[];
   pushActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => void;
   signAndSubmit: (xdr: string) => Promise<string>;
+  passportActivated: boolean;
+  setPassportActivated: (active: boolean) => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -115,6 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [replayMessage, setReplayMessage] = useState<string | null>(null);
   const [proofReceipt, setProofReceipt] = useState<ProofReceipt | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
+  const [passportActivated, setPassportActivatedState] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>(() => loadActivity());
 
   const kit = useMemo(
@@ -157,6 +164,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           partial.replayMessage !== undefined
             ? partial.replayMessage
             : (existing?.replayMessage ?? null),
+        passportActivated:
+          partial.passportActivated !== undefined
+            ? partial.passportActivated
+            : (existing?.passportActivated ?? false),
         updatedAt: Date.now(),
       };
       saveWalletSession(next);
@@ -178,6 +189,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTransferResult(saved.transferResult ?? null);
     setReplayBlocked(saved.replayBlocked ?? false);
     setReplayMessage(saved.replayMessage ?? null);
+    setPassportActivatedState(saved.passportActivated ?? false);
     if (saved.walletModuleId) {
       kit.setWallet(saved.walletModuleId);
     }
@@ -200,6 +212,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const last = loadLastWalletConnection();
+      if (last) {
+        setAddress(last.address);
+        setWalletField(last.walletField);
+        setWalletModuleId(last.walletModuleId ?? null);
+        setWalletModuleName(last.walletModuleName ?? null);
+        restoreSession(last.address, last.walletField);
+        if (last.walletModuleId) {
+          kit.setWallet(last.walletModuleId);
+        }
+      }
       try {
         const { address: addr } = await kit.getAddress({ skipRequestAccess: true });
         const wf = await walletFieldFromAddress(addr);
@@ -207,8 +230,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAddress(addr);
         setWalletField(wf);
         restoreSession(addr, wf);
+        saveLastWalletConnection({
+          address: addr,
+          walletField: wf,
+          walletModuleId: last?.walletModuleId,
+          walletModuleName: last?.walletModuleName,
+        });
       } catch {
-        /* not connected */
+        /* extension not auto-connected — UI still shows last session */
       }
     })();
     return () => {
@@ -306,6 +335,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       transferResult,
       replayBlocked,
       replayMessage,
+      passportActivated,
     });
   }, [
     address,
@@ -322,6 +352,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     transferResult,
     replayBlocked,
     replayMessage,
+    passportActivated,
     persistSession,
   ]);
 
@@ -355,6 +386,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setWalletModuleId(selected?.id ?? null);
       setWalletModuleName(selected?.name ?? null);
       restoreSession(addr, wf);
+      saveLastWalletConnection({
+        address: addr,
+        walletField: wf,
+        walletModuleId: selected?.id,
+        walletModuleName: selected?.name,
+      });
       persistSession({
         address: addr,
         walletField: wf,
@@ -374,6 +411,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     kit.disconnect().catch(() => undefined);
+    if (address) clearWalletSession(address);
+    clearLastWalletConnection();
     setAddress(null);
     setWalletField(null);
     setWalletModuleId(null);
@@ -382,7 +421,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProofState(null);
     setProofDurationSec(null);
     setProofReceipt(null);
-  }, [kit]);
+    setPassportActivatedState(false);
+  }, [kit, address]);
 
   const setCredential = useCallback((c: IssuerCredentialResponse | null) => {
     setCredentialState(c);
@@ -589,6 +629,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [address, walletField, credential, proof, policyKey, receiptTransactions.transfer],
   );
 
+  const setPassportActivated = useCallback(
+    (active: boolean) => {
+      setPassportActivatedState(active);
+      if (address && walletField) {
+        persistSession({ address, walletField, passportActivated: active });
+      }
+    },
+    [address, walletField, persistSession],
+  );
+
   const signAndSubmit = useCallback(
     async (xdr: string) => {
       const { signedTxXdr } = await kit.signTransaction(xdr, {
@@ -622,6 +672,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     replayMessage,
     proofReceipt,
     receiptLoading,
+    passportActivated,
+    setPassportActivated,
     setCredential,
     setProof,
     setPofProof,

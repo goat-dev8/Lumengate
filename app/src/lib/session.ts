@@ -20,6 +20,7 @@ export type WalletSession = {
   transferResult: ProofReceiptTransferResult | null;
   replayBlocked: boolean;
   replayMessage: string | null;
+  passportActivated?: boolean;
   updatedAt: number;
 };
 
@@ -54,6 +55,35 @@ export function clearWalletSession(address: string): void {
   const store = readStore();
   delete store[address];
   writeStore(store);
+}
+
+const LAST_WALLET_KEY = 'lumengate.wallet.last';
+
+export type LastWalletConnection = {
+  address: string;
+  walletField: string;
+  walletModuleId?: string;
+  walletModuleName?: string;
+};
+
+export function saveLastWalletConnection(conn: LastWalletConnection): void {
+  localStorage.setItem(LAST_WALLET_KEY, JSON.stringify({ ...conn, savedAt: Date.now() }));
+}
+
+export function loadLastWalletConnection(): LastWalletConnection | null {
+  try {
+    const raw = localStorage.getItem(LAST_WALLET_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LastWalletConnection;
+    if (!parsed.address || !parsed.walletField) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLastWalletConnection(): void {
+  localStorage.removeItem(LAST_WALLET_KEY);
 }
 
 /** Migrate v1 session if present */

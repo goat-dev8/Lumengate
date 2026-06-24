@@ -3,7 +3,7 @@ const { join } = require('path');
 const { policyByKey } = require('./policies');
 
 const OFFERINGS_PATH =
-  process.env.OFFERINGS_PATH || join(__dirname, '..', 'data', 'offerings.json');
+  process.env.OFFERINGS_PATH || join(__dirname, '..', 'fixtures', 'offerings.json');
 
 function loadOfferingsFile() {
   if (!existsSync(OFFERINGS_PATH)) {

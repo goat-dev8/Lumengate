@@ -61,6 +61,8 @@ export function VerifyPage() {
     setPolicyKey,
     setProof,
     walletField,
+    passportActivated,
+    setPassportActivated,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -68,7 +70,6 @@ export function VerifyPage() {
   const [error, setError] = useState<string | null>(null);
   const [passkey, setPasskey] = useState<StoredPasskey | null>(() => loadStoredPasskey());
   const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const [passportActive, setPassportActive] = useState(false);
   const passkeyEnv = passkeyEnvSummary();
   const advanced = useAdvancedMode();
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
@@ -79,9 +80,9 @@ export function VerifyPage() {
       passkey: Boolean(passkey),
       credential: Boolean(credential),
       proof: Boolean(activeProof),
-      passport: passportActive,
+      passport: passportActivated,
     }),
-    [address, passkey, credential, activeProof, passportActive],
+    [address, passkey, credential, activeProof, passportActivated],
   );
 
   const currentStep = useMemo(() => {
@@ -172,7 +173,7 @@ export function VerifyPage() {
       if (snap.status !== 'valid' && snap.status !== 'proof-ready') {
         throw new Error('Passport could not activate — regenerate proof and retry.');
       }
-      setPassportActive(true);
+      setPassportActivated(true);
       pushActivity({
         kind: 'proof',
         title: 'Passport activated',
@@ -357,7 +358,7 @@ export function VerifyPage() {
               Your compliance passport is active. Access proof-gated RWA offerings and settle on Stellar with
               privacy preserved.
             </p>
-            {!flags.passport ? (
+            {!passportActivated ? (
               <Button className="mt-4" onClick={handleActivate}>
                 Activate passport
               </Button>

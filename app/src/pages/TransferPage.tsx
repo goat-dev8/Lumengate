@@ -55,21 +55,15 @@ type AssetKind = 'rwa' | 'usdc' | 'eurc';
 export function TransferPage() {
 
   const {
-
     address,
-
     proof,
-
     credential,
-
     config,
-
     signAndSubmit,
-
     pushActivity,
-
     recordTransferTx,
-
+    setProof,
+    setPassportActivated,
   } = useApp();
 
   const navigate = useNavigate();
@@ -102,15 +96,10 @@ export function TransferPage() {
 
 
   useEffect(() => {
-
     if (!address) return;
-
     readBalance(config, address)
-
       .then(setRwaBalance)
-
       .catch(() => setRwaBalance(null));
-
     readUsdcSacBalance(config, address)
       .then(setUsdcBalance)
       .catch(() => setUsdcBalance(null));
@@ -119,65 +108,49 @@ export function TransferPage() {
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
-
   }, [address, config, txHash, asset]);
 
-
+  useEffect(() => {
+    if (asset === 'usdc' && config.marketplaceSettlementAddress && !to) {
+      setTo(config.marketplaceSettlementAddress);
+    }
+  }, [asset, config.marketplaceSettlementAddress, to]);
 
   useEffect(() => {
-
     if (!activeProof) {
-
       setNullifierSpent(null);
-
       return;
-
     }
-
     let cancelled = false;
-
     readNullifierSpent(
-
       config,
-
       nullifierHexFromBundle(activeProof),
-
       Number(activeProof.publicInputs.policyId),
-
     )
-
       .then((spent) => {
-
-        if (!cancelled) setNullifierSpent(spent);
-
+        if (!cancelled) {
+          setNullifierSpent(spent);
+          if (spent) setProof(null, null);
+        }
       })
-
-      .catch(() => {
-
-        if (!cancelled) setNullifierSpent(null);
-
+      .catch((err) => {
+        if (!cancelled) {
+          setNullifierSpent(null);
+          setError(err instanceof Error ? err.message : String(err));
+        }
       });
-
     return () => {
-
       cancelled = true;
-
     };
-
-  }, [activeProof, config]);
-
-
+  }, [activeProof, config, setProof]);
 
   const handleTransfer = async () => {
-
     if (!address || !activeProof || !to || !amount) return;
 
     if (nullifierSpent) {
-
-      setError(formatSorobanUserError('Error(Contract, #7)'));
-
+      setProof(null, null);
+      setError(formatSorobanUserError('Error(Contract, #6)'));
       return;
-
     }
 
     const recipient = to.trim();
@@ -219,10 +192,18 @@ export function TransferPage() {
     }
 
     setLoading(true);
-
     setError(null);
-
     try {
+      const spentNow = await readNullifierSpent(
+        config,
+        nullifierHexFromBundle(activeProof),
+        Number(activeProof.publicInputs.policyId),
+      );
+      if (spentNow) {
+        setProof(null, null);
+        setNullifierSpent(true);
+        throw new Error('Error(Contract, #6)');
+      }
 
       const xdr =
         asset === 'usdc'
@@ -248,9 +229,7 @@ export function TransferPage() {
       });
 
       pushActivity({
-
         kind: 'transfer',
-
         title:
           asset === 'usdc'
             ? `USDC settlement: ${amount}`
@@ -258,22 +237,23 @@ export function TransferPage() {
               ? `EURC settlement: ${amount}`
               : 'Transfer completed',
         detail: `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? 'EURC' : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
-
         txHash: hash,
-
         explorerUrl: explorerTxUrl(config.explorerBaseUrl, hash),
-
         status: 'success',
-
       });
 
+      setProof(null, null);
+      setPassportActivated(false);
       navigate('/app/compliance');
-
     } catch (err) {
-
       const raw = err instanceof Error ? err.message : String(err);
-
-      setError(formatSorobanUserError(raw));
+      const friendly = formatSorobanUserError(raw);
+      setError(friendly);
+      if (raw.includes('Error(Contract, #6)')) {
+        setProof(null, null);
+        setNullifierSpent(true);
+        setPassportActivated(false);
+      }
 
       pushActivity({
 

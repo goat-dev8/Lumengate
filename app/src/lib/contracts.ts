@@ -557,11 +557,17 @@ export function nullifierHexFromBundle(proof: ProofBundle): string {
 
 /** Map common Soroban contract traps to actionable messages. */
 export function formatSorobanUserError(message: string): string {
-  if (message.includes('Error(Contract, #7)')) {
+  if (message.includes('Error(Contract, #6)')) {
     return (
       'This proof was already used on-chain (nullifier spent). ' +
-      'Go to Credential → request a new credential, then Prove → generate a fresh proof before transferring again.'
+      'Each settlement requires a fresh passport — go to Verify, request a new credential, generate a new proof, then try again.'
     );
+  }
+  if (message.includes('Error(Contract, #7)')) {
+    return 'Proof public inputs are invalid for this policy. Request a new credential and regenerate your proof on Verify.';
+  }
+  if (message.includes('Error(Contract, #5)') && message.toLowerCase().includes('verify')) {
+    return 'On-chain proof verification failed. Your credential may be stale — request a new passport on Verify and regenerate proof.';
   }
   if (
     message.includes('Error(Contract, #13)') &&
