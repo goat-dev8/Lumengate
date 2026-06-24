@@ -16,15 +16,14 @@ function buildAuthPayloadMap(webauthnVerifier, keyData) {
     key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('External'), xdr.ScVal.scvAddress(Address.fromString(webauthnVerifier).toScAddress()), xdr.ScVal.scvBytes(keyData)]),
     val: xdr.ScVal.scvBytes(xdr.ScVal.scvMap(sigEntries).toXDR()),
   });
-  const topEntries = [
+  return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('context_rule_ids'), val: xdr.ScVal.scvVec([xdr.ScVal.scvU32(0)]) }),
     new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('signers'), val: xdr.ScVal.scvMap([signerEntry]) }),
-  ];
-  topEntries.sort((a,b)=>a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
-  return xdr.ScVal.scvMap(topEntries);
+  ]);
 }
-function buildAuthPayloadSignature(webauthnVerifier, keyData) {
-  return xdr.ScVal.scvBytes(buildAuthPayloadMap(webauthnVerifier, keyData).toXDR());
+function buildWrongOrderAuthPayloadMap(webauthnVerifier, keyData) {
+  const good = buildAuthPayloadMap(webauthnVerifier, keyData).map();
+  return xdr.ScVal.scvMap([good[1], good[0]]);
 }
 async function resimError(signatureScVal) {
   const s = new rpc.Server('https://soroban-testnet.stellar.org');
@@ -46,10 +45,10 @@ async function resimError(signatureScVal) {
   return resim.error ?? 'OK';
 }
 const mapPayload = buildAuthPayloadMap(dep.webauthn_verifier, Buffer.alloc(81,1));
-const bytesPayload = buildAuthPayloadSignature(dep.webauthn_verifier, Buffer.alloc(81,1));
+const wrongOrderPayload = buildWrongOrderAuthPayloadMap(dep.webauthn_verifier, Buffer.alloc(81,1));
 const mapErr = await resimError(mapPayload);
-const bytesErr = await resimError(bytesPayload);
-if (!mapErr.includes('Error(Object, InvalidInput)')) throw new Error('raw map should be Object InvalidInput: '+mapErr);
-if (bytesErr.includes('Error(Object, InvalidInput)')) throw new Error('bytes payload must not be Object InvalidInput: '+bytesErr);
-console.log('PASS passkey auth payload uses XDR bytes on credentials');
+const wrongOrderErr = await resimError(wrongOrderPayload);
+if (mapErr.includes('Error(Object, InvalidInput)')) throw new Error('canonical raw AuthPayload map must not be Object InvalidInput: '+mapErr);
+if (!wrongOrderErr.includes('Error(Object, InvalidInput)')) throw new Error('wrong map order should be Object InvalidInput: '+wrongOrderErr);
+console.log('PASS passkey auth payload uses canonical raw map order');
 "

@@ -58,7 +58,7 @@ export function computeAuthDigest(signaturePayload: Buffer, contextRuleIds: numb
 }
 
 function buildAuthPayloadScVal(signerMapEntry: xdr.ScMapEntry, contextRuleIds: number[]): xdr.ScVal {
-  const entries = [
+  return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('context_rule_ids'),
       val: xdr.ScVal.scvVec(contextRuleIds.map((id) => xdr.ScVal.scvU32(id))),
@@ -67,14 +67,7 @@ function buildAuthPayloadScVal(signerMapEntry: xdr.ScMapEntry, contextRuleIds: n
       key: xdr.ScVal.scvSymbol('signers'),
       val: xdr.ScVal.scvMap([signerMapEntry]),
     }),
-  ];
-  entries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
-  return xdr.ScVal.scvMap(entries);
-}
-
-/** Soroban address credentials expect AuthPayload as XDR bytes, not a raw ScVal map. */
-function buildAuthPayloadSignature(signerMapEntry: xdr.ScMapEntry, contextRuleIds: number[]): xdr.ScVal {
-  return xdr.ScVal.scvBytes(buildAuthPayloadScVal(signerMapEntry, contextRuleIds).toXDR());
+  ]);
 }
 
 function buildSignatureMapEntry(
@@ -231,7 +224,7 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
       client_data: base64url.toBuffer(authResponse.response.clientDataJSON),
       signature: Buffer.from(compactedSignature),
     });
-    credentials.signature(buildAuthPayloadSignature(scMapEntry, contextRuleIds));
+    credentials.signature(buildAuthPayloadScVal(scMapEntry, contextRuleIds));
 
     if (credentialIdStr) {
       await kitAny.storage.update(credentialIdStr, { lastUsedAt: Date.now() });
