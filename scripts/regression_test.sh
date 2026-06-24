@@ -173,6 +173,18 @@ check "lumengate circuit artifacts" bash -c "[[ -f '$ROOT/circuits/lumengate/tar
 
   check "shared smart account id removed" bash -c "! grep -qE '^(LUMENGATE_SMART_ACCOUNT_ID|VITE_LUMENGATE_SMART_ACCOUNT_ID)=' '$ROOT/.env'"
 
+  check "passkey user handle within 64 bytes" node -e "
+    const { createHash } = require('crypto');
+    const maxLen = 64 - 39;
+    const userName = createHash('sha256').update('GDFKWJXRBIGO5SUEPTCZEYVIPFSFVXNUNTMP6NHPC6QBNQGAD6GQG3MO').digest('hex').slice(0, maxLen);
+    let worst = 0;
+    for (let i = 0; i < 50000; i++) {
+      const s = userName + ':' + Date.now() + ':' + Math.random();
+      if (s.length > worst) worst = s.length;
+    }
+    if (worst > 64) process.exit(1);
+  "
+
   check "g1 msm benchmark artifact" bash -c "[[ -f '$ROOT/docs/G1_MSM_BENCHMARK.md' ]]"
 
 echo "=== Summary: $pass passed, $fail failed ==="

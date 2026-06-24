@@ -25,6 +25,8 @@ One thing is not fully owner-verified yet: browser end-to-end passkey deployment
 - Stored the real account WASM hash in `deployments.json`, `.env`, app env files, and `app/.env.example`.
 - Removed stale shared smart-account env references.
 - Updated the legacy `scripts/smart_account_bind_session.sh` so it requires an explicit per-user `SMART_ACCOUNT_ID` instead of reading a shared deployment.
+- Passkey registration uses a 25-char hashed user id (`app/src/lib/passkeyUserHandle.ts`) because `smart-account-kit` appends `:${Date.now()}:${Math.random()}` (~39 bytes) and WebAuthn user handles must be ≤64 bytes decoded.
+- Lumengate smart-account WASM includes a `get_context_rules` shim for `smart-account-kit` compatibility (hash `296b978e…`).
 
 ### Asset-Scoped Nullifiers
 

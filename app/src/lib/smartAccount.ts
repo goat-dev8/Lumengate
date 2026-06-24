@@ -1,4 +1,6 @@
-import { Address, hash, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import base64url from 'base64url';
 import {
   IndexedDBStorage,
   SmartAccountKit,
@@ -6,6 +8,9 @@ import {
   type TransactionResult,
 } from 'smart-account-kit';
 import type { DeploymentConfig } from './config';
+import { passkeyUserName } from './passkeyUserHandle';
+
+export { passkeyUserName } from './passkeyUserHandle';
 
 export type SmartAccountState = {
   smartAccountAddress: string;
@@ -30,14 +35,12 @@ export type SignableTransaction = string | SmartAccountAssembledTransaction;
 
 const storage = new IndexedDBStorage();
 
-/** smart-account-kit builds `${userName}:${timestamp}:${random}`; WebAuthn user.id must decode to ≤64 bytes. */
-export function passkeyUserName(walletAddress: string): string {
-  const suffixReserve = 33;
-  const maxLen = 64 - suffixReserve;
-  if (walletAddress.length <= maxLen) {
-    return walletAddress;
-  }
-  return hash(Buffer.from(walletAddress)).toString('hex').slice(0, maxLen);
+function clampRegistrationUserId(optionsJSON: { user?: { id?: string } }): void {
+  const id = optionsJSON.user?.id;
+  if (!id) return;
+  const bytes = base64url.toBuffer(id);
+  if (bytes.length <= 64) return;
+  optionsJSON.user!.id = base64url(bytes.subarray(0, 64));
 }
 
 export function smartAccountStatus(config: DeploymentConfig): SmartAccountStatus {
@@ -63,6 +66,13 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     storage,
     rpName: 'Lumengate',
     ...(config.passkeyRpId ? { rpId: config.passkeyRpId } : {}),
+    webAuthn: {
+      startRegistration: (options) => {
+        clampRegistrationUserId(options.optionsJSON);
+        return startRegistration(options);
+      },
+      startAuthentication,
+    },
   });
 }
 
