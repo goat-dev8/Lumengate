@@ -21,6 +21,8 @@ import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 
 import { proofMatchesCredential } from '../lib/credentialProof';
+import { authorizeSmartAccountTransaction } from '../lib/smartAccount';
+import { currentSettlementOwner, resolveSettlementSigner } from '../lib/settlementOwner';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { isProofUsable } from '../lib/proofLifecycle';
@@ -144,7 +146,7 @@ export function MarketplacePage() {
 
     }
 
-    const balanceHolder = address;
+    const balanceHolder = currentSettlementOwner(config, address) ?? address;
     readBalance(config, balanceHolder)
       .then((b) => {
         setBalance(b);
@@ -387,7 +389,12 @@ export function MarketplacePage() {
       const recipient = offering.settlementAddress || config.marketplaceSettlementAddress;
       const amount = offering.minimumAmount;
       const route = offering.settlementRoute ?? (offering.settlementAsset === 'usdc' ? 'sac' : 'rwa');
-      const settlementFrom = address;
+      const settlementAsset = offering.settlementAsset === 'usdc' ? 'usdc' : 'rwa';
+      const { from: settlementFrom, passkey, useSmartAccountAuth } = await resolveSettlementSigner(
+        config,
+        address,
+        settlementAsset,
+      );
       let xdr: string;
       if (route === 'dex') {
         xdr = await buildSwapCompliantTransaction(
@@ -427,7 +434,12 @@ export function MarketplacePage() {
         );
       }
 
-      const hash = await signAndSubmit(xdr);
+      const signedAuthXdr =
+        useSmartAccountAuth && passkey
+          ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
+          : xdr;
+
+      const hash = await signAndSubmit(signedAuthXdr);
 
       setTxHash(hash);
 

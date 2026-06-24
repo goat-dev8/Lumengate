@@ -18,7 +18,7 @@ import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
-import { isProofUsable } from '../lib/proofLifecycle';
+import { isProofUsable, syncProofLifecycleOnChain } from '../lib/proofLifecycle';
 import { friendlyAssetName } from '../lib/productState';
 import { parseStellarAmount } from '../lib/assetAmount';
 import {
@@ -34,6 +34,8 @@ import {
 
 import { checkRecipientUsdcCapacity } from '../lib/horizon';
 import { proofMatchesCredential } from '../lib/credentialProof';
+import { authorizeSmartAccountTransaction } from '../lib/smartAccount';
+import { currentSettlementOwner, resolveSettlementSigner } from '../lib/settlementOwner';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -55,6 +57,7 @@ export function TransferPage() {
     proofLifecycle,
     syncProofLifecycle,
     beginProofRecovery,
+    consumedTxHash,
   } = useApp();
 
   const navigate = useNavigate();
@@ -84,18 +87,19 @@ export function TransferPage() {
 
   useEffect(() => {
     if (!address) return;
-    readBalance(config, address)
+    const balanceHolder = currentSettlementOwner(config, address) ?? address;
+    readBalance(config, balanceHolder)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, address)
+      readComplianceAdminUsdcBalance(config, balanceHolder)
         .then((snap) => setUsdcBalance(snap.formatted))
         .catch(() => setUsdcBalance(null));
     } else {
       setUsdcBalance(null);
     }
     if (config.eurcSacId) {
-      readEurcSacBalance(config, address)
+      readEurcSacBalance(config, balanceHolder)
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
@@ -163,7 +167,22 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     try {
-      const settlementFrom = address;
+      const freshLifecycle = await syncProofLifecycleOnChain(
+        config,
+        credential,
+        activeProof,
+        consumedTxHash,
+      );
+      if (freshLifecycle.lifecycle !== 'ready') {
+        await syncProofLifecycle();
+        setError(freshLifecycle.reason ?? 'Your passport is not ready for settlement.');
+        return;
+      }
+      const { from: settlementFrom, passkey, useSmartAccountAuth } = await resolveSettlementSigner(
+        config,
+        address,
+        asset,
+      );
       const xdr =
         asset === 'usdc'
           ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
@@ -171,7 +190,12 @@ export function TransferPage() {
             ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
             : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof);
 
-      const hash = await signAndSubmit(xdr);
+      const signedAuthXdr =
+        useSmartAccountAuth && passkey
+          ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
+          : xdr;
+
+      const hash = await signAndSubmit(signedAuthXdr);
 
       setTxHash(hash);
 
@@ -206,7 +230,7 @@ export function TransferPage() {
       const raw = err instanceof Error ? err.message : String(err);
       const friendly = formatSorobanUserError(raw);
       setError(friendly);
-      if (raw.includes('Error(Contract, #6)')) {
+      if (raw.includes('Error(Contract, #6)') || raw.includes('Error(Contract, #5)')) {
         await syncProofLifecycle();
       }
 

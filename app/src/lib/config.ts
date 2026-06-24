@@ -26,6 +26,9 @@ export type DeploymentConfig = {
   compliantDexId?: string;
   compliantPayrollId?: string;
   compliancePolicyId?: string;
+  lumengateSmartAccountId?: string;
+  webauthnVerifierId?: string;
+  sessionKeyPolicyId?: string;
   governanceTimelockId?: string;
   privacyPoolId?: string;
   aspMembershipVerifierId?: string;
@@ -43,6 +46,9 @@ type DeploymentsFile = {
   compliant_dex?: string;
   compliant_payroll?: string;
   compliance_policy?: string;
+  lumengate_smart_account?: string;
+  webauthn_verifier?: string;
+  session_key_policy?: string;
   governance_timelock?: string;
   privacy_pool?: string;
   asp_membership?: string;
@@ -54,18 +60,27 @@ const CANONICAL = deployments as DeploymentsFile;
 function resolveContractId(envKey: string, canonical: string): string {
   const raw = import.meta.env[envKey];
   const value = raw ? String(raw).trim() : '';
-  if (value && StrKey.isValidContract(value)) return value;
   if (StrKey.isValidContract(canonical)) {
-    if (value && value !== canonical) {
+    if (value && StrKey.isValidContract(value) && value !== canonical) {
       console.warn(
-        `[Lumengate] Invalid ${envKey}="${value}" — using canonical testnet ID from deployments.json.`,
+        `[Lumengate] ${envKey}="${value}" stale — using deployments.json ${canonical}.`,
       );
     }
     return canonical;
   }
+  if (value && StrKey.isValidContract(value)) return value;
   throw new Error(
     `Invalid contract ID for ${envKey}. Expected ${canonical}. Check .env / app/.env.local.`,
   );
+}
+
+function resolveOptionalContractId(envKey: string, canonical?: string): string | undefined {
+  if (canonical && StrKey.isValidContract(canonical)) {
+    return resolveContractId(envKey, canonical);
+  }
+  const value = optionalViteEnv(envKey);
+  if (value && StrKey.isValidContract(value)) return value;
+  return undefined;
 }
 
 function requireViteEnv(name: string): string {
@@ -108,11 +123,10 @@ export function loadDeploymentConfig(): DeploymentConfig {
     policyId2: Number(import.meta.env.VITE_POLICY_ID_2 || 2),
     marketplaceSettlementAddress: requireViteEnv('VITE_MARKETPLACE_SETTLEMENT_ADDRESS'),
     rwaAdapterId: resolveContractId('VITE_RWA_ADAPTER_ID', CANONICAL.rwa_adapter),
-    complianceSacAdminId:
-      optionalViteEnv('VITE_COMPLIANCE_SAC_ADMIN_ID') ||
-      (CANONICAL.compliance_sac_admin && StrKey.isValidContract(CANONICAL.compliance_sac_admin)
-        ? CANONICAL.compliance_sac_admin
-        : undefined),
+    complianceSacAdminId: resolveOptionalContractId(
+      'VITE_COMPLIANCE_SAC_ADMIN_ID',
+      CANONICAL.compliance_sac_admin,
+    ),
     usdcSacId: optionalViteEnv('VITE_USDC_SAC_ID') || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
     usdcIssuer:
       optionalViteEnv('VITE_USDC_ISSUER') || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
@@ -128,8 +142,26 @@ export function loadDeploymentConfig(): DeploymentConfig {
         : undefined),
     compliantDexId: optionalViteEnv('VITE_COMPLIANT_DEX_ID') || CANONICAL.compliant_dex,
     compliantPayrollId: optionalViteEnv('VITE_COMPLIANT_PAYROLL_ID') || CANONICAL.compliant_payroll,
-    compliancePolicyId: optionalViteEnv('VITE_COMPLIANCE_POLICY_ID') || CANONICAL.compliance_policy,
-    governanceTimelockId: optionalViteEnv('VITE_TIMELOCK_CONTRACT_ID') || CANONICAL.governance_timelock,
+    compliancePolicyId: resolveOptionalContractId(
+      'VITE_COMPLIANCE_POLICY_ID',
+      CANONICAL.compliance_policy,
+    ),
+    lumengateSmartAccountId: resolveOptionalContractId(
+      'VITE_LUMENGATE_SMART_ACCOUNT_ID',
+      CANONICAL.lumengate_smart_account,
+    ),
+    webauthnVerifierId: resolveOptionalContractId(
+      'VITE_WEBAUTHN_VERIFIER_ID',
+      CANONICAL.webauthn_verifier,
+    ),
+    sessionKeyPolicyId: resolveOptionalContractId(
+      'VITE_SESSION_KEY_POLICY_ID',
+      CANONICAL.session_key_policy,
+    ),
+    governanceTimelockId: resolveOptionalContractId(
+      'VITE_TIMELOCK_CONTRACT_ID',
+      CANONICAL.governance_timelock,
+    ),
     privacyPoolId:
       optionalViteEnv('VITE_PRIVACY_POOL_ID') ||
       CANONICAL.privacy_pool ||
@@ -210,6 +242,26 @@ export async function fetchIssuerCredential(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ walletField, policyKey }),
+  });
+}
+
+export async function registerSmartAccountPasskey(
+  baseUrl: string,
+  params: {
+    smartAccountId: string;
+    verifierId: string;
+    keyDataHex: string;
+  },
+) {
+  return issuerFetch<{
+    ok: boolean;
+    txHash: string;
+    smartAccountId: string;
+    verifierId: string;
+  }>(baseUrl, '/smart-account/passkeys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
   });
 }
 

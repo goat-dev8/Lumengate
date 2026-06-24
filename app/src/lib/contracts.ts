@@ -628,6 +628,9 @@ export function formatSorobanUserError(message: string): string {
   if (message.includes('Error(Contract, #5)') && message.toLowerCase().includes('verify')) {
     return 'On-chain eligibility verification failed. Your passport may be stale — request a new passport on Verify and confirm eligibility.';
   }
+  if (message.includes('Error(Contract, #2)') && message.toLowerCase().includes('verification')) {
+    return 'On-chain eligibility verification failed. Your passport may be stale — request a new passport on Verify and confirm eligibility.';
+  }
   if (
     message.includes('Error(Contract, #13)') &&
     message.toLowerCase().includes('trustline')
