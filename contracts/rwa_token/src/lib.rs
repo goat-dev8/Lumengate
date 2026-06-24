@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttrait, symbol_short, Address, Bytes, Env,
+    contract, contracterror, contractevent, contractimpl, symbol_short, Address, Bytes, Env,
     IntoVal, Symbol, Vec,
 };
 use stellar_access::access_control::{grant_role_no_auth, set_admin, AccessControl};
@@ -19,7 +19,11 @@ pub enum Error {
     VerificationFailed = 4,
     InvalidProof = 5,
     InvalidAmount = 6,
+    InvalidAssetScope = 7,
 }
+
+const ASSET_RWA: u32 = 1;
+const ACTION_SETTLEMENT: u32 = 1;
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +124,32 @@ impl RwaToken {
         Ok(id)
     }
 
+    fn public_input_u32(public_inputs: &Bytes, index: u32) -> Result<u32, Error> {
+        let start = index * 32;
+        let end = start + 32;
+        if public_inputs.len() < end {
+            return Err(Error::InvalidProof);
+        }
+        let slice = public_inputs.slice(start..end);
+        let mut arr = [0u8; 32];
+        slice.copy_into_slice(&mut arr);
+        let value = Self::field_bytes_to_u32(&arr);
+        if value == 0 {
+            return Err(Error::InvalidProof);
+        }
+        Ok(value)
+    }
+
+    fn require_asset_scope(public_inputs: &Bytes) -> Result<(), Error> {
+        if Self::public_input_u32(public_inputs, 3)? != ASSET_RWA {
+            return Err(Error::InvalidAssetScope);
+        }
+        if Self::public_input_u32(public_inputs, 4)? != ACTION_SETTLEMENT {
+            return Err(Error::InvalidAssetScope);
+        }
+        Ok(())
+    }
+
     fn verify_eligibility(
         env: &Env,
         _holder: &Address,
@@ -128,6 +158,7 @@ impl RwaToken {
     ) -> Result<u32, Error> {
         let verifier = Self::verifier(env);
         let policy_id = Self::policy_id_from_public_inputs(public_inputs)?;
+        Self::require_asset_scope(public_inputs)?;
         let mut args = Vec::new(env);
         args.push_back(policy_id.into_val(env));
         args.push_back(proof.into_val(env));

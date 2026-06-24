@@ -12,6 +12,8 @@ import {
 import type { DeploymentConfig } from './config';
 import { formatStellarAmount, hasSufficientBalance, parseStellarAmount } from './assetAmount';
 import { bytesToHex } from './utils';
+import type { AssetScope } from './assetScope';
+import type { SmartAccountAssembledTransaction } from './smartAccount';
 
 export type ProofBundle = {
   proofHex: string;
@@ -20,14 +22,16 @@ export type ProofBundle = {
     root: string;
     revocationRoot: string;
     policyId: string;
+    assetId: string;
+    actionId: string;
     nullifier: string;
   };
 };
 
 /** Must match `ultrahonk_soroban_verifier::PROOF_BYTES` (bb 0.87 UltraHonk). */
 export const ULTRA_HONK_PROOF_BYTES = 14_592;
-/** Four BN254 public inputs × 32 bytes (V3 private note binding — no public wallet). */
-export const PUBLIC_INPUTS_BYTES = 128;
+/** Six BN254 public inputs × 32 bytes: root, revocation root, policy, asset, action, nullifier. */
+export const PUBLIC_INPUTS_BYTES = 192;
 
 function server(rpcUrl: string) {
   return new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
@@ -100,6 +104,7 @@ export async function readNullifierSpent(
   config: DeploymentConfig,
   nullifierHex: string,
   policyId?: number,
+  scope?: Pick<AssetScope, 'assetId' | 'actionId'>,
 ): Promise<boolean> {
   const s = server(config.rpcUrl);
   const contract = new Contract(config.policyVerifierId);
@@ -111,8 +116,14 @@ export async function readNullifierSpent(
   })
     .addOperation(
       contract.call(
-        'is_nullifier_spent',
+        scope ? 'is_scoped_nullifier_spent' : 'is_nullifier_spent',
         nativeToScVal(pid, { type: 'u32' }),
+        ...(scope
+          ? [
+              nativeToScVal(Number(scope.assetId), { type: 'u32' }),
+              nativeToScVal(Number(scope.actionId), { type: 'u32' }),
+            ]
+          : []),
         xdr.ScVal.scvBytes(nullifierBytes),
       ),
     )
@@ -140,6 +151,32 @@ export function assertProofBundleForChain(proof: ProofBundle): void {
   if (piLen !== PUBLIC_INPUTS_BYTES) {
     throw new Error(
       `Invalid public inputs size: expected ${PUBLIC_INPUTS_BYTES} bytes, got ${piLen}. Regenerate proof.`,
+    );
+  }
+}
+
+export async function assertPassportNullifierAvailable(
+  config: DeploymentConfig,
+  proof: ProofBundle,
+): Promise<void> {
+  const policyId = Number(proof.publicInputs.policyId || config.policyId);
+  const spent = await readNullifierSpent(config, nullifierHexFromBundle(proof), policyId, {
+    assetId: proof.publicInputs.assetId,
+    actionId: proof.publicInputs.actionId,
+  });
+  if (spent) {
+    throw new Error('Error(Contract, #6) NullifierSpent');
+  }
+}
+
+export function assertProofScope(proof: ProofBundle, scope: AssetScope): void {
+  if (
+    proof.publicInputs.assetId !== scope.assetId ||
+    proof.publicInputs.actionId !== scope.actionId
+  ) {
+    throw new Error(
+      `Eligibility proof is scoped to asset ${proof.publicInputs.assetId}/action ${proof.publicInputs.actionId}; ` +
+        `expected asset ${scope.assetId}/action ${scope.actionId}. Regenerate proof for this settlement.`,
     );
   }
 }
@@ -235,7 +272,8 @@ export async function buildUsdcTransferTransaction(
   to: string,
   amount: string,
   proof: ProofBundle,
-): Promise<string> {
+  scope: AssetScope,
+): Promise<SmartAccountAssembledTransaction> {
   if (!config.complianceSacAdminId) {
     throw new Error(
       'USDC compliance admin not deployed. Set VITE_COMPLIANCE_SAC_ADMIN_ID after deploying compliance_sac_admin.',
@@ -246,6 +284,8 @@ export async function buildUsdcTransferTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
+  assertProofScope(proof, scope);
+  await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   await assertSufficientSacBalance(config, from, amount, 'USDC');
   const s = server(config.rpcUrl);
@@ -271,7 +311,7 @@ export async function buildUsdcTransferTransaction(
   if (rpc.Api.isSimulationError(sim)) {
     throw new Error(sim.error || 'USDC transfer simulation failed');
   }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return { built: draft, simulationData: sim };
 }
 
 export async function buildEurcTransferTransaction(
@@ -281,7 +321,8 @@ export async function buildEurcTransferTransaction(
   to: string,
   amount: string,
   proof: ProofBundle,
-): Promise<string> {
+  scope: AssetScope,
+): Promise<SmartAccountAssembledTransaction> {
   if (!config.complianceSacAdminId) {
     throw new Error('ComplianceSacAdmin not deployed');
   }
@@ -293,6 +334,8 @@ export async function buildEurcTransferTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
+  assertProofScope(proof, scope);
+  await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   if (!config.eurcSacId) throw new Error('EURC SAC not configured');
   await assertSufficientSacBalance(config, from, amount, 'EURC', config.eurcSacId);
@@ -319,7 +362,7 @@ export async function buildEurcTransferTransaction(
   if (rpc.Api.isSimulationError(sim)) {
     throw new Error(sim.error || 'EURC transfer simulation failed');
   }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return { built: draft, simulationData: sim };
 }
 
 export async function buildSwapCompliantTransaction(
@@ -329,7 +372,7 @@ export async function buildSwapCompliantTransaction(
   recipient: string,
   amount: string,
   proof: ProofBundle,
-): Promise<string> {
+): Promise<SmartAccountAssembledTransaction> {
   if (!config.compliantDexId) {
     throw new Error('CompliantDEX not deployed. Set VITE_COMPLIANT_DEX_ID.');
   }
@@ -338,6 +381,7 @@ export async function buildSwapCompliantTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
+  await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
@@ -362,7 +406,7 @@ export async function buildSwapCompliantTransaction(
   if (rpc.Api.isSimulationError(sim)) {
     throw new Error(sim.error || 'CompliantDEX swap simulation failed');
   }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return { built: draft, simulationData: sim };
 }
 
 export async function buildPayCompliantTransaction(
@@ -381,6 +425,7 @@ export async function buildPayCompliantTransaction(
     throw new Error('Employee must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
+  await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
@@ -415,12 +460,15 @@ export async function buildTransferTransaction(
   to: string,
   amount: string,
   proof: ProofBundle,
+  scope: AssetScope,
 ): Promise<string> {
   const recipient = to.trim();
   if (!validateStellarAddress(recipient)) {
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
+  assertProofScope(proof, scope);
+  await assertPassportNullifierAvailable(config, proof);
 
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
@@ -616,7 +664,7 @@ export function nullifierHexFromBundle(proof: ProofBundle): string {
 
 /** Map common Soroban contract traps to actionable messages. */
 export function formatSorobanUserError(message: string): string {
-  if (message.includes('Error(Contract, #6)')) {
+  if (message.includes('Error(Contract, #6)') || message.includes('NullifierSpent')) {
     return (
       'This passport was already used for a settlement. ' +
       'Each settlement requires a fresh passport — go to Verify, request a new passport, confirm eligibility, then try again.'
@@ -661,12 +709,16 @@ export function buildPublicInputsHex(fields: {
   root: string;
   revocationRoot: string;
   policyId: string;
+  assetId: string;
+  actionId: string;
   nullifier: string;
 }): string {
   const parts = [
     fieldToBytes32Hex(fields.root),
     fieldToBytes32Hex(fields.revocationRoot),
     fieldToBytes32Hex(fields.policyId),
+    fieldToBytes32Hex(fields.assetId),
+    fieldToBytes32Hex(fields.actionId),
     fieldToBytes32Hex(fields.nullifier),
   ];
   return parts.join('');
@@ -674,8 +726,8 @@ export function buildPublicInputsHex(fields: {
 
 export function extractPublicInputFields(publicInputsHex: string): ProofBundle['publicInputs'] {
   const h = publicInputsHex.replace(/^0x/, '');
-  if (h.length < 256) {
-    throw new Error(`Invalid public inputs length: expected 256 hex chars, got ${h.length}`);
+  if (h.length < 384) {
+    throw new Error(`Invalid public inputs length: expected 384 hex chars, got ${h.length}`);
   }
   const slice = (i: number) => {
     const chunk = h.slice(i * 64, (i + 1) * 64);
@@ -686,7 +738,9 @@ export function extractPublicInputFields(publicInputsHex: string): ProofBundle['
     root: slice(0),
     revocationRoot: slice(1),
     policyId: slice(2),
-    nullifier: slice(3),
+    assetId: slice(3),
+    actionId: slice(4),
+    nullifier: slice(5),
   };
 }
 
@@ -703,14 +757,16 @@ export function bundleFromHonkProof(
   const proofHex = Buffer.from(proof).toString('hex');
 
   if (Array.isArray(publicInputs)) {
-    if (publicInputs.length < 4) {
-      throw new Error(`Expected 4 public inputs from prover, got ${publicInputs.length}`);
+    if (publicInputs.length < 6) {
+      throw new Error(`Expected 6 public inputs from prover, got ${publicInputs.length}`);
     }
     const fields = {
       root: hexFieldToDecimal(publicInputs[0]),
       revocationRoot: hexFieldToDecimal(publicInputs[1]),
       policyId: hexFieldToDecimal(publicInputs[2]),
-      nullifier: hexFieldToDecimal(publicInputs[3]),
+      assetId: hexFieldToDecimal(publicInputs[3]),
+      actionId: hexFieldToDecimal(publicInputs[4]),
+      nullifier: hexFieldToDecimal(publicInputs[5]),
     };
     return {
       proofHex,

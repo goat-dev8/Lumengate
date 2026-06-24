@@ -1,4 +1,4 @@
-import { Wallet } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
 
 type Props = {
   compact?: boolean;
@@ -12,11 +12,11 @@ export function WalletSigningNotice({ compact }: Props) {
       } text-[#1e3a5f]`}
     >
       <p className="flex items-start gap-2 font-medium">
-        <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#007dfc]" />
-        Settlements are signed before submission
+        <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-[#007dfc]" />
+        Smart account authorization
       </p>
       <p className={`${compact ? 'mt-1' : 'mt-2'} text-sm text-[#475569]`}>
-        Your connected Stellar wallet authorizes and funds the settlement transaction.
+        Your passkey authorizes settlement from your personal smart account. Wallets are used for onboarding or fee-payer fallback.
       </p>
     </div>
   );

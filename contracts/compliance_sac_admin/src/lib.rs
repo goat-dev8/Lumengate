@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttrait, token, Address, Bytes, Env, IntoVal, Symbol,
+    contract, contracterror, contractevent, contractimpl, token, Address, Bytes, Env, IntoVal, Symbol,
     Vec,
 };
 use stellar_access::access_control::{grant_role_no_auth, set_admin, AccessControl};
@@ -17,7 +17,12 @@ pub enum Error {
     NotAdmin = 1,
     VerificationFailed = 2,
     InvalidAmount = 3,
+    InvalidAssetScope = 4,
 }
+
+const ASSET_USDC: u32 = 2;
+const ASSET_EURC: u32 = 3;
+const ACTION_SETTLEMENT: u32 = 1;
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -112,6 +117,32 @@ impl ComplianceSacAdmin {
         Ok(id)
     }
 
+    fn public_input_u32(public_inputs: &Bytes, index: u32) -> Result<u32, Error> {
+        let start = index * 32;
+        let end = start + 32;
+        if public_inputs.len() < end {
+            return Err(Error::VerificationFailed);
+        }
+        let slice = public_inputs.slice(start..end);
+        let mut arr = [0u8; 32];
+        slice.copy_into_slice(&mut arr);
+        let value = Self::field_bytes_to_u32(&arr);
+        if value == 0 {
+            return Err(Error::VerificationFailed);
+        }
+        Ok(value)
+    }
+
+    fn require_asset_scope(public_inputs: &Bytes, asset_id: u32) -> Result<(), Error> {
+        if Self::public_input_u32(public_inputs, 3)? != asset_id {
+            return Err(Error::InvalidAssetScope);
+        }
+        if Self::public_input_u32(public_inputs, 4)? != ACTION_SETTLEMENT {
+            return Err(Error::InvalidAssetScope);
+        }
+        Ok(())
+    }
+
     pub fn eurc_sac_address(env: Env) -> Address {
         env.storage()
             .instance()
@@ -147,6 +178,7 @@ impl ComplianceSacAdmin {
 
         let adapter = Self::adapter(&env);
         let policy_id = Self::policy_id_from_public_inputs(&public_inputs)?;
+        Self::require_asset_scope(&public_inputs, ASSET_USDC)?;
         let mut args = Vec::new(&env);
         args.push_back(policy_id.into_val(&env));
         args.push_back(proof.into_val(&env));
@@ -192,6 +224,7 @@ impl ComplianceSacAdmin {
 
         let adapter = Self::adapter(&env);
         let policy_id = Self::policy_id_from_public_inputs(&public_inputs)?;
+        Self::require_asset_scope(&public_inputs, ASSET_EURC)?;
         let mut args = Vec::new(&env);
         args.push_back(policy_id.into_val(&env));
         args.push_back(proof.into_val(&env));

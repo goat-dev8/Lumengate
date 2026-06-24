@@ -4,7 +4,7 @@ const STEPS = [
   {
     icon: Wallet,
     title: 'Connect your account',
-    body: 'Link Freighter or another Stellar wallet. Your wallet signs settlements today.',
+    body: 'Link Freighter or another Stellar wallet, then create a passkey smart account for settlement.',
   },
   {
     icon: ShieldCheck,

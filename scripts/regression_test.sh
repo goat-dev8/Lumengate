@@ -23,6 +23,7 @@ SETTLE=$(get_env VITE_MARKETPLACE_SETTLEMENT_ADDRESS | tr -d '\r')
 if [[ -z "$SETTLE" ]]; then SETTLE=$(get_env MARKETPLACE_SETTLEMENT_ADDRESS | tr -d '\r'); fi
 
 printf '%s' "$(get_env DEPLOYER_SECRET_KEY)" | stellar keys add deployer --secret-key --overwrite 2>/dev/null || true
+printf '%s' "$(get_env CONTRACT_ADMIN_SECRET_KEY)" | stellar keys add admin --secret-key --overwrite 2>/dev/null || true
 printf '%s' "$FROM_SECRET" | stellar keys add eligible --secret-key --overwrite 2>/dev/null || true
 stellar network use testnet
 
@@ -45,7 +46,7 @@ echo "=== Regression on RwaToken $RWA ==="
 
 IR=$(node -e "console.log(require('$ROOT/deployments.json').issuer_registry)")
 EURC=$(node -e "console.log(require('$ROOT/deployments.json').eurc_sac||'')")
-SMART=$(node -e "console.log(require('$ROOT/deployments.json').lumengate_smart_account||'')")
+SMART_WASM_HASH=$(node -e "console.log(require('$ROOT/deployments.json').lumengate_smart_account_wasm_hash||'')")
 CPOL=$(node -e "console.log(require('$ROOT/deployments.json').compliance_policy||'')")
 
 check "on-chain roots" stellar contract invoke --id "$CR" --source-account deployer --network testnet -- get_roots
@@ -79,14 +80,18 @@ PI_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
 
 if [[ -n "$SAC_ADMIN" ]]; then
   check "eligible usdc sac balance > 0" bash -c 'bal=$(stellar contract invoke --id "'"$USDC_SAC"'" --source-account deployer --network testnet -- balance --id "'"$FROM"'" 2>&1 | tail -1 | tr -d \"); [[ "$bal" -gt 0 ]]'
+  ASSET_ID=2 ACTION_ID=1 WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
+  bash "$ROOT/scripts/build_circuit.sh"
+  USDC_PROOF_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
+  USDC_PI_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
   check "usdc transfer_compliant" stellar contract invoke --id "$SAC_ADMIN" --source-account eligible --network testnet --send yes -- \
-    transfer_compliant --from "$FROM" --to "$SETTLE" --amount 1000000 --proof "$PROOF_HEX" --public_inputs "$PI_HEX"
+    transfer_compliant --from "$FROM" --to "$SETTLE" --amount 1000000 --proof "$USDC_PROOF_HEX" --public_inputs "$USDC_PI_HEX"
 
   DEX=$(node -e "console.log(require('$ROOT/deployments.json').compliant_dex||'')")
   PAYROLL=$(node -e "console.log(require('$ROOT/deployments.json').compliant_payroll||'')")
 
   if [[ -n "$DEX" ]]; then
-    WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
+    ASSET_ID=2 ACTION_ID=1 WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
     bash "$ROOT/scripts/build_circuit.sh"
     DEX_PROOF=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
     DEX_PI=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
@@ -95,7 +100,7 @@ if [[ -n "$SAC_ADMIN" ]]; then
   fi
 
   if [[ -n "$PAYROLL" ]]; then
-    WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
+    ASSET_ID=2 ACTION_ID=1 WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
     bash "$ROOT/scripts/build_circuit.sh"
     PAY_PROOF=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
     PAY_PI=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
@@ -116,8 +121,8 @@ if [[ -n "$SAC_ADMIN" ]]; then
     check "compliance policy deployed" bash -c "[[ \"$CPOL\" =~ ^C[A-Z0-9]{55}$ ]]"
   fi
 
-  if [[ -n "$SMART" ]]; then
-    check "smart account deployed" bash -c "[[ \"$SMART\" =~ ^C[A-Z0-9]{55}$ ]]"
+  if [[ -n "$SMART_WASM_HASH" ]]; then
+    check "smart account wasm uploaded" bash -c "[[ \"$SMART_WASM_HASH\" =~ ^[a-f0-9]{64}$ ]]"
   fi
 
   check "compliant dex deployed" bash -c "[[ -z \"$DEX\" ]] || [[ \"$DEX\" =~ ^C[A-Z0-9]{55}$ ]]"
@@ -166,9 +171,7 @@ check "lumengate circuit artifacts" bash -c "[[ -f '$ROOT/circuits/lumengate/tar
 
   check "privacy pool configured" bash -c "[[ -z \"$POOL\" ]] || [[ \"$POOL\" =~ ^C[A-Z0-9]{55}$ ]]"
 
-  if [[ -x "$ROOT/scripts/smart_account_bind_session.sh" ]]; then
-    check "smart account bind_session_proof" bash -c "bash '$ROOT/scripts/smart_account_bind_session.sh' >/tmp/bind_session.log 2>&1"
-  fi
+  check "shared smart account id removed" bash -c "! grep -qE '^(LUMENGATE_SMART_ACCOUNT_ID|VITE_LUMENGATE_SMART_ACCOUNT_ID)=' '$ROOT/.env'"
 
   check "g1 msm benchmark artifact" bash -c "[[ -f '$ROOT/docs/G1_MSM_BENCHMARK.md' ]]"
 

@@ -26,7 +26,16 @@ function hash3Fields(a, b, c) {
   return poseidon2Hash([toBigInt(a), toBigInt(b), toBigInt(c)]);
 }
 
-function computeNullifier(noteSecret, policyId) {
+function computeNullifier(noteSecret, policyId, assetId = 1, actionId = 1) {
+  return fieldToBytes32Hex(poseidon2Hash([
+    toBigInt(noteSecret),
+    toBigInt(policyId),
+    toBigInt(assetId),
+    toBigInt(actionId),
+  ]));
+}
+
+function computePolicyNullifier(noteSecret, policyId) {
   return fieldToBytes32Hex(hash2Fields(noteSecret, policyId));
 }
 
@@ -59,6 +68,7 @@ const EMPTY_REVOCATION_ROOT = computeRevocationRootFromSiblings(Array(8).fill(0n
 module.exports = {
   EMPTY_REVOCATION_ROOT,
   computeNullifier,
+  computePolicyNullifier,
   computeNoteCommitment,
   computeNoteRootFromLeaves,
   computeRevocationRootFromSiblings,

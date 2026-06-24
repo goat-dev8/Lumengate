@@ -1,41 +1,25 @@
 #![no_std]
-use soroban_sdk::{auth::{Context, CustomAccountInterface}, contract, contractimpl, contracttype, crypto::Hash, Address, Bytes, Env, IntoVal, Map, String, Symbol, Val, Vec};
+use soroban_sdk::{
+    auth::{Context, CustomAccountInterface},
+    contract, contractimpl, crypto::Hash, Address, Bytes, Env, IntoVal, Map, String, Symbol, Val,
+    Vec,
+};
 use stellar_accounts::smart_account::{
     self, add_context_rule, AuthPayload, ContextRule, ContextRuleType, ExecutionEntryPoint, Signer,
     SmartAccount, SmartAccountError,
 };
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct PolicyInstallParams {
-    adapter: Address,
-    policy_id: u32,
-}
-
-/// Lumengate smart account with CompliancePolicy in the default context rule.
+/// Kit-compatible per-user Lumengate smart account.
 #[contract]
 pub struct LumengateSmartAccount;
 
 #[contractimpl]
 impl LumengateSmartAccount {
-    pub fn __constructor(
-        e: &Env,
-        admin: Address,
-        compliance_policy: Address,
-        adapter: Address,
-        policy_id: u32,
-    ) {
-        let mut signers = Vec::new(e);
-        signers.push_back(Signer::Delegated(admin));
-        let mut policies = Map::new(e);
-        policies.set(
-            compliance_policy,
-            PolicyInstallParams { adapter, policy_id }.into_val(e),
-        );
+    pub fn __constructor(e: &Env, signers: Vec<Signer>, policies: Map<Address, Val>) {
         add_context_rule(
             e,
             &ContextRuleType::Default,
-            &String::from_str(e, "compliance"),
+            &String::from_str(e, "default"),
             None,
             &signers,
             &policies,

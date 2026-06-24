@@ -93,7 +93,7 @@ export function ProtocolShowcase() {
           <div className="lg-protocol-diagram">
             <Protocol26Diagram />
           </div>
-          {['Restricted-account checks', 'Wallet-approved transfers', 'Auditor-ready receipts'].map((f) => (
+          {['Restricted-account checks', 'Passkey-approved transfers', 'Auditor-ready receipts'].map((f) => (
             <div key={f} className="lg-protocol-feature">
               <span className="lg-protocol-feature-dot" />
               {f}

@@ -12,7 +12,11 @@ pub enum Error {
     NotAdmin = 1,
     VerificationFailed = 2,
     InvalidAmount = 3,
+    InvalidAssetScope = 4,
 }
+
+const ASSET_USDC: u32 = 2;
+const ACTION_SETTLEMENT: u32 = 1;
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,6 +64,43 @@ impl CompliantPayroll {
             .expect("sac not set")
     }
 
+    fn field_bytes_to_u32(bytes: &[u8; 32]) -> u32 {
+        let mut value: u128 = 0;
+        for b in bytes.iter() {
+            value = (value << 8) | (*b as u128);
+        }
+        if value > u32::MAX as u128 {
+            return 0;
+        }
+        value as u32
+    }
+
+    fn public_input_u32(public_inputs: &Bytes, index: u32) -> Result<u32, Error> {
+        let start = index * 32;
+        let end = start + 32;
+        if public_inputs.len() < end {
+            return Err(Error::VerificationFailed);
+        }
+        let slice = public_inputs.slice(start..end);
+        let mut arr = [0u8; 32];
+        slice.copy_into_slice(&mut arr);
+        let value = Self::field_bytes_to_u32(&arr);
+        if value == 0 {
+            return Err(Error::VerificationFailed);
+        }
+        Ok(value)
+    }
+
+    fn require_usdc_scope(public_inputs: &Bytes) -> Result<(), Error> {
+        if Self::public_input_u32(public_inputs, 3)? != ASSET_USDC {
+            return Err(Error::InvalidAssetScope);
+        }
+        if Self::public_input_u32(public_inputs, 4)? != ACTION_SETTLEMENT {
+            return Err(Error::InvalidAssetScope);
+        }
+        Ok(())
+    }
+
     pub fn pay_compliant(
         env: Env,
         payer: Address,
@@ -77,6 +118,7 @@ impl CompliantPayroll {
             .instance()
             .get(&Symbol::new(&env, "policy"))
             .unwrap_or(1u32);
+        Self::require_usdc_scope(&public_inputs)?;
 
         let adapter = Self::adapter(&env);
         let mut args = Vec::new(&env);

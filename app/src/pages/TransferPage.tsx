@@ -18,7 +18,7 @@ import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
-import { isProofUsable, syncProofLifecycleOnChain } from '../lib/proofLifecycle';
+import { syncProofLifecycleOnChain } from '../lib/proofLifecycle';
 import { friendlyAssetName } from '../lib/productState';
 import { parseStellarAmount } from '../lib/assetAmount';
 import {
@@ -34,8 +34,8 @@ import {
 
 import { checkRecipientUsdcCapacity } from '../lib/horizon';
 import { proofMatchesCredential } from '../lib/credentialProof';
-import { authorizeSmartAccountTransaction } from '../lib/smartAccount';
-import { currentSettlementOwner, resolveSettlementSigner } from '../lib/settlementOwner';
+import { currentSettlementOwner } from '../lib/settlementOwner';
+import { ASSET_SCOPES } from '../lib/assetScope';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -58,6 +58,11 @@ export function TransferPage() {
     syncProofLifecycle,
     beginProofRecovery,
     consumedTxHash,
+    smartAccount,
+    settlementAddress,
+    smartAccountCreating,
+    createSmartAccount,
+    ensureProofForAsset,
   } = useApp();
 
   const navigate = useNavigate();
@@ -65,11 +70,6 @@ export function TransferPage() {
     beginProofRecovery();
     navigate('/app/verify#recovery-credential');
   };
-  const activeProof =
-    proofLifecycle.lifecycle === 'ready' && proofMatchesCredential(proof, credential)
-      ? proof
-      : null;
-
   const [asset, setAsset] = useState<AssetKind>('rwa');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
@@ -82,12 +82,20 @@ export function TransferPage() {
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
   const advanced = useAdvancedMode();
+  const scope = ASSET_SCOPES[asset];
+  const activeProof =
+    proofLifecycle.lifecycle === 'ready' &&
+    proofMatchesCredential(proof, credential) &&
+    proof?.publicInputs.assetId === scope.assetId &&
+    proof.publicInputs.actionId === scope.actionId
+      ? proof
+      : null;
 
 
 
   useEffect(() => {
     if (!address) return;
-    const balanceHolder = currentSettlementOwner(config, address) ?? address;
+    const balanceHolder = currentSettlementOwner(config, address, settlementAddress) ?? address;
     readBalance(config, balanceHolder)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
@@ -103,7 +111,7 @@ export function TransferPage() {
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
-  }, [address, config, txHash, asset]);
+  }, [address, settlementAddress, config, txHash, asset]);
 
   useEffect(() => {
     if (asset === 'usdc' && config.marketplaceSettlementAddress && !to) {
@@ -112,8 +120,12 @@ export function TransferPage() {
   }, [asset, config.marketplaceSettlementAddress, to]);
 
   const handleTransfer = async () => {
-    if (!address || !activeProof || !to || !amount) return;
-    if (!isProofUsable(proofLifecycle)) {
+    if (!address || !credential || !to || !amount) return;
+    if (!smartAccount) {
+      setError('Create your smart account before settlement.');
+      return;
+    }
+    if (proofLifecycle.lifecycle === 'invalid' || proofLifecycle.lifecycle === 'consumed') {
       setError(proofLifecycle.reason ?? 'Your passport is not ready for settlement.');
       return;
     }
@@ -167,10 +179,11 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     try {
+      const scopedProof = activeProof ?? (await ensureProofForAsset(asset));
       const freshLifecycle = await syncProofLifecycleOnChain(
         config,
         credential,
-        activeProof,
+        scopedProof,
         consumedTxHash,
       );
       if (freshLifecycle.lifecycle !== 'ready') {
@@ -178,24 +191,15 @@ export function TransferPage() {
         setError(freshLifecycle.reason ?? 'Your passport is not ready for settlement.');
         return;
       }
-      const { from: settlementFrom, passkey, useSmartAccountAuth } = await resolveSettlementSigner(
-        config,
-        address,
-        asset,
-      );
-      const xdr =
+      const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
+      const tx =
         asset === 'usdc'
-          ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
+          ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope)
           : asset === 'eurc'
-            ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
-            : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof);
+            ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope)
+            : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope);
 
-      const signedAuthXdr =
-        useSmartAccountAuth && passkey
-          ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
-          : xdr;
-
-      const hash = await signAndSubmit(signedAuthXdr);
+      const hash = await signAndSubmit(tx);
 
       setTxHash(hash);
 
@@ -282,7 +286,7 @@ export function TransferPage() {
         <ProductHero
           eyebrow="Send"
           title="Send privately"
-          subtitle="Move regulated assets with a private eligibility check. Your wallet signs the settlement."
+          subtitle="Move regulated assets with a private eligibility check. Your passkey smart account authorizes settlement."
         />
 
         <WalletSigningNotice compact />
@@ -290,7 +294,19 @@ export function TransferPage() {
 
 
 
-        {!isProofUsable(proofLifecycle) ? (
+        {address && !smartAccount ? (
+          <Card>
+            <CardHeader title="Fund Smart Account" badge={<Badge>Required</Badge>} />
+            <p className="text-sm text-slate-muted">
+              Create your personal smart account and fund this deposit address before sending.
+            </p>
+            <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
+              Create passkey smart account
+            </Button>
+          </Card>
+        ) : null}
+
+        {proofLifecycle.lifecycle === 'invalid' || proofLifecycle.lifecycle === 'consumed' ? (
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
@@ -468,7 +484,7 @@ export function TransferPage() {
 
                 loading={loading}
 
-                disabled={!address || !to || !amount || !isProofUsable(proofLifecycle)}
+                disabled={!address || !credential || !smartAccount || !to || !amount}
 
                 onClick={handleTransfer}
 
@@ -527,5 +543,3 @@ export function TransferPage() {
   );
 
 }
-
-

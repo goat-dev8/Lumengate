@@ -130,6 +130,10 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
       config,
       nullifier,
       Number(proof.publicInputs.policyId),
+      {
+        assetId: proof.publicInputs.assetId,
+        actionId: proof.publicInputs.actionId,
+      },
     );
   } catch {
     /* RPC unavailable — leave flags false */

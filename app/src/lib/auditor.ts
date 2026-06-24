@@ -116,7 +116,14 @@ export async function verifyAuditorInput(
 
   if (nullifierHex) {
     try {
-      nullifierSpent = await readNullifierSpent(config, nullifierHex, policyId);
+      nullifierSpent = await readNullifierSpent(
+        config,
+        nullifierHex,
+        policyId,
+        publicInputs
+          ? { assetId: publicInputs.assetId, actionId: publicInputs.actionId }
+          : undefined,
+      );
       const expectsSettlement = input.kind === 'disclosure';
       checks.push({
         label: expectsSettlement ? 'Settlement recorded on-chain' : 'Passport available for settlement',

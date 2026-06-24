@@ -21,8 +21,8 @@ import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 
 import { proofMatchesCredential } from '../lib/credentialProof';
-import { authorizeSmartAccountTransaction } from '../lib/smartAccount';
-import { currentSettlementOwner, resolveSettlementSigner } from '../lib/settlementOwner';
+import { currentSettlementOwner } from '../lib/settlementOwner';
+import { ASSET_SCOPES } from '../lib/assetScope';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { isProofUsable } from '../lib/proofLifecycle';
@@ -103,12 +103,25 @@ export function MarketplacePage() {
     recordVerifyTx,
     proofLifecycle,
     beginProofRecovery,
+    smartAccount,
+    settlementAddress,
+    ensureProofForAsset,
   } = useApp();
 
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
 
-  const activeProof = proofLifecycle.lifecycle === 'ready' && proofMatchesCredential(proof, credential) ? proof : null;
+  const selected =
+
+    offerings.find((o) => o.id === selectedOfferingId) ?? offerings[0] ?? null;
+  const selectedScope = ASSET_SCOPES[selected?.settlementAsset === 'usdc' ? 'usdc' : 'rwa'];
+  const activeProof =
+    proofLifecycle.lifecycle === 'ready' &&
+    proofMatchesCredential(proof, credential) &&
+    proof?.publicInputs.assetId === selectedScope.assetId &&
+    proof.publicInputs.actionId === selectedScope.actionId
+      ? proof
+      : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
 
   const [balance, setBalance] = useState<string | null>(null);
@@ -128,12 +141,6 @@ export function MarketplacePage() {
 
 
 
-  const selected =
-
-    offerings.find((o) => o.id === selectedOfferingId) ?? offerings[0] ?? null;
-
-
-
   useEffect(() => {
 
     if (!address) {
@@ -146,7 +153,7 @@ export function MarketplacePage() {
 
     }
 
-    const balanceHolder = currentSettlementOwner(config, address) ?? address;
+    const balanceHolder = currentSettlementOwner(config, address, settlementAddress) ?? address;
     readBalance(config, balanceHolder)
       .then((b) => {
         setBalance(b);
@@ -171,7 +178,7 @@ export function MarketplacePage() {
       setUsdcBalanceRaw(null);
     }
 
-  }, [address, config, txHash, pofTxHash]);
+  }, [address, settlementAddress, config, txHash, pofTxHash]);
 
 
 
@@ -250,7 +257,8 @@ export function MarketplacePage() {
     if (!isProofUsable(proofLifecycle)) {
       return proofLifecycle.reason ?? 'Complete your passport first';
     }
-    if (!address || !activeProof) return 'Complete your passport first';
+    if (!address || !credential) return 'Complete your passport first';
+    if (!smartAccount) return 'Create your smart account first';
 
     if (policyKey !== offering.requiredPolicy) {
 
@@ -258,7 +266,7 @@ export function MarketplacePage() {
 
     }
 
-    if (Number(activeProof.publicInputs.policyId) !== policyByKey(offering.requiredPolicy).policyId) {
+    if (activeProof && Number(activeProof.publicInputs.policyId) !== policyByKey(offering.requiredPolicy).policyId) {
 
       return 'Renew your passport for this investment';
 
@@ -311,7 +319,7 @@ export function MarketplacePage() {
 
     const block = canSettle(offering);
 
-    if (block || !address || !activeProof) {
+    if (block || !address || !credential) {
 
       setError(block || 'Complete your passport first');
 
@@ -325,9 +333,12 @@ export function MarketplacePage() {
 
     try {
 
-      const pid = Number(activeProof.publicInputs.policyId);
+      const settlementAsset = offering.settlementAsset === 'usdc' ? 'usdc' : 'rwa';
+      const scope = ASSET_SCOPES[settlementAsset];
+      const scopedProof = activeProof ?? (await ensureProofForAsset(settlementAsset));
+      const pid = Number(scopedProof.publicInputs.policyId);
 
-      const spent = await readNullifierSpent(config, nullifierHexFromBundle(activeProof), pid);
+      const spent = await readNullifierSpent(config, nullifierHexFromBundle(scopedProof), pid, scope);
 
       if (spent) {
         setError('Your passport was used. Renew it before investing again.');
@@ -389,57 +400,49 @@ export function MarketplacePage() {
       const recipient = offering.settlementAddress || config.marketplaceSettlementAddress;
       const amount = offering.minimumAmount;
       const route = offering.settlementRoute ?? (offering.settlementAsset === 'usdc' ? 'sac' : 'rwa');
-      const settlementAsset = offering.settlementAsset === 'usdc' ? 'usdc' : 'rwa';
-      const { from: settlementFrom, passkey, useSmartAccountAuth } = await resolveSettlementSigner(
-        config,
-        address,
-        settlementAsset,
-      );
-      let xdr: string;
+      const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
+      let tx: Parameters<typeof signAndSubmit>[0];
       if (route === 'dex') {
-        xdr = await buildSwapCompliantTransaction(
+        tx = await buildSwapCompliantTransaction(
           config,
           address,
           settlementFrom,
           recipient,
           amount,
-          activeProof,
+          scopedProof,
         );
       } else if (route === 'payroll') {
-        xdr = await buildPayCompliantTransaction(
+        tx = await buildPayCompliantTransaction(
           config,
           address,
           settlementFrom,
           recipient,
           amount,
-          activeProof,
+          scopedProof,
         );
       } else if (offering.settlementAsset === 'usdc') {
-        xdr = await buildUsdcTransferTransaction(
+        tx = await buildUsdcTransferTransaction(
           config,
           address,
           settlementFrom,
           recipient,
           amount,
-          activeProof,
+          scopedProof,
+          scope,
         );
       } else {
-        xdr = await buildTransferTransaction(
+        tx = await buildTransferTransaction(
           config,
           address,
           settlementFrom,
           recipient,
           amount,
-          activeProof,
+          scopedProof,
+          scope,
         );
       }
 
-      const signedAuthXdr =
-        useSmartAccountAuth && passkey
-          ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
-          : xdr;
-
-      const hash = await signAndSubmit(signedAuthXdr);
+      const hash = await signAndSubmit(tx);
 
       setTxHash(hash);
 
@@ -913,5 +916,3 @@ export function MarketplacePage() {
   );
 
 }
-
-

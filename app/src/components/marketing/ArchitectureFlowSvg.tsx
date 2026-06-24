@@ -5,7 +5,7 @@ import { cn } from '../../lib/cn';
 const NODES = [
   { id: 'issuer', label: 'Issuer', sub: 'Checks eligibility', x: 70, y: 200, layer: 'off' },
   { id: 'credential', label: 'Passport', sub: 'Private access record', x: 200, y: 100, layer: 'off' },
-  { id: 'wallet', label: 'Wallet', sub: 'Approves settlement', x: 200, y: 300, layer: 'off' },
+  { id: 'wallet', label: 'Passkey account', sub: 'Authorizes settlement', x: 200, y: 300, layer: 'off' },
   { id: 'local', label: 'Browser', sub: 'Confirms eligibility', x: 380, y: 200, layer: 'local' },
   { id: 'ready', label: 'Ready', sub: 'One settlement', x: 520, y: 100, layer: 'local' },
   { id: 'check', label: 'Stellar', sub: 'Allows or blocks', x: 660, y: 200, layer: 'chain' },

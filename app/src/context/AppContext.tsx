@@ -22,7 +22,7 @@ import {
 import type { ProofBundle } from '../lib/contracts';
 import { appendActivity, loadActivity, type ActivityEntry } from '../lib/activity';
 import { walletFieldFromAddress } from '../lib/utils';
-import { warmProver } from '../lib/prover';
+import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
   formatSorobanUserError,
@@ -55,7 +55,19 @@ import {
   type ProofReceiptTransactions,
   type ProofReceiptTransferResult,
 } from '../lib/proofReceipt';
-import { currentSettlementOwner } from '../lib/settlementOwner';
+import {
+  ASSET_SCOPES,
+  credentialForScope,
+  proofScopeMatches,
+  type SettlementAsset,
+} from '../lib/assetScope';
+import {
+  createPersonalSmartAccount,
+  isAssembledTransaction,
+  submitWithSmartAccount,
+  type SignableTransaction,
+  type SmartAccountState,
+} from '../lib/smartAccount';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -63,6 +75,11 @@ type AppContextValue = {
   walletField: string | null;
   walletModuleId: string | null;
   walletModuleName: string | null;
+  smartAccount: SmartAccountState | null;
+  settlementAddress: string | null;
+  smartAccountCreating: boolean;
+  createSmartAccount: () => Promise<SmartAccountState>;
+  ensureProofForAsset: (asset: SettlementAsset) => Promise<ProofBundle>;
   connecting: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -97,7 +114,7 @@ type AppContextValue = {
   verifyDuplicateBlock: (to: string, amount: string) => Promise<void>;
   activity: ActivityEntry[];
   pushActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => void;
-  signAndSubmit: (xdr: string) => Promise<string>;
+  signAndSubmit: (tx: SignableTransaction) => Promise<string>;
   passportActivated: boolean;
   setPassportActivated: (active: boolean) => void;
   proofLifecycle: ProofLifecycleState;
@@ -123,6 +140,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [walletField, setWalletField] = useState<string | null>(null);
   const [walletModuleId, setWalletModuleId] = useState<string | null>(null);
   const [walletModuleName, setWalletModuleName] = useState<string | null>(null);
+  const [smartAccount, setSmartAccount] = useState<SmartAccountState | null>(null);
+  const [smartAccountCreating, setSmartAccountCreating] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [credential, setCredentialState] = useState<IssuerCredentialResponse | null>(null);
   const [proof, setProofState] = useState<ProofBundle | null>(null);
@@ -144,6 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reason: null,
   });
   const [activity, setActivity] = useState<ActivityEntry[]>(() => loadActivity());
+  const settlementAddress = smartAccount?.smartAccountAddress ?? null;
 
   const kit = useMemo(
     () =>
@@ -162,6 +182,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         walletField: partial.walletField,
         walletModuleId: partial.walletModuleId ?? existing?.walletModuleId,
         walletModuleName: partial.walletModuleName ?? existing?.walletModuleName,
+        smartAccount:
+          partial.smartAccount !== undefined ? partial.smartAccount : (existing?.smartAccount ?? null),
         credential: partial.credential !== undefined ? partial.credential : (existing?.credential ?? null),
         proof: partial.proof !== undefined ? partial.proof : (existing?.proof ?? null),
         pofProof: partial.pofProof !== undefined ? partial.pofProof : (existing?.pofProof ?? null),
@@ -215,6 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedOfferingIdState(saved.selectedOfferingId);
     setWalletModuleId(saved.walletModuleId ?? null);
     setWalletModuleName(saved.walletModuleName ?? null);
+    setSmartAccount(saved.smartAccount ?? null);
     setReceiptTransactions(saved.receiptTransactions ?? emptyReceiptTxs);
     setTransferResult(saved.transferResult ?? null);
     setReplayBlocked(saved.replayBlocked ?? false);
@@ -420,6 +443,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedOfferingId,
       walletModuleId: walletModuleId ?? undefined,
       walletModuleName: walletModuleName ?? undefined,
+      smartAccount,
       receiptTransactions,
       transferResult,
       proofReceipt,
@@ -440,6 +464,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pofProof,
     walletModuleId,
     walletModuleName,
+    smartAccount,
     receiptTransactions,
     transferResult,
     proofReceipt,
@@ -460,16 +485,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const walletRef: { current: ISupportedWallet | null } = { current: null };
       await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const finish = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          fn();
+        };
+        const timeout = window.setTimeout(() => {
+          finish(() => reject(new Error('No wallet responded. Install or unlock Freighter, xBull, Albedo, LOBSTR, or Hana and try again.')));
+        }, 15_000);
         kit.openModal({
           modalTitle: 'Connect a Wallet',
           onWalletSelected: (option) => {
             walletRef.current = option;
             kit.setWallet(option.id);
-            resolve();
+            finish(resolve);
           },
           onClosed: (err) => {
-            if (err) reject(err);
-            else reject(new Error('Wallet connection closed'));
+            finish(() => {
+              if (err) reject(err);
+              else reject(new Error('Wallet connection closed'));
+            });
           },
         });
       });
@@ -512,6 +549,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWalletField(null);
     setWalletModuleId(null);
     setWalletModuleName(null);
+    setSmartAccount(null);
     setCredentialState(null);
     setProofState(null);
     setProofDurationSec(null);
@@ -520,6 +558,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setConsumedTxHash(null);
     setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
   }, [kit, address]);
+
+  const createSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
+    if (!address || !walletField) throw new Error('Connect wallet first');
+    setSmartAccountCreating(true);
+    try {
+      const created = await createPersonalSmartAccount(config, address);
+      setSmartAccount(created);
+      persistSession({
+        address,
+        walletField,
+        smartAccount: created,
+      });
+      pushActivity({
+        kind: 'verify',
+        title: 'Smart account ready',
+        detail: created.smartAccountAddress,
+        status: 'success',
+      });
+      return created;
+    } finally {
+      setSmartAccountCreating(false);
+    }
+  }, [address, walletField, config, persistSession, pushActivity]);
 
   const setCredential = useCallback((c: IssuerCredentialResponse | null) => {
     setCredentialState(c);
@@ -607,6 +668,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ) => {
       const proofCredential =
         credentialOverride !== undefined ? credentialOverride : credential;
+      if (credentialOverride !== undefined) {
+        setCredentialState(credentialOverride);
+      }
       setProofState(p);
       const duration = durationSec ?? null;
       setProofDurationSec(duration);
@@ -655,6 +719,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const ensureProofForAsset = useCallback(
+    async (asset: SettlementAsset): Promise<ProofBundle> => {
+      const scope = ASSET_SCOPES[asset];
+      if (proof && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
+        return proof;
+      }
+      if (!credential) throw new Error('Request a passport before settlement');
+      const scopedCredential = credentialForScope(credential, scope);
+      const { bundle, durationSec } = await generateProof(scopedCredential);
+      setProof(bundle, durationSec, scopedCredential);
+      pushActivity({
+        kind: 'proof',
+        title: `${asset.toUpperCase()} eligibility confirmed`,
+        detail: `Asset scope ${scope.assetId}, action scope ${scope.actionId}`,
+        status: 'success',
+      });
+      return bundle;
+    },
+    [credential, proof, setProof, pushActivity],
+  );
+
   const setPofProof = useCallback(
     (p: ProofBundle | null) => {
       setPofProofState(p);
@@ -677,7 +762,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const generatePofProofForWallet = useCallback(
     async (threshold: bigint) => {
       if (!walletField || !address) throw new Error('Connect wallet first');
-      const holder = currentSettlementOwner(config, address) ?? address;
+      const holder = settlementAddress ?? address;
       const balance = BigInt(await readBalance(config, holder));
       const bundle = await generatePofProof(config, { walletField, balance, threshold });
       setPofProofState(bundle);
@@ -699,7 +784,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return bundle;
     },
-    [walletField, address, config, credential, proof, proofDurationSec, policyKey, selectedOfferingId, persistSession, pushActivity],
+    [walletField, address, settlementAddress, config, credential, proof, proofDurationSec, policyKey, selectedOfferingId, persistSession, pushActivity],
   );
 
   const recordTransferTx = useCallback(
@@ -730,9 +815,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProofState(null);
       setPassportActivatedState(false);
       setProofLifecycle({
-        lifecycle: 'consumed',
+        lifecycle: 'none',
         consumedTxHash: hash,
-        reason: 'Passport used by a previous settlement.',
+        reason: 'Settlement completed. Generate a new asset-scoped proof for the next action.',
       });
       if (address && walletField) {
         persistSession({
@@ -744,7 +829,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           transferResult: result,
           proofReceipt: frozenReceipt,
           consumedTxHash: hash,
-          proofLifecycle: 'consumed',
+          proofLifecycle: 'none',
         });
       }
       return frozenReceipt;
@@ -839,7 +924,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (to: string, amount: string) => {
       if (!address || !proof) throw new Error('Connect wallet and generate proof first');
       try {
-        await buildTransferTransaction(config, address, address, to, amount, proof);
+        await buildTransferTransaction(config, address, settlementAddress ?? address, to, amount, proof, ASSET_SCOPES.rwa);
         setReplayBlocked(false);
         setReplayMessage('Duplicate check passed unexpectedly — this passport may not be marked used yet.');
       } catch (err) {
@@ -863,7 +948,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [address, proof, config, walletField, persistSession, pushActivity],
+    [address, proof, settlementAddress, config, walletField, persistSession, pushActivity],
   );
 
   const buildDisclosure = useCallback(
@@ -901,14 +986,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const signAndSubmit = useCallback(
-    async (xdr: string) => {
-      const { signedTxXdr } = await kit.signTransaction(xdr, {
+    async (tx: SignableTransaction) => {
+      if (isAssembledTransaction(tx)) {
+        if (!smartAccount) {
+          throw new Error('Create and fund your smart account before settlement.');
+        }
+        return submitWithSmartAccount(config, smartAccount, tx);
+      }
+      const { signedTxXdr } = await kit.signTransaction(tx, {
         networkPassphrase: config.networkPassphrase,
         address: address || undefined,
       });
       return submitSignedTransaction(config, signedTxXdr);
     },
-    [kit, config, address],
+    [kit, config, address, smartAccount],
   );
 
   const value: AppContextValue = {
@@ -917,6 +1008,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     walletField,
     walletModuleId,
     walletModuleName,
+    smartAccount,
+    settlementAddress,
+    smartAccountCreating,
+    createSmartAccount,
     connecting,
     connect,
     disconnect,
@@ -942,6 +1037,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCredential,
     setProof,
     setPofProof,
+    ensureProofForAsset,
     generatePofProofForWallet,
     setPolicyKey,
     setSelectedOfferingId,

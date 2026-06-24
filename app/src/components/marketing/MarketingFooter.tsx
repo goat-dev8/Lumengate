@@ -25,7 +25,7 @@ export function MarketingFooter() {
               <span className="text-lg font-semibold text-[#012b54]">Lumengate</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#64748b]">
-              Private access to regulated Stellar assets, with wallet-approved settlement and auditor-ready receipts.
+              Private access to regulated Stellar assets, with passkey-approved settlement and auditor-ready receipts.
             </p>
           </div>
           <div>

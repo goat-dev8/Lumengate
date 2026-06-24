@@ -17,14 +17,14 @@ import { currentSettlementOwner } from '../lib/settlementOwner';
 import { truncateMiddle } from '../lib/utils';
 
 export function PortfolioPage() {
-  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField } = useApp();
+  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, settlementAddress } = useApp();
   const [balance, setBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [passportStatus, setPassportStatus] = useState('—');
   const [proofStatus, setProofStatus] = useState('Not generated');
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
-  const settlementOwner = currentSettlementOwner(config, address);
+  const settlementOwner = currentSettlementOwner(config, address, settlementAddress);
 
   useEffect(() => {
     if (!settlementOwner) return;
@@ -131,7 +131,7 @@ export function PortfolioPage() {
             <InstitutionalWidget
               label="Settlement owner"
               value={truncateMiddle(settlementOwner ?? address, 6, 4)}
-              sub="Stellar wallet"
+              sub={settlementAddress ? 'Smart account' : 'Wallet onboarding'}
             />
           </div>
 

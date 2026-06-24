@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
+import { CheckCircle2, Circle, Sparkles, Wallet } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
-import { fetchIssuerHealth, registerSmartAccountPasskey } from '../lib/config';
+import { fetchIssuerHealth } from '../lib/config';
 import { policyList } from '../lib/policies';
 import { readOnChainRoots } from '../lib/contracts';
 import {
@@ -14,15 +14,6 @@ import {
   publicInputsPanel,
   type ProveProgress,
 } from '../lib/prover';
-import {
-  createPasskey,
-  loadStoredPasskey,
-  markPasskeyRegistered,
-  passkeyEnvSummary,
-  passkeyRegisteredFor,
-  passkeySupported,
-  type StoredPasskey,
-} from '../lib/passkeys';
 import { friendlyIssuerError } from '../lib/advancedMode';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
@@ -65,14 +56,15 @@ export function VerifyPage() {
     proofLifecycle,
     syncProofLifecycle,
     beginProofRecovery,
+    smartAccount,
+    smartAccountCreating,
+    createSmartAccount,
+    settlementAddress,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
   const [proveProgress, setProveProgress] = useState<ProveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [passkey, setPasskey] = useState<StoredPasskey | null>(() => loadStoredPasskey());
-  const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const passkeyEnv = passkeyEnvSummary();
   const advanced = useAdvancedMode();
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
@@ -99,38 +91,6 @@ export function VerifyPage() {
       document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [proofLifecycle.lifecycle, credential]);
-
-  const handlePasskey = async () => {
-    setPasskeyLoading(true);
-    setError(null);
-    try {
-      const created = await createPasskey(address || 'lumengate-user');
-      let next = created;
-      if (config.lumengateSmartAccountId && config.webauthnVerifierId) {
-        const registration = await registerSmartAccountPasskey(config.issuerServiceUrl, {
-          smartAccountId: config.lumengateSmartAccountId,
-          verifierId: config.webauthnVerifierId,
-          keyDataHex: created.keyDataHex,
-        });
-        next = markPasskeyRegistered({
-          smartAccountId: registration.smartAccountId,
-          verifierId: registration.verifierId,
-          txHash: registration.txHash,
-        });
-      }
-      setPasskey(next);
-      pushActivity({
-        kind: 'credential',
-        title: 'Passkey registered',
-        detail: next.registrationTxHash ?? 'Passkey saved on this browser',
-        status: 'success',
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPasskeyLoading(false);
-    }
-  };
 
   const handleCredential = async () => {
     if (!address) {
@@ -268,7 +228,7 @@ export function VerifyPage() {
           <Card>
             <CardHeader title="Step 1 — Connect wallet" badge={<Badge tone="brand">Stellar</Badge>} />
             <p className="text-sm text-slate-muted">
-              Use Freighter or another Stellar wallet. Your wallet signs each settlement.
+              Use Freighter or another Stellar wallet for onboarding and funding. Your passkey smart account authorizes settlement.
             </p>
             {address ? (
               <p className="mt-4 text-sm text-brand">
@@ -280,6 +240,25 @@ export function VerifyPage() {
                 Connect wallet
               </Button>
             )}
+          </Card>
+        ) : null}
+
+        {address && !smartAccount ? (
+          <Card>
+            <CardHeader title="Step 2 — Create passkey smart account" badge={<Badge tone="brand">Passkey</Badge>} />
+            <p className="text-sm text-slate-muted">
+              Create a WebAuthn passkey and deploy your personal smart account. This account receives funds and authorizes settlement.
+            </p>
+            <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
+              Create passkey smart account
+            </Button>
+          </Card>
+        ) : address && smartAccount ? (
+          <Card>
+            <CardHeader title="Smart account ready" badge={<Badge tone="ok">Settlement owner</Badge>} />
+            <p className="font-mono text-xs break-all text-slate-muted">
+              Deposit address: {settlementAddress}
+            </p>
           </Card>
         ) : null}
 
@@ -355,7 +334,7 @@ export function VerifyPage() {
                     </ul>
                   ) : (
                     <p className="text-sm text-slate-muted">
-                      You can invest or send once. Your wallet will sign the settlement.
+                      You can invest or send with an asset-scoped proof. Your passkey smart account will authorize settlement.
                     </p>
                   )}
                 </div>
@@ -381,33 +360,6 @@ export function VerifyPage() {
                 <Button variant="secondary">Send privately</Button>
               </Link>
             </div>
-          </Card>
-        ) : null}
-
-        {advanced ? (
-          <Card>
-            <CardHeader title="Optional — Secure this device" badge={<Badge>Passkey</Badge>} />
-            <p className="text-sm text-slate-muted">
-              Save a passkey for smart-account settlement on this device.
-              {` RP ID: ${passkeyEnv.rpId}`}
-              {!passkeyEnv.supported ? ' — requires HTTPS' : ''}
-            </p>
-            {passkeyRegisteredFor(passkey, config.lumengateSmartAccountId, config.webauthnVerifierId) ? (
-              <p className="mt-3 text-sm text-brand">
-                <ShieldCheck className="mr-1 inline h-4 w-4" />
-                Passkey registered for smart-account settlement
-              </p>
-            ) : (
-              <Button
-                className="mt-4"
-                variant="secondary"
-                loading={passkeyLoading}
-                disabled={!passkeySupported()}
-                onClick={handlePasskey}
-              >
-                Save passkey
-              </Button>
-            )}
           </Card>
         ) : null}
 

@@ -272,8 +272,7 @@ app.post('/credential', express.json(), async (req, res) => {
 });
 
 app.post('/smart-account/passkeys', express.json(), async (req, res) => {
-  const smartAccountId =
-    String(req.body?.smartAccountId || process.env.LUMENGATE_SMART_ACCOUNT_ID || process.env.VITE_LUMENGATE_SMART_ACCOUNT_ID || '');
+  const smartAccountId = String(req.body?.smartAccountId || '');
   const verifierId =
     String(req.body?.verifierId || process.env.WEBAUTHN_VERIFIER_ID || process.env.VITE_WEBAUTHN_VERIFIER_ID || '');
   const keyDataHex = String(req.body?.keyDataHex || '');

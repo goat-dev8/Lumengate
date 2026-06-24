@@ -26,8 +26,10 @@ export type DeploymentConfig = {
   compliantDexId?: string;
   compliantPayrollId?: string;
   compliancePolicyId?: string;
-  lumengateSmartAccountId?: string;
+  lumengateSmartAccountWasmHash?: string;
   webauthnVerifierId?: string;
+  openZeppelinRelayerUrl?: string;
+  nativeSacId?: string;
   sessionKeyPolicyId?: string;
   governanceTimelockId?: string;
   privacyPoolId?: string;
@@ -46,7 +48,7 @@ type DeploymentsFile = {
   compliant_dex?: string;
   compliant_payroll?: string;
   compliance_policy?: string;
-  lumengate_smart_account?: string;
+  lumengate_smart_account_wasm_hash?: string;
   webauthn_verifier?: string;
   session_key_policy?: string;
   governance_timelock?: string;
@@ -146,14 +148,17 @@ export function loadDeploymentConfig(): DeploymentConfig {
       'VITE_COMPLIANCE_POLICY_ID',
       CANONICAL.compliance_policy,
     ),
-    lumengateSmartAccountId: resolveOptionalContractId(
-      'VITE_LUMENGATE_SMART_ACCOUNT_ID',
-      CANONICAL.lumengate_smart_account,
-    ),
+    lumengateSmartAccountWasmHash:
+      optionalViteEnv('VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH') ||
+      CANONICAL.lumengate_smart_account_wasm_hash,
     webauthnVerifierId: resolveOptionalContractId(
       'VITE_WEBAUTHN_VERIFIER_ID',
       CANONICAL.webauthn_verifier,
     ),
+    openZeppelinRelayerUrl: optionalViteEnv('VITE_OPENZEPPELIN_RELAYER_URL'),
+    nativeSacId:
+      optionalViteEnv('VITE_NATIVE_SAC_ID') ||
+      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUV4WXJBM4WYXDC5Z36TWVQOTAAK',
     sessionKeyPolicyId: resolveOptionalContractId(
       'VITE_SESSION_KEY_POLICY_ID',
       CANONICAL.session_key_policy,

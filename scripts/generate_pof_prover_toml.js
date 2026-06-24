@@ -5,7 +5,7 @@
 const { readFileSync, writeFileSync } = require('fs');
 const { randomBytes } = require('crypto');
 const { join } = require('path');
-const { computeNullifier: poseidonNullifier } = require('../issuer-service/lib/poseidonFields');
+const { computePolicyNullifier: poseidonNullifier } = require('../issuer-service/lib/poseidonFields');
 
 const ROOT = join(__dirname, '..');
 const CIRCUIT = join(ROOT, 'circuits', 'proof_of_funds');

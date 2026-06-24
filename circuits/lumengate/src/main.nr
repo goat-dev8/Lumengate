@@ -1,5 +1,5 @@
 // Lumengate V3 eligibility circuit (circuits/eligibility semantics)
-// Public: root, revocation_root, policy_id, nullifier
+// Public: root, revocation_root, policy_id, asset_id, action_id, nullifier
 // Private: note_secret, note_blinding, credential attributes
 // Proves: Merkle membership, revocation non-membership, policy predicate,
 //         private note binding, nullifier derivation (no public wallet)
@@ -13,6 +13,8 @@ global EIGHTEEN_YEARS_SECONDS: u64 = 568036800;
 global TEST_NOTE_SECRET: Field = 19354118459287362494945372901602010677760359726580540197775835622036563665;
 global TEST_NOTE_BLINDING: Field = 555555;
 global TEST_POLICY_ID: Field = 1;
+global TEST_ASSET_ID: Field = 1;
+global TEST_ACTION_ID: Field = 1;
 global TEST_REVOCATION_ACC: Field = 0;
 global TEST_NOTE_LEAVES: [Field; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 
@@ -22,6 +24,10 @@ fn hash2(a: Field, b: Field) -> Field {
 
 fn hash3(a: Field, b: Field, c: Field) -> Field {
     Poseidon2::hash([a, b, c], 3)
+}
+
+fn hash4(a: Field, b: Field, c: Field, d: Field) -> Field {
+    Poseidon2::hash([a, b, c, d], 4)
 }
 
 fn constrain_bit(bit: Field) {
@@ -67,6 +73,8 @@ fn main(
     root: pub Field,
     revocation_root: pub Field,
     policy_id: pub Field,
+    asset_id: pub Field,
+    action_id: pub Field,
     nullifier: pub Field,
     // --- Private note binding (V3: no public wallet) ---
     note_secret: Field,
@@ -121,8 +129,8 @@ fn main(
     assert(computed_rev == revocation_root);
     assert(commitment != 0);
 
-    // 6) Nullifier = Poseidon(note_secret, policy_id); no address in public inputs
-    let computed_nullifier = hash2(note_secret, policy_id);
+    // 6) Nullifier is scoped to one asset/action; no wallet address is public.
+    let computed_nullifier = hash4(note_secret, policy_id, asset_id, action_id);
     assert(computed_nullifier == nullifier);
 }
 
@@ -137,6 +145,8 @@ fn test_fixture_values() {
     let issuer_id: Field = 2;
     let salt: Field = 123456789;
     let policy_id: Field = 1;
+    let asset_id: Field = 1;
+    let action_id: Field = 1;
 
     let note_commitment = hash2(note_secret, note_blinding);
     let attrs_hash = hash3(
@@ -145,7 +155,7 @@ fn test_fixture_values() {
         issuer_id,
     );
     let commitment = hash2(attrs_hash, salt);
-    let nullifier = hash2(note_secret, policy_id);
+    let nullifier = hash4(note_secret, policy_id, asset_id, action_id);
 
     let path_siblings = [0; 8];
     let path_bits = [0; 8];
@@ -166,7 +176,9 @@ fn test_fixture_values() {
 fn nullifier_for_note() {
     let note_secret: Field = TEST_NOTE_SECRET;
     let policy_id: Field = TEST_POLICY_ID;
-    let nullifier = hash2(note_secret, policy_id);
+    let asset_id: Field = TEST_ASSET_ID;
+    let action_id: Field = TEST_ACTION_ID;
+    let nullifier = hash4(note_secret, policy_id, asset_id, action_id);
     println(f"nullifier_note={nullifier}");
 }
 

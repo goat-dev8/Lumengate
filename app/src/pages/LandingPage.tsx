@@ -56,7 +56,7 @@ export function LandingPage() {
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-[#31485f] lg-fade-up lg-fade-up-d2">
               Lumengate helps eligible investors access tokenized assets on Stellar while keeping personal details
-              off the public ledger. Every settlement is wallet-approved and receipt-ready.
+              off the public ledger. Every settlement is passkey-approved and receipt-ready.
             </p>
             <div className="flex flex-wrap justify-center gap-3 lg:justify-start lg-fade-up lg-fade-up-d3">
               <Link to="/app/marketplace" className="lg-btn-primary">
@@ -108,7 +108,7 @@ export function LandingPage() {
               Eligibility-first settlement, <span className="font-serif italic text-[#007dfc]">end to end</span>
             </h2>
             <p className="lg-section-desc">
-              From passport issuance to a wallet-approved investment and receipt.
+              From passport issuance to a passkey-approved investment and receipt.
             </p>
           </div>
           <ArchitectureFlowSvg />
@@ -136,11 +136,11 @@ export function LandingPage() {
               <div>
                 <SectionBadge suffix="03" label="Trust model" dark />
                 <h2 className="mt-4 text-3xl font-semibold md:text-4xl">
-                  Wallet-approved.{' '}
+                  Passkey-approved.{' '}
                   <span className="font-serif italic text-[#c9f31d]">Receipt-ready.</span>
                 </h2>
                 <p className="mt-4 text-white/80 leading-relaxed">
-                  Your wallet approves each settlement. Lumengate confirms eligibility before the transfer and
+                  Your passkey smart account approves each settlement. Lumengate confirms eligibility before the transfer and
                   creates a record an auditor can verify without seeing your private identity details.
                 </p>
               </div>

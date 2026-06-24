@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy V3 contracts: AuditorRegistry, CompliantDEX, CompliantPayroll, CompliancePolicy, LumengateSmartAccount.
+# Deploy V3 contracts and upload the per-user LumengateSmartAccount WASM.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="/home/devmo/.local/bin:/home/devmo/.bb/bin:$PATH"
@@ -32,6 +32,12 @@ deploy() {
   grep -oE 'C[A-Z0-9]{55}' /tmp/deploy_v3_last.log | tail -1
 }
 
+upload_wasm() {
+  local wasm=$1
+  stellar contract upload --wasm "$wasm" --source-account deployer --network testnet 2>&1 | tee /tmp/deploy_v3_upload.log >/dev/null
+  grep -oE '[a-f0-9]{64}' /tmp/deploy_v3_upload.log | tail -1
+}
+
 echo "=== Deploy AuditorRegistry ==="
 AUDITOR=$(deploy "$WASM/auditor_registry.wasm" --admin "$ADMIN")
 echo "AuditorRegistry: $AUDITOR"
@@ -48,9 +54,9 @@ echo "=== Deploy CompliancePolicy ==="
 COMPLIANCE_POLICY=$(deploy "$WASM/compliance_policy.wasm")
 echo "CompliancePolicy: $COMPLIANCE_POLICY"
 
-echo "=== Deploy LumengateSmartAccount ==="
-SMART=$(deploy "$WASM/lumengate_smart_account.wasm" --admin "$ADMIN" --compliance_policy "$COMPLIANCE_POLICY" --adapter "$ADAPTER" --policy_id "$POLICY_ID")
-echo "LumengateSmartAccount: $SMART"
+echo "=== Upload LumengateSmartAccount WASM ==="
+SMART_WASM_HASH=$(upload_wasm "$WASM/lumengate_smart_account.wasm")
+echo "LumengateSmartAccount WASM hash: $SMART_WASM_HASH"
 
 echo "=== Register auditor (viewing key hash from env) ==="
 VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-testnet-key}"
@@ -66,7 +72,8 @@ d.auditor_registry='$AUDITOR';
 d.compliant_dex='$DEX';
 d.compliant_payroll='$PAYROLL';
 d.compliance_policy='$COMPLIANCE_POLICY';
-d.lumengate_smart_account='$SMART';
+d.lumengate_smart_account_wasm_hash='$SMART_WASM_HASH';
+delete d.lumengate_smart_account;
 d.eurc_sac='$EURC_SAC';
 d.transactions=d.transactions||{};
 d.transactions.v3_auditor_deploy='$(grep -oE '[a-f0-9]{64}' /tmp/register_auditor.log | head -1 || echo '')';
@@ -78,23 +85,24 @@ for kv in \
   "COMPLIANT_DEX_ID=$DEX" \
   "COMPLIANT_PAYROLL_ID=$PAYROLL" \
   "COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY" \
-  "LUMENGATE_SMART_ACCOUNT_ID=$SMART" \
+  "LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH" \
+  "VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH" \
   "VITE_EURC_SAC_ID=$EURC_SAC" \
   "VITE_EURC_ISSUER=GA5NJ3H2BQG2Y7SGCHLMSQS3VFDJ236NRUTVF3HQDPKCQED6IN7GYLZK" \
   "VITE_AUDITOR_REGISTRY_ID=$AUDITOR" \
   "VITE_COMPLIANT_DEX_ID=$DEX" \
   "VITE_COMPLIANT_PAYROLL_ID=$PAYROLL" \
-  "VITE_COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY" \
-  "VITE_LUMENGATE_SMART_ACCOUNT_ID=$SMART"; do
+  "VITE_COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY"; do
   key="${kv%%=*}"
   sed -i "/^${key}=/d" "$ROOT/.env"
   echo "$kv" >> "$ROOT/.env"
 done
+sed -i '/^LUMENGATE_SMART_ACCOUNT_ID=/d;/^VITE_LUMENGATE_SMART_ACCOUNT_ID=/d' "$ROOT/.env"
 
 for f in development production local; do
   ENV_FILE="$ROOT/app/.env.$f"
   [[ -f "$ENV_FILE" ]] || continue
-  for key in VITE_EURC_SAC_ID VITE_EURC_ISSUER VITE_AUDITOR_REGISTRY_ID VITE_COMPLIANT_DEX_ID VITE_COMPLIANT_PAYROLL_ID VITE_COMPLIANCE_POLICY_ID VITE_LUMENGATE_SMART_ACCOUNT_ID; do
+  for key in VITE_EURC_SAC_ID VITE_EURC_ISSUER VITE_AUDITOR_REGISTRY_ID VITE_COMPLIANT_DEX_ID VITE_COMPLIANT_PAYROLL_ID VITE_COMPLIANCE_POLICY_ID VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH; do
     sed -i "/^${key}=/d" "$ENV_FILE"
   done
   cat >> "$ENV_FILE" <<EOF
@@ -104,8 +112,8 @@ VITE_AUDITOR_REGISTRY_ID=$AUDITOR
 VITE_COMPLIANT_DEX_ID=$DEX
 VITE_COMPLIANT_PAYROLL_ID=$PAYROLL
 VITE_COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY
-VITE_LUMENGATE_SMART_ACCOUNT_ID=$SMART
+VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH
 EOF
 done
 
-echo "DONE — Auditor=$AUDITOR DEX=$DEX Payroll=$PAYROLL Policy=$COMPLIANCE_POLICY SmartAccount=$SMART EURC_SAC=$EURC_SAC"
+echo "DONE — Auditor=$AUDITOR DEX=$DEX Payroll=$PAYROLL Policy=$COMPLIANCE_POLICY SmartAccountWasmHash=$SMART_WASM_HASH EURC_SAC=$EURC_SAC"

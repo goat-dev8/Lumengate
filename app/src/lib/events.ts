@@ -36,7 +36,7 @@ function scValToString(val: xdr.ScVal): string {
     case xdr.ScValType.scvAddress(): {
       const addr = val.address();
       if (addr.switch() === xdr.ScAddressType.scAddressTypeContract()) {
-        return addr.contractId().toString('hex').toUpperCase();
+        return Buffer.from(addr.contractId() as unknown as Uint8Array).toString('hex').toUpperCase();
       }
       return addr.accountId().toString();
     }
@@ -142,7 +142,7 @@ function parseContractEventsFromMeta(
     const topics = body.topics();
     const contractIdRaw = ev.contractId();
     if (!contractIdRaw) continue;
-    const contractId = contractIdRaw.toString('hex').toUpperCase();
+    const contractId = Buffer.from(contractIdRaw as unknown as Uint8Array).toString('hex').toUpperCase();
     const kind = classifyEvent(contractId, config, topics);
     out.push({
       kind,
@@ -196,7 +196,7 @@ function parseContractEventsFromRawResponse(
         const topics = body.topics();
         const contractIdRaw = ev.contractId();
         if (!contractIdRaw) continue;
-        const contractId = contractIdRaw.toString('hex').toUpperCase();
+        const contractId = Buffer.from(contractIdRaw as unknown as Uint8Array).toString('hex').toUpperCase();
         const kind = classifyEvent(contractId, config, topics);
         out.push({
           kind,

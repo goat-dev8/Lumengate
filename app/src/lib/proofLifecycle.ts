@@ -1,8 +1,8 @@
 import type { DeploymentConfig } from './config';
 import type { IssuerCredentialResponse } from './config';
 import type { ProofBundle } from './contracts';
-import { readNullifierSpent } from './contracts';
-import { nullifierHexFromCredential, proofMatchesCredential } from './credentialProof';
+import { nullifierHexFromBundle, readNullifierSpent } from './contracts';
+import { proofMatchesCredential } from './credentialProof';
 
 export type ProofLifecycle = 'none' | 'ready' | 'consumed' | 'invalid';
 
@@ -49,15 +49,27 @@ export async function syncProofLifecycleOnChain(
     return { lifecycle: 'none', consumedTxHash: null, reason: null };
   }
 
-  const policyId = Number(
-    credential.proverInputs?.policy_id ?? credential.credential.policyId ?? 1,
-  );
+  if (!proof) {
+    return {
+      lifecycle: 'none',
+      consumedTxHash: settlementTxHash,
+      reason: settlementTxHash
+        ? 'Settlement completed. Generate a new asset-scoped proof for the next action.'
+        : null,
+    };
+  }
+
+  const policyId = Number(proof.publicInputs.policyId || credential.credential.policyId || 1);
   let nullifierSpent = false;
   try {
     nullifierSpent = await readNullifierSpent(
       config,
-      nullifierHexFromCredential(credential),
+      nullifierHexFromBundle(proof),
       policyId,
+      {
+        assetId: proof.publicInputs.assetId,
+        actionId: proof.publicInputs.actionId,
+      },
     );
   } catch {
     /* If RPC fails and we have a matching ready proof, keep ready */
@@ -71,25 +83,17 @@ export async function syncProofLifecycleOnChain(
       return {
         lifecycle: 'consumed',
         consumedTxHash: settlementTxHash,
-        reason: 'Passport used by a previous settlement.',
+        reason: 'This asset/action proof was already used. Generate a new scoped proof for the next settlement.',
       };
     }
     return { lifecycle: 'ready', consumedTxHash: null, reason: null };
   }
 
-  if (proof && !proofMatchesCredential(proof, credential)) {
+  if (!proofMatchesCredential(proof, credential)) {
     return {
       lifecycle: 'invalid',
       consumedTxHash: null,
       reason: 'Eligibility confirmation does not match current passport — confirm again.',
-    };
-  }
-
-  if (nullifierSpent) {
-    return {
-      lifecycle: 'consumed',
-      consumedTxHash: settlementTxHash,
-      reason: 'This passport was already used for settlement. Request a new passport.',
     };
   }
 

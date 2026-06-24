@@ -1,6 +1,7 @@
 import type { IssuerCredentialResponse } from './config';
 import type { ProofBundle } from './contracts';
 import type { PolicyKey } from './policies';
+import type { SmartAccountState } from './smartAccount';
 import type { ProofReceipt, ProofReceiptTransactions, ProofReceiptTransferResult } from './proofReceipt';
 
 const STORAGE_KEY = 'lumengate.session.v2';
@@ -10,6 +11,7 @@ export type WalletSession = {
   walletField: string;
   walletModuleId?: string;
   walletModuleName?: string;
+  smartAccount?: SmartAccountState | null;
   credential: IssuerCredentialResponse | null;
   proof: ProofBundle | null;
   pofProof: ProofBundle | null;
