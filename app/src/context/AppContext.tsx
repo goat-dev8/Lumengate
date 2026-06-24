@@ -25,6 +25,7 @@ import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
+  buildBindSessionProofTransaction,
   formatSorobanUserError,
   readBalance,
   submitSignedTransaction,
@@ -64,8 +65,10 @@ import {
 import {
   createPersonalSmartAccount,
   isAssembledTransaction,
+  isContractAddress,
   submitWithSmartAccount,
   type SignableTransaction,
+  type SmartAccountAssembledTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
 import { buildFundSmartAccountUsdcXdr, buildFundSmartAccountXlmXdr } from '../lib/smartAccountFunding';
@@ -121,6 +124,12 @@ type AppContextValue = {
   activity: ActivityEntry[];
   pushActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => void;
   signAndSubmit: (tx: SignableTransaction) => Promise<string>;
+  /** Passkey settlement: bind session proof (tx 1) then settlement (tx 2). */
+  signAndSubmitSettlement: (
+    settlementFrom: string,
+    proof: ProofBundle,
+    tx: SmartAccountAssembledTransaction,
+  ) => Promise<string>;
   passportActivated: boolean;
   setPassportActivated: (active: boolean) => void;
   proofLifecycle: ProofLifecycleState;
@@ -1010,6 +1019,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [kit, config, address, smartAccount],
   );
 
+  const signAndSubmitSettlement = useCallback(
+    async (
+      settlementFrom: string,
+      proof: ProofBundle,
+      tx: SmartAccountAssembledTransaction,
+    ): Promise<string> => {
+      if (!smartAccount) {
+        throw new Error('Create and fund your smart account before settlement.');
+      }
+      if (!address) throw new Error('Connect wallet first');
+      if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
+        const bindTx = await buildBindSessionProofTransaction(config, address, settlementFrom, proof);
+        await submitWithSmartAccount(config, smartAccount, bindTx);
+      }
+      return submitWithSmartAccount(config, smartAccount, tx);
+    },
+    [config, address, smartAccount],
+  );
+
   const fundSmartAccountUsdc = useCallback(
     async (amount: string): Promise<string> => {
       if (!address) throw new Error('Connect wallet first');
@@ -1096,6 +1124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activity,
     pushActivity,
     signAndSubmit,
+    signAndSubmitSettlement,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

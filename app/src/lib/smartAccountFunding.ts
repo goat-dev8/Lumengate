@@ -1,8 +1,6 @@
 import {
-  Asset,
   Contract,
   nativeToScVal,
-  Operation,
   rpc,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
@@ -54,24 +52,27 @@ export async function buildFundSmartAccountUsdcXdr(
   });
 }
 
-/** Send native XLM from the connected wallet to the smart account for contract fees/reserve. */
+/** Move native XLM SAC from the connected G-wallet into a smart account (C-address). */
 export async function buildFundSmartAccountXlmXdr(
   config: DeploymentConfig,
   sourceWallet: string,
   smartAccountAddress: string,
   amountXlm: string,
 ): Promise<string> {
-  const trimmed = amountXlm.trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed) || Number(trimmed) <= 0) {
-    throw new Error('Enter a valid XLM amount.');
+  const sacId = config.nativeSacId;
+  if (!sacId) {
+    throw new Error('Native XLM SAC not configured. Set VITE_NATIVE_SAC_ID.');
   }
-  return buildSimulatedWalletTxXdr(config, sourceWallet, (builder) =>
-    builder.addOperation(
-      Operation.payment({
-        destination: smartAccountAddress,
-        asset: Asset.native(),
-        amount: trimmed,
-      }),
-    ),
-  );
+  const amountRaw = parseStellarAmount(amountXlm);
+  return buildSimulatedWalletTxXdr(config, sourceWallet, (builder) => {
+    const sac = new Contract(sacId);
+    return builder.addOperation(
+      sac.call(
+        'transfer',
+        nativeToScVal(sourceWallet, { type: 'address' }),
+        nativeToScVal(smartAccountAddress, { type: 'address' }),
+        nativeToScVal(amountRaw, { type: 'i128' }),
+      ),
+    );
+  });
 }

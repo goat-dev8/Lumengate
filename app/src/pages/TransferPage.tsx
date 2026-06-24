@@ -52,7 +52,7 @@ export function TransferPage() {
     credential,
     proof,
     config,
-    signAndSubmit,
+    signAndSubmitSettlement,
     pushActivity,
     recordTransferTx,
     proofLifecycle,
@@ -210,7 +210,7 @@ export function TransferPage() {
             ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope)
             : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope);
 
-      const hash = await signAndSubmit(tx);
+      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx);
 
       setTxHash(hash);
 

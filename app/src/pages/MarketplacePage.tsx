@@ -95,6 +95,7 @@ export function MarketplacePage() {
     config,
 
     signAndSubmit,
+    signAndSubmitSettlement,
 
     pushActivity,
 
@@ -443,7 +444,7 @@ export function MarketplacePage() {
         );
       }
 
-      const hash = await signAndSubmit(tx);
+      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx);
 
       setTxHash(hash);
 

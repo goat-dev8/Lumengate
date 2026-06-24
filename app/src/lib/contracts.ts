@@ -68,24 +68,38 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-function appendSessionProofBind(
-  builder: TransactionBuilder,
+/** Single-op tx: bind UltraHonk proof on CompliancePolicy before passkey settlement. */
+export async function buildBindSessionProofTransaction(
   config: DeploymentConfig,
+  source: string,
   smartAccount: string,
   proof: ProofBundle,
-): TransactionBuilder {
-  if (!config.compliancePolicyId || !isSmartAccountAddress(smartAccount)) {
-    return builder;
+): Promise<SmartAccountAssembledTransaction> {
+  if (!config.compliancePolicyId) {
+    throw new Error('Compliance policy not configured');
   }
+  if (!isSmartAccountAddress(smartAccount)) {
+    throw new Error('Session proof bind requires a smart account address');
+  }
+  assertProofBundleForChain(proof);
+  const s = server(config.rpcUrl);
+  const acct = await s.getAccount(source);
   const policy = new Contract(config.compliancePolicyId);
-  return builder.addOperation(
-    policy.call(
-      'set_session_proof',
-      nativeToScVal(smartAccount, { type: 'address' }),
-      scBytesFromHex(proof.proofHex),
-      scBytesFromHex(proof.publicInputsHex),
-    ),
-  );
+  const draft = new TransactionBuilder(acct, {
+    fee: String(Number(BASE_FEE) * 100),
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      policy.call(
+        'set_session_proof',
+        nativeToScVal(smartAccount, { type: 'address' }),
+        scBytesFromHex(proof.proofHex),
+        scBytesFromHex(proof.publicInputsHex),
+      ),
+    )
+    .setTimeout(120)
+    .build();
+  return simulateAssembledTx(s, draft);
 }
 
 async function simulateAssembledTx(
@@ -100,12 +114,10 @@ async function simulateAssembledTx(
 }
 
 export async function readContractXlmBalance(config: DeploymentConfig, contractId: string): Promise<string> {
+  const sacId = config.nativeSacId;
+  if (!sacId) return '0';
   try {
-    const res = await fetch(`${config.horizonUrl}/accounts/${contractId}`);
-    if (!res.ok) return '0';
-    const json = (await res.json()) as { balances?: Array<{ asset_type?: string; balance?: string }> };
-    const native = json.balances?.find((b) => b.asset_type === 'native');
-    return native?.balance ?? '0';
+    return await readSacBalance(config, sacId, contractId);
   } catch {
     return '0';
   }
@@ -361,15 +373,10 @@ export async function buildUsdcTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
-  const draft = appendSessionProofBind(
-    new TransactionBuilder(acct, {
+  const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
       networkPassphrase: config.networkPassphrase,
-    }),
-    config,
-    from,
-    proof,
-  )
+    })
     .addOperation(
       contract.call(
         'transfer_compliant',
@@ -413,15 +420,10 @@ export async function buildEurcTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
-  const draft = appendSessionProofBind(
-    new TransactionBuilder(acct, {
+  const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
       networkPassphrase: config.networkPassphrase,
-    }),
-    config,
-    from,
-    proof,
-  )
+    })
     .addOperation(
       contract.call(
         'transfer_compliant_eurc',
@@ -458,15 +460,10 @@ export async function buildSwapCompliantTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantDexId);
-  const draft = appendSessionProofBind(
-    new TransactionBuilder(acct, {
+  const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
       networkPassphrase: config.networkPassphrase,
-    }),
-    config,
-    trader,
-    proof,
-  )
+    })
     .addOperation(
       contract.call(
         'swap_compliant',
@@ -503,15 +500,10 @@ export async function buildPayCompliantTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantPayrollId);
-  const draft = appendSessionProofBind(
-    new TransactionBuilder(acct, {
+  const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
       networkPassphrase: config.networkPassphrase,
-    }),
-    config,
-    payer,
-    proof,
-  )
+    })
     .addOperation(
       contract.call(
         'pay_compliant',
@@ -547,15 +539,10 @@ export async function buildTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.rwaTokenId);
-  const draft = appendSessionProofBind(
-    new TransactionBuilder(acct, {
+  const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
       networkPassphrase: config.networkPassphrase,
-    }),
-    config,
-    from,
-    proof,
-  )
+    })
     .addOperation(
       contract.call(
         'transfer',
