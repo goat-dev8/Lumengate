@@ -10,10 +10,12 @@ import { NAV_ICONS } from '../fintech/NavIcons';
 
 const nav = [
   { to: '/app/home', label: 'Home', icon: 'dashboard' as const },
-  { to: '/app/verify', label: 'Verify', icon: 'passport' as const },
+  { to: '/app/verify', label: 'Passport', icon: 'passport' as const },
+  { to: '/app/marketplace', label: 'Invest', icon: 'marketplace' as const },
   { to: '/app/send', label: 'Send', icon: 'marketplace' as const },
-  { to: '/app/auditor', label: 'Auditor', icon: 'compliance' as const },
-  { to: '/app/admin', label: 'Admin', icon: 'settings' as const },
+  { to: '/app/compliance', label: 'Receipt', icon: 'activity' as const },
+  { to: '/app/auditor', label: 'Audit', icon: 'compliance' as const },
+  { to: '/app/admin', label: 'Operators', icon: 'settings' as const },
 ];
 
 function SidebarBrand() {
@@ -27,7 +29,7 @@ function SidebarBrand() {
       </div>
       <div>
         <span className="block text-[15px] font-semibold tracking-tight text-white">Lumengate X</span>
-        <span className="block text-[11px] text-white/45">Compliance layer for Stellar</span>
+        <span className="block text-[11px] text-white/45">Private access for Stellar</span>
       </div>
     </Link>
   );

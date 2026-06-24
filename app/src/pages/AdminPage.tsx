@@ -48,23 +48,36 @@ export function AdminPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Badge tone="brand">Operators</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-navy">Compliance operations</h1>
+            <h1 className="mt-3 text-3xl font-semibold text-navy">Manage trusted operators</h1>
             <p className="mt-2 max-w-2xl text-slate-muted">
-              Lumengate is the compliance layer for private money on Stellar. Operator tools manage policy roots
-              and credential revocation — end users never need this page.
+              Delegate controlled access for compliance teams. Set limits, review status, and revoke access without
+              exposing customer identity data.
             </p>
           </div>
           <AdvancedModeToggle />
         </div>
 
         {!advanced ? (
-          <Card>
-            <CardHeader title="Developer mode is off" badge={<Badge>Default</Badge>} />
-            <p className="text-sm text-slate-muted">
-              Contract IDs, Merkle roots, and revocation tooling are hidden. Enable developer mode to inspect live
-              deployment infrastructure.
-            </p>
-          </Card>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader title="Add operator" badge={<Badge>Coming next</Badge>} />
+              <p className="text-sm text-slate-muted">
+                Invite a teammate, set a spending limit, and choose when access expires.
+              </p>
+            </Card>
+            <Card>
+              <CardHeader title="Policy status" badge={<Badge tone="ok">Live</Badge>} />
+              <p className="text-sm text-slate-muted">
+                Eligibility and revocation roots are monitored in the background.
+              </p>
+            </Card>
+            <Card>
+              <CardHeader title="Emergency revoke" badge={<Badge tone="warn">Protected</Badge>} />
+              <p className="text-sm text-slate-muted">
+                Remove access instantly if a device, operator, or credential should no longer be trusted.
+              </p>
+            </Card>
+          </div>
         ) : (
           <>
             <Card>

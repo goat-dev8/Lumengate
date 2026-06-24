@@ -57,12 +57,12 @@ export function PortfolioPage() {
         snap.status === 'valid' || snap.status === 'proof-ready'
           ? 'Verified'
           : snap.status === 'proof-spent'
-            ? 'Proof spent'
+            ? 'Renew passport'
             : snap.status === 'no-credential'
               ? 'Needs credential'
               : 'Review',
       );
-      setProofStatus(activeProof ? 'Ready for settlement' : credential ? 'Generate proof' : 'Awaiting credential');
+      setProofStatus(activeProof ? 'Ready for settlement' : credential ? 'Confirm eligibility' : 'Awaiting passport');
     });
   }, [address, credential, activeProof, policyKey, config, walletField]);
 
@@ -86,7 +86,7 @@ export function PortfolioPage() {
             description="Your holdings and settlement history are tied to your Stellar wallet."
           />
           <Button loading={connecting} onClick={() => connect()}>
-            Connect Wallet
+            Connect account
           </Button>
         </Card>
       ) : (
@@ -104,7 +104,7 @@ export function PortfolioPage() {
                 <Link to="/app/marketplace">
                   <Button size="sm">Invest in offerings</Button>
                 </Link>
-                <Link to="/app/passport">
+                <Link to="/app/verify">
                   <Button variant="secondary" size="sm">
                     Manage passport
                   </Button>
@@ -114,9 +114,9 @@ export function PortfolioPage() {
           </section>
 
           <div className="lg-widget-grid !grid-cols-2 lg:!grid-cols-4">
-            <InstitutionalWidget label="Passport status" value={passportStatus} sub="Compliance verified" href="/app/passport" />
-            <InstitutionalWidget label="Proof status" value={proofStatus} sub="Settlement readiness" href="/app/prove" />
-            <InstitutionalWidget label="Holdings" value={balanceError ? 'RPC error' : `${balance ?? '—'} RWA`} sub="RwaToken on-chain" />
+            <InstitutionalWidget label="Passport status" value={passportStatus} sub="Compliance verified" href="/app/verify" />
+            <InstitutionalWidget label="Confirmation" value={proofStatus} sub="Settlement readiness" href="/app/verify" />
+            <InstitutionalWidget label="Holdings" value={balanceError ? 'RPC error' : `${balance ?? '—'} RWA`} sub="Treasury units" />
             <InstitutionalWidget
               label="USDC (SAC)"
               value={usdcBalance !== null ? `${usdcBalance} USDC` : '—'}

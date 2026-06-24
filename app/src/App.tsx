@@ -7,7 +7,6 @@ import { TransferPage } from './pages/TransferPage';
 import { AuditorPage } from './pages/AuditorPage';
 import { AdminPage } from './pages/AdminPage';
 import { CompliancePage } from './pages/CompliancePage';
-import { PassportPage } from './pages/PassportPage';
 import { MarketplacePage } from './pages/MarketplacePage';
 import { PortfolioPage } from './pages/PortfolioPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -26,7 +25,7 @@ function AppRoutes() {
       <Route path="/app/send" element={<TransferPage />} />
       <Route path="/app/auditor" element={<AuditorPage />} />
       <Route path="/app/admin" element={<AdminPage />} />
-      <Route path="/app/passport" element={<PassportPage />} />
+      <Route path="/app/passport" element={<Navigate to="/app/verify" replace />} />
       <Route path="/app/marketplace" element={<MarketplacePage />} />
       <Route path="/app/marketplace/:offeringId" element={<OfferingDetailRoute />} />
       <Route path="/app/portfolio" element={<PortfolioPage />} />

@@ -52,8 +52,8 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
             <CardHeader title="Offering facts" badge={<Badge tone="brand">{offering.offeringStatus}</Badge>} />
             <dl className="grid gap-4 sm:grid-cols-2 text-sm">
               <div>
-                <dt className="text-xs uppercase text-[#64748b]">Policy ID</dt>
-                <dd className="font-medium text-[#012b54]">{offering.policyId}</dd>
+                <dt className="text-xs uppercase text-[#64748b]">Access</dt>
+                <dd className="font-medium text-[#012b54]">Passport required</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-[#64748b]">Settlement asset</dt>
@@ -70,7 +70,7 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
                 <dd>{offering.riskLevel}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-[#64748b]">Settlement address</dt>
+                <dt className="text-xs uppercase text-[#64748b]">Settlement account</dt>
                 <dd className="font-mono text-xs">
                   {offering.settlementAddress
                     ? truncateMiddle(offering.settlementAddress, 8, 6)
@@ -78,14 +78,14 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-[#64748b]">Verification route</dt>
+                <dt className="text-xs uppercase text-[#64748b]">Review path</dt>
                 <dd>{offering.verificationRoute}</dd>
               </div>
             </dl>
           </Card>
 
           <Card>
-            <CardHeader title="Why proof is required" />
+            <CardHeader title="Why passport access is required" />
             <p className="text-sm leading-relaxed text-[#475569]">{offering.whyProofRequired}</p>
             <ul className="mt-4 space-y-2">
               {offering.proofRequirements.map((req) => (
@@ -102,7 +102,7 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Compliance policy" description="External policy layer gate" />
+            <CardHeader title="Eligibility" description="Private access requirements" />
             <p className="text-sm font-medium text-[#012b54]">{policy.title}</p>
             <p className="mt-1 text-sm text-[#64748b]">{offering.eligibilityPolicy}</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -116,31 +116,31 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
           </Card>
 
           <Card>
-            <CardHeader title="Invest with proof" />
+            <CardHeader title="Invest" />
             <div className="space-y-3">
               {!address ? (
                 <Button loading={connecting} className="w-full" onClick={() => connect()}>
-                  Connect wallet
+                  Connect account
                 </Button>
               ) : !credential || !activeProof ? (
                 <Button className="w-full" onClick={() => prepare()}>
-                  Get passport & proof
+                  Get ready to invest
                 </Button>
               ) : null}
               {canInvest ? (
                 <Link to="/app/marketplace" className="block">
                   <Button className="w-full">
-                    Invest with proof
+                    Invest
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
               ) : (
                 <p className="text-xs text-[#64748b]">
-                  Complete credential + proof for policy &quot;{policy.title}&quot; before settlement.
+                  Complete your passport for this investment before settlement.
                 </p>
               )}
               <Link to="/app/compliance" className="inline-flex items-center gap-1 text-sm font-semibold text-[#007dfc]">
-                View Proof Receipt
+                View receipt
                 <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             </div>

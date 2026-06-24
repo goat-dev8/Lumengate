@@ -1,7 +1,7 @@
 import type { IssuerCredentialResponse } from './config';
 import type { ProofBundle } from './contracts';
 import type { PolicyKey } from './policies';
-import type { ProofReceiptTransactions, ProofReceiptTransferResult } from './proofReceipt';
+import type { ProofReceipt, ProofReceiptTransactions, ProofReceiptTransferResult } from './proofReceipt';
 
 const STORAGE_KEY = 'lumengate.session.v2';
 
@@ -20,6 +20,7 @@ export type WalletSession = {
   transferResult: ProofReceiptTransferResult | null;
   replayBlocked: boolean;
   replayMessage: string | null;
+  proofReceipt?: ProofReceipt | null;
   passportActivated?: boolean;
   proofLifecycle?: 'none' | 'ready' | 'consumed' | 'invalid';
   consumedTxHash?: string | null;

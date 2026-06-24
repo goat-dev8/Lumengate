@@ -16,7 +16,9 @@ import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
+import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { isProofUsable } from '../lib/proofLifecycle';
+import { friendlyAssetName } from '../lib/productState';
 import {
   buildTransferTransaction,
   buildUsdcTransferTransaction,
@@ -70,6 +72,7 @@ export function TransferPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
+  const advanced = useAdvancedMode();
 
 
 
@@ -97,7 +100,7 @@ export function TransferPage() {
   const handleTransfer = async () => {
     if (!address || !activeProof || !to || !amount) return;
     if (!isProofUsable(proofLifecycle)) {
-      setError(proofLifecycle.reason ?? 'Proof is not ready for settlement.');
+      setError(proofLifecycle.reason ?? 'Your passport is not ready for settlement.');
       return;
     }
 
@@ -105,7 +108,7 @@ export function TransferPage() {
 
     if (!validateStellarAddress(recipient)) {
 
-      setError('Enter a valid Stellar recipient address (starts with G).');
+      setError('Enter a valid Stellar recipient address.');
 
       return;
 
@@ -127,9 +130,9 @@ export function TransferPage() {
 
         setError(
 
-          `Recipient ${truncateMiddle(recipient, 8, 6)} has no USDC trustline for official testnet USDC. ` +
+          `This recipient is not ready for USDC yet. Use treasury ` +
 
-            `Use treasury ${truncateMiddle(config.marketplaceSettlementAddress, 8, 6)} or Marketplace settlement.`,
+            `${truncateMiddle(config.marketplaceSettlementAddress, 8, 6)} or invest through Marketplace.`,
 
         );
 
@@ -215,14 +218,14 @@ export function TransferPage() {
   const balanceLabel =
     asset === 'usdc'
       ? usdcBalance !== null
-        ? `${usdcBalance} USDC (SAC)`
-        : 'USDC unavailable — add trustline to official issuer'
+        ? `${usdcBalance} USDC`
+        : 'USDC unavailable'
       : asset === 'eurc'
         ? eurcBalance !== null
-          ? `${eurcBalance} EURC (SAC)`
-          : 'EURC unavailable — add trustline first'
+          ? `${eurcBalance} EURC`
+          : 'EURC unavailable'
       : rwaBalance !== null
-        ? `${rwaBalance} RWA units`
+        ? `${rwaBalance} treasury units`
         : 'Loading…';
 
 
@@ -232,10 +235,13 @@ export function TransferPage() {
     <AppShell>
 
       <div className="space-y-6">
+        <div className="flex justify-end">
+          <AdvancedModeToggle />
+        </div>
         <ProductHero
           eyebrow="Send"
-          title="Settle with privacy preserved"
-          subtitle="Proof-gated transfers on Stellar. Your zero-knowledge proof authorizes one compliant settlement — auditors see compliance, not your identity or private attributes."
+          title="Send regulated assets privately"
+          subtitle="Choose an asset, enter a recipient, and Lumengate confirms you are allowed before settlement. No identity details are shown to the recipient or public viewers."
         />
 
         <PrivacyJourney compact />
@@ -253,29 +259,40 @@ export function TransferPage() {
           <>
             <ProofLifecyclePanel state={proofLifecycle} config={config} compact />
 
-            <Card>
-              <CardHeader title="Private settlement layer" badge={<Badge tone="brand">Nethermind ASP</Badge>} />
-              <p className="text-sm text-slate-muted">
-                Unlinkable deposit/withdraw via Stellar Private Payments testnet pool. Eligibility proofs gate
-                compliant ASP membership before private USDC flows.
-              </p>
-              <dl className="mt-3 space-y-1 text-xs font-mono">
-                <div>
-                  <dt className="text-slate-muted">Privacy pool</dt>
-                  <dd className="break-all">{config.privacyPoolId}</dd>
+            {advanced ? (
+              <Card>
+                <CardHeader title="Private settlement layer" badge={<Badge tone="brand">Nethermind ASP</Badge>} />
+                <p className="text-sm text-slate-muted">
+                  Unlinkable deposit/withdraw via Stellar Private Payments testnet pool. Eligibility proofs gate
+                  compliant ASP membership before private USDC flows.
+                </p>
+                <dl className="mt-3 space-y-1 text-xs font-mono">
+                  <div>
+                    <dt className="text-slate-muted">Privacy pool</dt>
+                    <dd className="break-all">{config.privacyPoolId}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-muted">ASP membership verifier</dt>
+                    <dd className="break-all">{config.aspMembershipVerifierId}</dd>
+                  </div>
+                </dl>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader title="How this send is protected" badge={<Badge tone="brand">Private by default</Badge>} />
+                <div className="grid gap-3 text-sm text-slate-muted sm:grid-cols-3">
+                  <p>1. Lumengate checks your passport privately.</p>
+                  <p>2. Stellar settles only if you are eligible.</p>
+                  <p>3. Your identity details stay off-chain.</p>
                 </div>
-                <div>
-                  <dt className="text-slate-muted">ASP membership verifier</dt>
-                  <dd className="break-all">{config.aspMembershipVerifierId}</dd>
-                </div>
-              </dl>
-            </Card>
+              </Card>
+            )}
 
             <div className="flex flex-wrap gap-2">
 
               <Button variant={asset === 'rwa' ? 'primary' : 'secondary'} size="sm" onClick={() => setAsset('rwa')}>
 
-                RwaToken
+                Treasury units
 
               </Button>
 
@@ -297,7 +314,7 @@ export function TransferPage() {
 
               >
 
-                USDC (SAC)
+                USDC
 
               </Button>
 
@@ -310,7 +327,7 @@ export function TransferPage() {
                   setTo(config.marketplaceSettlementAddress);
                 }}
               >
-                EURC (SAC)
+                EURC
               </Button>
 
             </div>
@@ -321,15 +338,19 @@ export function TransferPage() {
 
               <CardHeader
 
-                title={asset === 'usdc' ? 'USDC SAC transfer' : 'RWA token transfer'}
+                title={`Send ${friendlyAssetName(asset)}`}
 
                 description={
 
                   asset === 'usdc'
 
-                    ? `ComplianceSacAdmin ${truncateMiddle(config.complianceSacAdminId ?? '', 6, 4)} → official USDC SAC`
+                    ? advanced
+                      ? `Compliance contract ${truncateMiddle(config.complianceSacAdminId ?? '', 6, 4)} → official USDC`
+                      : 'Private passport check before USDC settlement'
 
-                    : 'PolicyVerifier.verify inside RwaToken.transfer'
+                    : advanced
+                      ? 'Policy check inside asset settlement'
+                      : 'Private passport check before asset settlement'
 
                 }
 
@@ -347,7 +368,7 @@ export function TransferPage() {
 
                   <label className="block">
 
-                    <span className="text-sm text-slate-muted">Recipient (Stellar address)</span>
+                    <span className="text-sm text-slate-muted">Recipient</span>
 
                     <input
 
@@ -369,9 +390,7 @@ export function TransferPage() {
 
                       <p className="mt-2 text-xs text-slate-muted">
 
-                        Treasury settlement (has USDC trustline). Recipient must trust official
-
-                        testnet USDC or the transfer will fail.
+                        We prefill the treasury settlement account because it is ready to receive testnet USDC.
 
                       </p>
 
@@ -419,7 +438,7 @@ export function TransferPage() {
 
                 <ArrowRightLeft className="h-4 w-4" />
 
-                Transfer with proof
+                Send privately
 
               </Button>
 

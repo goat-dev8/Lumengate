@@ -16,8 +16,8 @@ export function recoveryPlanAfterNullifierSpent(consumedTxHash: string | null): 
     requiresNewCredential: true,
     requiresNewProof: true,
     message: consumedTxHash
-      ? `Settlement ${consumedTxHash.slice(0, 12)}… consumed your nullifier. Request a new passport, then generate a new proof.`
-      : 'Your proof was consumed. Request a new passport, then generate a new proof.',
+      ? `Settlement ${consumedTxHash.slice(0, 12)}… used your passport. Renew it, then confirm eligibility again.`
+      : 'Your passport was used for settlement. Renew it, then confirm eligibility again.',
   };
 }
 

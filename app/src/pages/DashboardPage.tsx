@@ -11,16 +11,17 @@ import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 import { buildPassportSnapshot } from '../lib/passport';
 import { readBalance } from '../lib/contracts';
-import { JourneyRail } from '../components/product/JourneyRail';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { LiveOnStellarStrip } from '../components/product/LiveOnStellarStrip';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
-import { buildUserJourney } from '../lib/journey';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
+import { ProductProgress } from '../components/product/ProductProgress';
+import { buildProductSteps, getProductReadiness } from '../lib/productState';
+import { loadStoredPasskey } from '../lib/passkeys';
 
 export function DashboardPage() {
-  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked, proofLifecycle, beginProofRecovery } =
+  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, proofLifecycle, beginProofRecovery } =
     useApp();
   const navigate = useNavigate();
   const { offerings } = useOfferings();
@@ -28,6 +29,7 @@ export function DashboardPage() {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [passportStatus, setPassportStatus] = useState('Connect wallet');
   const [readyToInvest, setReadyToInvest] = useState(false);
+  const [passkeyReady] = useState(() => Boolean(loadStoredPasskey()));
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const proofSpent = proofLifecycle.lifecycle === 'consumed';
 
@@ -64,11 +66,11 @@ export function DashboardPage() {
       const active = snap.status === 'valid' || snap.status === 'proof-ready';
       setPassportStatus(
         proofSpent
-          ? 'Proof consumed'
+          ? 'Renew passport'
           : active
             ? 'Active'
             : snap.status === 'proof-spent'
-              ? 'Proof spent'
+              ? 'Renew passport'
               : snap.status === 'no-credential'
                 ? 'Issue passport'
                 : 'Review',
@@ -92,25 +94,22 @@ export function DashboardPage() {
     [activity],
   );
 
-  const headline = !address
-    ? 'Connect to unlock compliant RWA access'
-    : proofSpent
-      ? 'Your proof was consumed — generate a fresh one to settle again.'
-      : readyToInvest
-        ? 'You are eligible. Ready to invest.'
-        : credential
-          ? 'Your passport is active. Generate proof to invest.'
-          : 'Issue your compliance passport to begin.';
-
-  const advanced = useAdvancedMode();
-
-  const journey = buildUserJourney({
+  const readiness = getProductReadiness({
     address,
     credential,
     proof: activeProof,
-    proofMatches: Boolean(activeProof),
-    receipt: proofReceipt,
-    replayBlocked,
+    lifecycle: proofLifecycle.lifecycle,
+  });
+
+  const advanced = useAdvancedMode();
+
+  const productSteps = buildProductSteps({
+    address,
+    passkeyReady,
+    credential,
+    proof: activeProof,
+    lifecycle: proofLifecycle.lifecycle,
+    hasSettlement: Boolean(proofReceipt?.transactions.transfer || activity.some((e) => e.kind === 'transfer')),
   });
 
   return (
@@ -120,7 +119,7 @@ export function DashboardPage() {
         <AdvancedModeToggle />
       </div>
       <div className="mt-2">
-        <JourneyRail steps={journey} />
+        <ProductProgress steps={productSteps} />
       </div>
       {proofSpent ? (
         <div className="mt-4">
@@ -139,9 +138,9 @@ export function DashboardPage() {
         <div className="lg-dash-hero-inner">
           <div>
             <span className="fin-pill">Institutional RWA platform</span>
-            <h1 className="lg-dash-headline mt-4">{headline}</h1>
+            <h1 className="lg-dash-headline mt-4">{readiness.title}</h1>
             <p className="lg-dash-subhead">
-              Prove eligibility privately. Access tokenized real-world assets on Stellar — without exposing identity.
+              {readiness.description}
             </p>
             <div className="lg-outcome-strip">
               <span className="lg-outcome-pill">
@@ -154,7 +153,7 @@ export function DashboardPage() {
               </span>
               <span className="lg-outcome-pill">
                 <span className={`lg-outcome-dot ${readyToInvest ? '' : 'lg-outcome-dot-muted'}`} />
-                {readyToInvest ? 'Ready to invest' : 'Proof required'}
+                {readyToInvest ? 'Ready to invest' : 'Next step waiting'}
               </span>
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
@@ -162,20 +161,12 @@ export function DashboardPage() {
                 <Button loading={connecting} onClick={() => connect()}>
                   Connect Wallet
                 </Button>
-              ) : readyToInvest ? (
-                <Link to="/app/marketplace">
+              ) : (
+                <Link to={readiness.href}>
                   <Button>
-                    Invest now
+                    {readiness.cta}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
-                </Link>
-              ) : proofSpent ? (
-                <Link to="/app/verify">
-                  <Button>Generate fresh proof</Button>
-                </Link>
-              ) : (
-                <Link to="/app/verify">
-                  <Button>{credential ? 'Generate proof' : 'Get passport'}</Button>
                 </Link>
               )}
               <Link to="/app/marketplace">
@@ -204,7 +195,7 @@ export function DashboardPage() {
         <InstitutionalWidget
           label="Available investments"
           value={String(offerings.length)}
-          sub="Proof-gated offerings"
+          sub="Passport-gated offerings"
           tone="accent"
           href="/app/marketplace"
           icon={
@@ -298,8 +289,8 @@ export function DashboardPage() {
                   </h3>
                   <div className="lg-offering-stats">
                     <div className="lg-offering-stat">
-                      <div className="lg-offering-stat-label">Policy</div>
-                      <div className="lg-offering-stat-value">ID {offering.policyId}</div>
+                      <div className="lg-offering-stat-label">Access</div>
+                      <div className="lg-offering-stat-value">Passport</div>
                     </div>
                     <div className="lg-offering-stat">
                       <div className="lg-offering-stat-label">Risk</div>

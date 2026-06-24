@@ -28,6 +28,7 @@ export function CompliancePage() {
     replayBlocked,
     config,
     transferResult,
+    receiptTransactions,
     buildDisclosure,
   } = useApp();
   const [replayLoading, setReplayLoading] = useState(false);
@@ -36,6 +37,8 @@ export function CompliancePage() {
   const [storeError, setStoreError] = useState<string | null>(null);
   const [viewingKey, setViewingKey] = useState('');
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const settlementTx = proofReceipt?.transactions.transfer ?? receiptTransactions.transfer;
+  const hasReceipt = Boolean(settlementTx || transferResult);
   const timeline = buildUnifiedTimeline(activity, proofReceipt);
   const journey = buildUserJourney({
     address,
@@ -106,35 +109,35 @@ export function CompliancePage() {
   return (
     <AppShell>
       <div className="lg-section-head mb-6">
-        <p className="lg-section-eyebrow">External compliance policy layer</p>
-        <h1 className="lg-section-title text-2xl lg:text-3xl">Proof Receipt</h1>
+        <p className="lg-section-eyebrow">Receipt</p>
+        <h1 className="lg-section-title text-2xl lg:text-3xl">Your compliant settlement receipt</h1>
         <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
-          Chain-backed audit artifact: policy approval, nullifier anti-replay, gated transfer events, and
-          USDC compliance targets — without exposing PII.
+          A clean record that your settlement was allowed, completed on Stellar, and can be verified by an auditor
+          without exposing your private identity details.
         </p>
       </div>
 
-      {!address || !credential || !proof || !proofReceipt ? (
+      {!hasReceipt ? (
         <EmptyState
-          title="Complete verification first"
-          description="Connect your account, obtain your eligibility credential, generate an attestation, and complete a gated settlement. Your proof receipt is built from live Soroban data."
+          title="No receipt yet"
+          description="Get your passport, confirm eligibility, and complete an investment or send. Your receipt appears here automatically."
           action={
             <div className="flex flex-wrap justify-center gap-3">
               {!address ? (
-                <Link to="/app/passport">
-                  <Button>Connect wallet</Button>
+                <Link to="/app/verify">
+                  <Button>Connect account</Button>
                 </Link>
               ) : !credential ? (
-                <Link to="/app/credential">
-                  <Button>Get credential</Button>
+                <Link to="/app/verify">
+                  <Button>Get passport</Button>
                 </Link>
               ) : !proof ? (
-                <Link to="/app/prove">
-                  <Button>Generate proof</Button>
+                <Link to="/app/verify">
+                  <Button>Confirm eligibility</Button>
                 </Link>
               ) : (
-                <Link to="/app/transfer">
-                  <Button>Transfer gated asset</Button>
+                <Link to="/app/marketplace">
+                  <Button>Invest now</Button>
                 </Link>
               )}
             </div>
@@ -142,38 +145,58 @@ export function CompliancePage() {
         />
       ) : (
         <>
-          <ProofReceiptHero
-            receipt={proofReceipt}
-            loading={receiptLoading}
-            onRefresh={() => refreshProofReceipt()}
-            onDemonstrateReplay={proofReceipt.nullifierSpent ? handleReplay : undefined}
-            replayLoading={replayLoading}
-          />
+          {proofReceipt ? (
+            <ProofReceiptHero
+              receipt={proofReceipt}
+              loading={receiptLoading}
+              onRefresh={() => refreshProofReceipt()}
+              onDemonstrateReplay={proofReceipt.nullifierSpent ? handleReplay : undefined}
+              replayLoading={replayLoading}
+            />
+          ) : (
+            <Card className="border-emerald-100 bg-emerald-50/40">
+              <CardHeader title="Settlement complete" badge={<Badge tone="ok">Compliant</Badge>} />
+              <div className="grid gap-4 text-sm text-[#475569] md:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider">Amount</p>
+                  <p className="mt-1 text-lg font-semibold text-navy">{transferResult?.amount ?? 'Completed'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider">Recipient</p>
+                  <p className="mt-1 font-mono text-xs text-navy">{transferResult?.to ?? 'Recorded on Stellar'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider">Reference</p>
+                  <p className="mt-1 font-mono text-xs text-navy">{settlementTx ?? 'Pending index'}</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           <Card className="mt-8">
             <CardHeader
               title="Selective disclosure"
-              description="Export or store a viewing-key scoped pack for the auditor portal"
-              badge={<Badge tone="brand">AuditorRegistry</Badge>}
+              description="Share only what an auditor needs: policy satisfied, settlement reference, and timestamp."
+              badge={<Badge tone="brand">Auditor ready</Badge>}
             />
             <label className="mb-4 block">
-              <span className="text-sm text-[#64748b]">Auditor viewing key</span>
+              <span className="text-sm text-[#64748b]">Auditor access key</span>
               <input
                 type="password"
                 className="mt-2 w-full max-w-md rounded-xl border border-[#e3e8ee] px-3 py-2 font-mono text-xs outline-none focus:border-[#007dfc]"
                 value={viewingKey}
                 onChange={(e) => setViewingKey(e.target.value)}
-                placeholder="Registered on AuditorRegistry — never stored in the browser"
+                placeholder="Provided by your auditor — never stored in the browser"
               />
             </label>
             <div className="flex flex-wrap gap-3">
               <Button variant="secondary" onClick={handleDownloadDisclosure}>
                 <Download className="h-4 w-4" />
-                Download disclosure JSON
+                Download audit record
               </Button>
               <Button loading={storeLoading} onClick={handleStoreDisclosure}>
                 <Share2 className="h-4 w-4" />
-                Store for auditor
+                Share with auditor
               </Button>
               <Link to="/app/auditor">
                 <Button variant="secondary">
@@ -189,7 +212,7 @@ export function CompliancePage() {
       )}
 
       <Card className="mt-8">
-        <CardHeader title="Settlement timeline" description="Session + chain events from Proof Receipt" />
+        <CardHeader title="Settlement timeline" description="What happened, in plain English." />
         <UnifiedTimeline items={timeline} />
       </Card>
 

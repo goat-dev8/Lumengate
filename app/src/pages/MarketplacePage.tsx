@@ -178,7 +178,7 @@ export function MarketplacePage() {
 
       await requestCredential(offering.requiredPolicy);
 
-      navigate('/app/prove');
+      navigate('/app/verify');
 
     } catch (err) {
 
@@ -229,11 +229,11 @@ export function MarketplacePage() {
 
 
   const canSettle = (offering: LiveOffering): string | null => {
-    if (proofConsumed) return 'Proof consumed by previous settlement — generate fresh proof';
+    if (proofConsumed) return 'Renew passport to invest again';
     if (!isProofUsable(proofLifecycle)) {
-      return proofLifecycle.reason ?? 'Complete passport & proof first';
+      return proofLifecycle.reason ?? 'Complete your passport first';
     }
-    if (!address || !activeProof) return 'Complete passport & proof first';
+    if (!address || !activeProof) return 'Complete your passport first';
 
     if (policyKey !== offering.requiredPolicy) {
 
@@ -243,7 +243,7 @@ export function MarketplacePage() {
 
     if (Number(activeProof.publicInputs.policyId) !== policyByKey(offering.requiredPolicy).policyId) {
 
-      return 'Proof does not match offering policy';
+      return 'Renew your passport for this investment';
 
     }
 
@@ -253,7 +253,7 @@ export function MarketplacePage() {
 
       if (!pofProof || Number(pofProof.publicInputs.policyId) !== config.policyId2) {
 
-        return 'Proof-of-funds required for this offering';
+        return 'Private balance check required';
 
       }
 
@@ -275,7 +275,7 @@ export function MarketplacePage() {
       const min = Number(offering.minimumAmount);
       const bal = usdcBalance !== null ? Number(usdcBalance) : NaN;
       if (!Number.isNaN(bal) && bal < min) {
-        return `Minimum ${min} USDC (SAC balance ${usdcBalance})`;
+        return `Minimum ${min} USDC (available ${usdcBalance})`;
       }
     } else if (balance !== null && BigInt(balance) < amount) {
       return `Minimum investment ${amount.toString()} units`;
@@ -293,7 +293,7 @@ export function MarketplacePage() {
 
     if (block || !address || !activeProof) {
 
-      setError(block || 'Proof required');
+      setError(block || 'Complete your passport first');
 
       return;
 
@@ -310,7 +310,7 @@ export function MarketplacePage() {
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(activeProof), pid);
 
       if (spent) {
-        setError('Proof consumed by a previous settlement. Start fresh passport on Verify.');
+        setError('Your passport was used. Renew it before investing again.');
         beginProofRecovery();
         navigate('/app/verify#recovery-credential');
         return;
@@ -334,7 +334,7 @@ export function MarketplacePage() {
 
         if (pofSpent) {
 
-          throw new Error('Proof-of-funds already used — generate a new proof');
+          throw new Error('Private balance check was already used — run it again');
 
         }
 
@@ -350,7 +350,7 @@ export function MarketplacePage() {
 
           kind: 'verify',
 
-          title: 'Proof-of-funds verified',
+          title: 'Balance privately confirmed',
 
           detail: verifyHash,
 
@@ -520,19 +520,19 @@ export function MarketplacePage() {
 
         <div>
 
-          <p className="lg-section-eyebrow">Institutional marketplace</p>
+          <p className="lg-section-eyebrow">Invest</p>
 
-          <h1 className="lg-section-title text-2xl lg:text-3xl">Eligible offerings</h1>
+          <h1 className="lg-section-title text-2xl lg:text-3xl">Passport-gated investments</h1>
 
           <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
 
             {proofConsumed
-              ? 'Your proof was consumed — generate a fresh proof to invest again.'
+              ? 'Your passport was used — renew it to invest again.'
               : activeProof
                 ? 'Your passport is verified. Select an offering to invest.'
                 : credential
-                  ? 'Generate a proof to unlock settlement.'
-                  : `${offerings.length} offerings available — issue passport first.`}
+                  ? 'Confirm eligibility to unlock investing.'
+                  : `${offerings.length} investments available — get your passport first.`}
 
           </p>
 
@@ -542,7 +542,7 @@ export function MarketplacePage() {
 
           <div className="rounded-xl border border-[#e3e8ee] bg-white px-5 py-3 shadow-sm">
 
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Your balance</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Available treasury units</div>
 
             {balanceError ? (
 
@@ -637,9 +637,9 @@ export function MarketplacePage() {
 
                   <div className="lg-offering-stat">
 
-                    <div className="lg-offering-stat-label">Policy</div>
+                    <div className="lg-offering-stat-label">Access</div>
 
-                    <div className="lg-offering-stat-value">ID {offering.policyId}</div>
+                    <div className="lg-offering-stat-value">Passport</div>
 
                   </div>
 
@@ -675,7 +675,7 @@ export function MarketplacePage() {
 
                   <div>
 
-                    <span className="text-[#64748b]">Settlement</span>
+                    <span className="text-[#64748b]">Settles in</span>
 
                     <p className="font-medium text-[#012b54]">
                       {offering.settlementAsset.toUpperCase()}
@@ -688,7 +688,7 @@ export function MarketplacePage() {
 
                   <div>
 
-                    <span className="text-[#64748b]">Eligibility</span>
+                    <span className="text-[#64748b]">Who can invest</span>
 
                     <p className="font-medium text-[#012b54]">{policy.title}</p>
 
@@ -718,7 +718,7 @@ export function MarketplacePage() {
 
                   <Button variant="secondary" onClick={() => prepareOffering(offering)}>
 
-                    Get passport & proof
+                    Get ready to invest
 
                   </Button>
 
@@ -742,7 +742,7 @@ export function MarketplacePage() {
 
                       <Sparkles className="h-4 w-4" />
 
-                      Verify proof-of-funds
+                      Confirm balance privately
 
                     </Button>
 
@@ -766,7 +766,7 @@ export function MarketplacePage() {
 
                     <ArrowRightLeft className="h-4 w-4" />
 
-                    Invest with proof
+                    Invest now
 
                   </Button>
 
@@ -792,7 +792,7 @@ export function MarketplacePage() {
 
           title="Connect to invest"
 
-          description="Connect a Stellar wallet to subscribe and settle with your compliance passport."
+          description="Connect your account to unlock passport-gated investments."
 
           action={
 
@@ -816,11 +816,11 @@ export function MarketplacePage() {
 
           <p className="text-sm text-status-err">{error}</p>
 
-          <Link to="/app/passport" className="mt-3 inline-block">
+          <Link to="/app/verify" className="mt-3 inline-block">
 
             <Button variant="secondary" size="sm">
 
-              Review passport
+              Open passport
 
             </Button>
 

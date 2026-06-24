@@ -18,7 +18,7 @@ const RESULT_LABELS: Record<string, string> = {
   'Issuer address present': 'Issuer verified',
   'Merkle root matches chain': 'Root verified',
   'Revocation root matches chain': 'Root verified',
-  'Nullifier spent on-chain': 'Nullifier valid',
+  'Nullifier spent on-chain': 'Settlement was used once',
   'Policy ID': 'Policy passed',
   'Wallet binding present': 'Wallet bound',
 };
@@ -109,11 +109,10 @@ export function AuditorPage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Badge tone="brand">Independent verification</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-navy">Verify compliance — never identity</h1>
+            <Badge tone="brand">Audit</Badge>
+            <h1 className="mt-3 text-3xl font-semibold text-navy">Verify settlement without seeing identity</h1>
             <p className="mt-2 max-w-2xl text-slate-muted">
-              Auditors confirm policy compliance from disclosure packs and public inputs. They never see names,
-              jurisdictions, sanctions status, or wallet-linked identity.
+              Enter a viewing key or receipt reference. Lumengate returns only the compliance facts needed for review.
             </p>
           </div>
           <AdvancedModeToggle />
@@ -121,7 +120,7 @@ export function AuditorPage() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { title: 'Auditor sees', items: ['Policy passed', 'Nullifier valid', 'Settlement tx hash'] },
+            { title: 'Auditor sees', items: ['Policy passed', 'One-time settlement used', 'Settlement reference'] },
             { title: 'Auditor never sees', items: ['Legal name', 'Date of birth', 'Sanctions details'] },
             { title: 'Privacy guarantee', items: ['ZK proof verified', 'Selective disclosure only', 'No identity link'] },
           ].map((col) => (
@@ -163,8 +162,8 @@ export function AuditorPage() {
             <Card>
               <CardHeader title="How verification works" badge={<Badge tone="brand">Privacy-first</Badge>} />
               <p className="text-sm text-slate-muted">
-                Paste a disclosure pack from a settlement receipt. Lumengate checks PolicyVerifier on Stellar RPC
-                — confirming compliance without exposing private attributes.
+                Paste an audit record from a settlement receipt. Lumengate checks Stellar and confirms compliance
+                without exposing private attributes.
               </p>
             </Card>
           )}
@@ -172,34 +171,34 @@ export function AuditorPage() {
 
         <Card>
           <CardHeader
-            title="Viewing-key portal"
-            description="POST /disclose — on-chain viewing key check + scoped disclosure lookup"
-            badge={<Badge tone="brand">Live issuer service</Badge>}
+            title="Auditor access"
+            description="Use a viewing key to retrieve scoped settlement disclosures."
+            badge={<Badge tone="brand">Live</Badge>}
           />
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="text-sm text-slate-muted">Auditor viewing key</span>
+              <span className="text-sm text-slate-muted">Viewing key</span>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-line px-3 py-2 font-mono text-xs outline-none focus:border-brand"
                 value={viewingKey}
                 onChange={(e) => setViewingKey(e.target.value)}
-                placeholder="Registered on AuditorRegistry"
+                placeholder="Provided by issuer or compliance team"
               />
             </label>
             <label className="block">
-              <span className="text-sm text-slate-muted">Filter by tx hash (optional)</span>
+              <span className="text-sm text-slate-muted">Settlement reference (optional)</span>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-line px-3 py-2 font-mono text-xs outline-none focus:border-brand"
                 value={portalTxHash}
                 onChange={(e) => setPortalTxHash(e.target.value)}
-                placeholder="Settlement transaction hash"
+                placeholder="Transaction hash or receipt reference"
               />
             </label>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <Button loading={portalLoading} onClick={runPortalQuery}>
               <KeyRound className="h-4 w-4" />
-              Query disclosures
+              Find records
             </Button>
             {config.auditorRegistryId ? (
               <Badge>{`AuditorRegistry ${config.auditorRegistryId.slice(0, 8)}…`}</Badge>
@@ -215,7 +214,7 @@ export function AuditorPage() {
                     {pack.txHash ? <Badge>{truncateMiddle(pack.txHash, 12, 8)}</Badge> : null}
                   </div>
                   <p className="mt-2 font-mono text-xs break-all text-slate-muted">
-                    nullifier {truncateMiddle(pack.nullifier, 16, 12)}
+                    private reference {truncateMiddle(pack.nullifier, 16, 12)}
                   </p>
                   <Button
                     variant="secondary"
@@ -237,9 +236,9 @@ export function AuditorPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Verification input" badge={<Badge tone="brand">Live RPC</Badge>} />
+            <CardHeader title="Manual verification" badge={<Badge tone="brand">{advanced ? 'Advanced' : 'Receipt JSON'}</Badge>} />
           <div className="mb-4 flex flex-wrap gap-2">
-            {(['disclosure', 'public-inputs', 'nullifier'] as const).map((m) => (
+            {(advanced ? (['disclosure', 'public-inputs', 'nullifier'] as const) : (['disclosure'] as const)).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -251,7 +250,7 @@ export function AuditorPage() {
                   clearInput();
                 }}
               >
-                {m}
+                {m === 'disclosure' ? 'audit record' : m}
               </button>
             ))}
           </div>
@@ -271,7 +270,7 @@ export function AuditorPage() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               mode === 'disclosure'
-                ? 'Paste disclosure JSON from Proof Receipt export…'
+                ? 'Paste audit record JSON from Receipt export…'
                 : mode === 'public-inputs'
                   ? 'Paste 128-byte public inputs hex from a live attestation…'
                   : 'Paste nullifier hex from on-chain verification…'

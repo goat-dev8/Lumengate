@@ -180,6 +180,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           partial.replayMessage !== undefined
             ? partial.replayMessage
             : (existing?.replayMessage ?? null),
+        proofReceipt:
+          partial.proofReceipt !== undefined
+            ? partial.proofReceipt
+            : (existing?.proofReceipt ?? null),
         passportActivated:
           partial.passportActivated !== undefined
             ? partial.passportActivated
@@ -210,6 +214,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTransferResult(saved.transferResult ?? null);
     setReplayBlocked(saved.replayBlocked ?? false);
     setReplayMessage(saved.replayMessage ?? null);
+    setProofReceipt(saved.proofReceipt ?? null);
     setPassportActivatedState(saved.passportActivated ?? false);
     setConsumedTxHash(saved.consumedTxHash ?? null);
     setProofLifecycle(
@@ -350,6 +355,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         replayMessage: overrides?.replayMessage ?? replayMessage ?? undefined,
       });
       setProofReceipt(receipt);
+      if (receipt && address && walletField) {
+        persistSession({ address, walletField, proofReceipt: receipt });
+      }
       return receipt;
     } finally {
       setReceiptLoading(false);
@@ -368,12 +376,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     transferResult,
     replayBlocked,
     replayMessage,
+    persistSession,
   ],
   );
 
   useEffect(() => {
     if (!address || !proof || !credential) {
-      setProofReceipt(null);
       return;
     }
     refreshProofReceipt().catch(() => undefined);
@@ -403,6 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       walletModuleName: walletModuleName ?? undefined,
       receiptTransactions,
       transferResult,
+      proofReceipt,
       replayBlocked,
       replayMessage,
       passportActivated,
@@ -422,6 +431,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     walletModuleName,
     receiptTransactions,
     transferResult,
+    proofReceipt,
     replayBlocked,
     replayMessage,
     passportActivated,
@@ -652,8 +662,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (hash: string, result: ProofReceiptTransferResult) => {
       recoveryLog('transfer.consumed', { hash, from: result.from, to: result.to });
       const txs = { ...receiptTransactions, transfer: hash };
+      const frozenReceipt =
+        address && walletField && credential && proof && proofMatchesCredential(proof, credential)
+          ? await buildProofReceipt({
+              config,
+              address,
+              walletField,
+              walletModuleId: walletModuleId ?? undefined,
+              walletModuleName: walletModuleName ?? undefined,
+              policyKey,
+              credential,
+              proof,
+              transactions: txs,
+              transferResult: result,
+              replayBlocked,
+              replayMessage: replayMessage ?? undefined,
+            })
+          : null;
       setReceiptTransactions(txs);
       setTransferResult(result);
+      if (frozenReceipt) setProofReceipt(frozenReceipt);
       setConsumedTxHash(hash);
       setProofState(null);
       setPassportActivatedState(false);
@@ -670,13 +698,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passportActivated: false,
           receiptTransactions: txs,
           transferResult: result,
+          proofReceipt: frozenReceipt,
           consumedTxHash: hash,
           proofLifecycle: 'consumed',
         });
       }
-      return refreshProofReceipt({ transactions: txs, transferResult: result });
+      return frozenReceipt;
     },
-    [receiptTransactions, address, walletField, persistSession, refreshProofReceipt],
+    [
+      receiptTransactions,
+      address,
+      walletField,
+      credential,
+      proof,
+      config,
+      walletModuleId,
+      walletModuleName,
+      policyKey,
+      replayBlocked,
+      replayMessage,
+      persistSession,
+    ],
   );
 
   const beginProofRecovery = useCallback(() => {

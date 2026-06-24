@@ -6,6 +6,7 @@ import { Card, CardHeader } from '../ui/Card';
 import type { ProofReceipt } from '../../lib/proofReceipt';
 import { proofReceiptFilename } from '../../lib/proofReceipt';
 import { truncateMiddle } from '../../lib/utils';
+import { useAdvancedMode } from '../product/AdvancedModeToggle';
 
 type Props = {
   receipt: ProofReceipt;
@@ -46,6 +47,7 @@ export function ProofReceiptHero({
   onDemonstrateReplay,
   replayLoading,
 }: Props) {
+  const advanced = useAdvancedMode();
   const download = () => {
     const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -60,7 +62,7 @@ export function ProofReceiptHero({
     <div className="space-y-6">
       <div className="rounded-2xl border border-[#007dfc]/20 bg-gradient-to-br from-[#012b54] to-[#023d72] p-6 text-white shadow-lg">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60">
-          Proof Receipt · Stellar testnet
+          Settlement Receipt · Stellar testnet
         </p>
         <h1 className="mt-2 text-2xl font-semibold lg:text-3xl">{receipt.productLabel}</h1>
         <p className="mt-2 text-sm text-white/80">{receipt.tagline}</p>
@@ -75,43 +77,29 @@ export function ProofReceiptHero({
           {receipt.verificationResult === 'passed' && receipt.settlementStatus !== 'verified' ? (
             <Badge tone="ok">Policy passed</Badge>
           ) : null}
-          <Badge tone="brand">{receipt.verifierVersion.protocol}</Badge>
-          <Badge tone="neutral">SDK {receipt.verifierVersion.sorobanSdk}</Badge>
-          {receipt.nullifierSpent ? <Badge tone="ok">Nullifier spent</Badge> : <Badge tone="warn">Nullifier available</Badge>}
-          {receipt.replayBlocked ? <Badge tone="err">Replay blocked</Badge> : null}
+          <Badge tone="brand">Auditor ready</Badge>
+          {advanced ? <Badge tone="brand">{receipt.verifierVersion.protocol}</Badge> : null}
+          {advanced ? <Badge tone="neutral">SDK {receipt.verifierVersion.sorobanSdk}</Badge> : null}
+          {advanced && receipt.replayBlocked ? <Badge tone="err">Replay blocked</Badge> : null}
         </div>
       </div>
 
       <Card>
-        <CardHeader
-          title="Replay protection"
-          description="PolicyVerifier nullifier storage — one proof, one settlement"
-          badge={
-            receipt.nullifierSpent ? (
-              <Badge tone="ok">Anti-replay active</Badge>
-            ) : (
-              <Badge tone="warn">Nullifier unspent</Badge>
-            )
-          }
-        />
-        <dl className="grid gap-3 text-sm md:grid-cols-2">
+        <CardHeader title="What this receipt proves" badge={<Badge tone="ok">Compliant</Badge>} />
+        <dl className="grid gap-3 text-sm md:grid-cols-3">
           <div className="rounded-xl bg-[#f6f9fc] p-3">
-            <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Nullifier status</dt>
+            <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Eligibility</dt>
+            <dd className="mt-1 font-medium text-[#012b54]">Passed without revealing identity</dd>
+          </div>
+          <div className="rounded-xl bg-[#f6f9fc] p-3">
+            <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Settlement</dt>
             <dd className="mt-1 font-medium text-[#012b54]">
-              {receipt.nullifierSpent
-                ? 'Spent on-chain — double-spend blocked (Error #7 on reuse)'
-                : 'Available — complete a gated transfer to consume'}
+              {receipt.settlementStatus === 'verified' ? 'Completed on Stellar' : 'Pending confirmation'}
             </dd>
           </div>
           <div className="rounded-xl bg-[#f6f9fc] p-3">
-            <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Settlement status</dt>
-            <dd className="mt-1 font-medium text-[#012b54]">
-              {receipt.settlementStatus === 'verified'
-                ? 'Verified — transfer tx + TransferGated event + nullifier spent'
-                : receipt.settlementStatus === 'pending'
-                  ? 'Pending — execute a proof-gated transfer'
-                  : 'Failed — transfer did not settle'}
-            </dd>
+            <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Audit</dt>
+            <dd className="mt-1 font-medium text-[#012b54]">Shareable with a viewing key</dd>
           </div>
         </dl>
       </Card>
@@ -120,28 +108,28 @@ export function ProofReceiptHero({
         {onRefresh ? (
           <Button variant="secondary" loading={loading} onClick={onRefresh}>
             <RefreshCw className="h-4 w-4" />
-            Verify on RPC
+            Refresh status
           </Button>
         ) : null}
         <Button variant="secondary" onClick={download}>
           <Download className="h-4 w-4" />
-          Export receipt JSON
+          Download receipt
         </Button>
         {onDemonstrateReplay ? (
           <Button variant="secondary" loading={replayLoading} onClick={onDemonstrateReplay}>
             <XCircle className="h-4 w-4" />
-            Demonstrate replay block
+            Test duplicate protection
           </Button>
         ) : null}
       </div>
 
-      {receipt.replayBlocked && receipt.replayMessage ? (
+      {advanced && receipt.replayBlocked && receipt.replayMessage ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <strong>REPLAY BLOCKED</strong> — {receipt.replayMessage}
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {advanced ? <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Wallet & policy" description="External compliance policy approval" />
           <dl className="grid gap-3">
@@ -182,9 +170,9 @@ export function ProofReceiptHero({
             </div>
           </dl>
         </Card>
-      </div>
+      </div> : null}
 
-      <Card>
+      {advanced ? <Card>
         <CardHeader title="Live on Stellar" description="Deployed contract IDs (testnet)" />
         <dl className="grid gap-3 md:grid-cols-2">
           <CopyRow label="PolicyVerifier" value={receipt.contractIds.policyVerifier} />
@@ -193,15 +181,15 @@ export function ProofReceiptHero({
           <CopyRow label="RwaAdapter" value={receipt.contractIds.rwaAdapter} />
           <CopyRow label="IssuerRegistry" value={receipt.contractIds.issuerRegistry} />
         </dl>
-      </Card>
+      </Card> : null}
 
       {(receipt.transactions.transfer || receipt.transactions.verify) && (
         <Card>
-          <CardHeader title="Transactions" description="Real testnet hashes" badge={<Badge tone="brand">On-chain</Badge>} />
+          <CardHeader title="Settlement reference" description="Real testnet transaction" badge={<Badge tone="brand">On-chain</Badge>} />
           <dl className="grid gap-3">
             {receipt.transactions.transfer ? (
               <div className="rounded-xl bg-[#f6f9fc] p-3">
-                <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Transfer gated</dt>
+                <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Settlement</dt>
                 <dd className="mt-1 font-mono text-xs break-all">{receipt.transactions.transfer}</dd>
                 {receipt.explorerLinks.transfer ? (
                   <a
@@ -216,7 +204,7 @@ export function ProofReceiptHero({
               </div>
             ) : null}
             {receipt.transactions.verify ? (
-              <CopyRow label="Verify proof" value={receipt.transactions.verify} />
+              <CopyRow label="Private confirmation" value={receipt.transactions.verify} />
             ) : null}
           </dl>
           {receipt.transferResult ? (

@@ -33,11 +33,11 @@ import { recoveryLog, verifyStepFlags } from '../lib/proofRecovery';
 type VerifyStepId = 'wallet' | 'passkey' | 'credential' | 'proof' | 'passport';
 
 const STEP_META: { id: VerifyStepId; label: string; hint: string }[] = [
-  { id: 'wallet', label: 'Connect wallet', hint: 'Link your Stellar account' },
+  { id: 'wallet', label: 'Connect account', hint: 'Link your Stellar account' },
   { id: 'passkey', label: 'Secure device', hint: 'Seedless passkey sign-in' },
   { id: 'credential', label: 'Get passport', hint: 'Issuer attests eligibility' },
-  { id: 'proof', label: 'Generate proof', hint: 'Prove policy without identity' },
-  { id: 'passport', label: 'Activate', hint: 'Ready for compliant assets' },
+  { id: 'proof', label: 'Confirm eligibility', hint: 'Private check in your browser' },
+  { id: 'passport', label: 'Ready', hint: 'Invest or send privately' },
 ];
 
 function stepState(
@@ -150,7 +150,7 @@ export function VerifyPage() {
       pushActivity({
         kind: 'credential',
         title: recoveryHint || proofConsumed ? 'New passport issued' : 'Compliance passport issued',
-        detail: 'Fresh nullifier ready — identity stays off-chain',
+        detail: 'Passport ready — identity stays off-chain',
         status: 'success',
       });
     } catch (err) {
@@ -164,7 +164,7 @@ export function VerifyPage() {
 
   const handleProve = async () => {
     if (!credential) {
-      setError('Request a new passport first — each settlement requires a fresh nullifier.');
+      setError('Request a new passport first — each settlement needs a fresh private confirmation.');
       return;
     }
     setProveLoading(true);
@@ -181,7 +181,7 @@ export function VerifyPage() {
       pushActivity({
         kind: 'proof',
         title: 'Eligibility confirmed',
-        detail: 'Zero-knowledge proof ready — no identity revealed',
+        detail: 'Private confirmation ready — no identity revealed',
         status: 'success',
       });
     } catch (err) {
@@ -206,13 +206,13 @@ export function VerifyPage() {
         policyKey,
       });
       if (snap.status !== 'valid' && snap.status !== 'proof-ready') {
-        throw new Error('Passport could not activate — regenerate proof and retry.');
+        throw new Error('Passport could not activate — confirm eligibility again and retry.');
       }
       setPassportActivated(true);
       pushActivity({
         kind: 'proof',
         title: 'Passport activated',
-        detail: 'You can access proof-gated assets',
+        detail: 'You can access passport-gated assets',
         status: 'success',
       });
     } catch (err) {
@@ -235,8 +235,8 @@ export function VerifyPage() {
 
         <ProductHero
           eyebrow="Verify"
-          title="Prove compliance without revealing identity"
-          subtitle="One guided flow: connect, secure your device, receive a passport, generate a zero-knowledge proof, and unlock compliant settlement on Stellar."
+        title="Get your private compliance passport"
+        subtitle="Connect once, secure this device, receive a passport, and privately confirm you are allowed to access regulated Stellar assets."
           illustration={<DashboardFlowIllustration className="w-full max-w-md" />}
         />
 
@@ -287,19 +287,19 @@ export function VerifyPage() {
 
         {currentStep === 'wallet' ? (
           <Card>
-            <CardHeader title="Step 1 — Connect wallet" badge={<Badge tone="brand">Stellar</Badge>} />
+            <CardHeader title="Step 1 — Connect account" badge={<Badge tone="brand">Stellar</Badge>} />
             <p className="text-sm text-slate-muted">
-              Link Freighter, xBull, Albedo, LOBSTR, or Hana. Your wallet address is never posted on-chain with
-              your private attributes.
+              Today Lumengate uses Freighter or another Stellar wallet to sign settlements. Passkeys secure this
+              browser session; smart-account signing is on the roadmap.
             </p>
             {address ? (
               <p className="mt-4 text-sm text-brand">
                 <Wallet className="mr-1 inline h-4 w-4" />
-                Wallet connected — continue to secure your device
+                Account connected — continue to secure your device
               </p>
             ) : (
               <Button className="mt-4" loading={connecting} onClick={() => connect()}>
-                Connect wallet
+                Connect account
               </Button>
             )}
           </Card>
@@ -309,7 +309,7 @@ export function VerifyPage() {
           <Card>
             <CardHeader title="Step 2 — Secure this device" badge={<Badge>Passkey</Badge>} />
             <p className="text-sm text-slate-muted">
-              Create a device passkey for seedless sign-in. Your biometrics never leave this device.
+              Create a device passkey for a familiar sign-in experience. Your biometrics never leave this device.
               {advanced ? ` RP ID: ${passkeyEnv.rpId}` : ''}
               {!passkeyEnv.supported ? ' — requires HTTPS' : ''}
             </p>
@@ -340,7 +340,7 @@ export function VerifyPage() {
             />
             <p className="text-sm text-slate-muted">
               {needsNewPassport && (proofConsumed || recoveryHint)
-                ? 'Your previous nullifier was spent on-chain. Request a new passport — the issuer assigns a fresh nullifier for your next settlement.'
+                ? 'Your previous passport was used successfully. Renew it so the next settlement has a fresh private confirmation.'
                 : 'The issuer attests you meet policy requirements. Your name, jurisdiction, and sanctions status stay off-chain — only a cryptographic commitment is recorded.'}
             </p>
             <label className="mt-4 block text-sm">
@@ -375,25 +375,24 @@ export function VerifyPage() {
         {showProofStep ? (
           <div id="recovery-proof">
           <Card>
-            <CardHeader title="Step 4 — Generate zero-knowledge proof" badge={<Badge tone="brand">Private</Badge>} />
+            <CardHeader title="Step 4 — Confirm eligibility privately" badge={<Badge tone="brand">Private</Badge>} />
             <p className="text-sm text-slate-muted">
-              Confirm you satisfy the policy without revealing who you are. Auditors see compliance — never your
-              identity or private attributes.
+              Lumengate confirms you are allowed without revealing your identity or private attributes.
             </p>
             {!activeProof ? (
               <>
                 <p className="mt-3 text-sm text-slate-muted">
-                  {proveProgress?.message || 'Ready to generate proof locally in your browser…'}
+                  {proveProgress?.message || 'Ready to confirm eligibility locally in your browser…'}
                 </p>
                 <Button className="mt-4" loading={proveLoading} disabled={!credential} onClick={handleProve}>
                   <Sparkles className="h-4 w-4" />
-                  Generate proof
+                  Confirm eligibility
                 </Button>
               </>
             ) : null}
             {activeProof ? (
               <div className="mt-6 space-y-2">
-                <Badge tone="ok">Proof verified ✓</Badge>
+                <Badge tone="ok">Eligibility confirmed</Badge>
                 {advanced ? (
                   <ul className="text-xs text-slate-muted">
                     {publicInputsPanel(activeProof).map((row) => (
@@ -415,14 +414,14 @@ export function VerifyPage() {
 
         {(currentStep === 'passport' || flags.passport) && activeProof ? (
           <Card>
-            <CardHeader title="Step 5 — Activate passport" badge={<Badge tone="ok">Ready</Badge>} />
+            <CardHeader title="Step 5 — Ready to use" badge={<Badge tone="ok">Ready</Badge>} />
             <p className="text-sm text-slate-muted">
-              Your compliance passport is active. Access proof-gated RWA offerings and settle on Stellar with
+              Your compliance passport is active. Access passport-gated RWA offerings and settle on Stellar with
               privacy preserved.
             </p>
             {!passportActivated ? (
               <Button className="mt-4" onClick={handleActivate}>
-                Activate passport
+                Activate
               </Button>
             ) : (
               <div className="mt-4 space-y-3">
