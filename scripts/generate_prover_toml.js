@@ -61,7 +61,14 @@ function buildProverInputs(_walletField, env, chainRoots, policyKey = 'general-e
   const { computeRevocationWitness } = require('./compute_revocation_root.js');
   const { loadRevoked } = require('../issuer-service/lib/revoke');
   const revoked = loadRevoked().map((r) => r.commitment);
-  const revWitness = computeRevocationWitness(revoked);
+  let revWitness = computeRevocationWitness(revoked);
+  const revRootNorm = String(revRoot).toLowerCase();
+  if (revWitness.root.toLowerCase() !== revRootNorm) {
+    throw new Error(
+      `Revocation witness (${revWitness.root}) does not match on-chain root (${revRoot}). ` +
+        'Sync issuer-service/fixtures/revoked_commitments.json with CredentialRegistry.',
+    );
+  }
   const noteSecret = randomFieldSecret();
   const noteBlinding = randomFieldSecret();
   const nullifier = computeNullifier(noteSecret, policy.policy_id);

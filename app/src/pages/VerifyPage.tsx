@@ -177,7 +177,8 @@ export function VerifyPage() {
     setProveProgress(null);
     recoveryLog('proof.generate.begin', { nullifier: credential.proverInputs?.nullifier });
     try {
-      const { bundle, durationSec } = await generateProof(credential, setProveProgress);
+      const fresh = await requestCredential(policyKey);
+      const { bundle, durationSec } = await generateProof(fresh, setProveProgress);
       recoveryLog('proof.generate.done', {
         durationSec,
         nullifier: bundle.publicInputs.nullifier,

@@ -37,6 +37,22 @@ export type ProveProgress = {
   percent: number;
 };
 
+function normalizeProverInputs(
+  raw: Record<string, string | boolean | string[] | number[]>,
+): Record<string, string | boolean | string[]> {
+  const out: Record<string, string | boolean | string[]> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'boolean') {
+      out[key] = value;
+    } else if (Array.isArray(value)) {
+      out[key] = value.map((entry) => String(entry));
+    } else {
+      out[key] = String(value);
+    }
+  }
+  return out;
+}
+
 export async function generateProof(
   credential: IssuerCredentialResponse,
   onProgress?: (p: ProveProgress) => void,
@@ -50,7 +66,7 @@ export async function generateProof(
   if (!inputs) throw new Error('Issuer did not return prover inputs');
 
   onProgress?.({ stage: 'witness', message: 'Building private witness…', percent: 35 });
-  const { witness } = await noir.execute(inputs as Record<string, string | number | boolean | string[]>);
+  const { witness } = await noir.execute(normalizeProverInputs(inputs));
 
   onProgress?.({ stage: 'prove', message: 'Confirming eligibility privately…', percent: 65 });
   // noir.execute() already returns gzip-compressed witness (magic 0x1f8b); bb.js gunzips once.

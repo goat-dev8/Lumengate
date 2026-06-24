@@ -4,14 +4,41 @@ const { execFileSync } = require('child_process');
 
 const DATA_DIR = join(__dirname, '..', 'data');
 const REVOKED_PATH = join(DATA_DIR, 'revoked_commitments.json');
+const REVOKED_FIXTURE_PATH = join(__dirname, '..', 'fixtures', 'revoked_commitments.json');
 
-function loadRevoked() {
-  if (!existsSync(REVOKED_PATH)) return [];
+function loadRevokedFixture() {
+  if (!existsSync(REVOKED_FIXTURE_PATH)) return [];
   try {
-    return JSON.parse(readFileSync(REVOKED_PATH, 'utf8'));
+    return JSON.parse(readFileSync(REVOKED_FIXTURE_PATH, 'utf8'));
   } catch {
     return [];
   }
+}
+
+function mergeRevokedRows(primary, fallback) {
+  const merged = [...primary];
+  for (const row of fallback) {
+    const commitment = normalizeCommitment(row.commitment);
+    if (!merged.some((existing) => existing.commitment === commitment)) {
+      merged.push({ ...row, commitment });
+    }
+  }
+  return merged;
+}
+
+function loadRevoked() {
+  let rows = [];
+  if (existsSync(REVOKED_PATH)) {
+    try {
+      rows = JSON.parse(readFileSync(REVOKED_PATH, 'utf8'));
+    } catch {
+      rows = [];
+    }
+  }
+  if (rows.length === 0) {
+    return loadRevokedFixture();
+  }
+  return mergeRevokedRows(rows, loadRevokedFixture());
 }
 
 function saveRevoked(rows) {

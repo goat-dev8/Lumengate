@@ -26,6 +26,23 @@ check "on-chain roots" curl -sf "$ISSUER/roots"
 check "credential issuance" curl -sf -X POST "$ISSUER/credential" \
   -H 'Content-Type: application/json' \
   -d '{"walletField":"200","policyKey":"general-eligibility"}'
+check "credential revocation witness" bash -c '
+  resp=$(curl -sf -X POST "$1/credential" -H "Content-Type: application/json" -d "{\"walletField\":\"201\",\"policyKey\":\"general-eligibility\"}")
+  roots=$(curl -sf "$1/roots")
+  python3 -c "
+import json, sys
+cred = json.loads(sys.argv[1])
+roots = json.loads(sys.argv[2])
+pi = cred[\"proverInputs\"]
+rev_root = int(pi[\"revocation_root\"])
+chain_rev = int(roots[\"revocationRoot\"], 16)
+if rev_root != chain_rev:
+    raise SystemExit(f\"revocation_root mismatch: witness={rev_root} chain={chain_rev}\")
+if chain_rev != 0 and all(str(s) == \"0\" for s in pi[\"rev_path_siblings\"]):
+    raise SystemExit(\"rev_path_siblings empty while on-chain revocation root is set\")
+print(\"revocation witness ok\")
+" "$resp" "$roots"
+' _ "$ISSUER"
 check "pof nullifier" curl -sf -X POST "$ISSUER/pof/nullifier" \
   -H 'Content-Type: application/json' \
   -d '{"noteSecret":"12345","policyId":"2"}'
