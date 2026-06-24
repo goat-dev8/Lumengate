@@ -24,6 +24,7 @@ import { proofMatchesCredential } from '../lib/credentialProof';
 import { currentSettlementOwner } from '../lib/settlementOwner';
 import { ASSET_SCOPES } from '../lib/assetScope';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { isProofUsable } from '../lib/proofLifecycle';
 import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
@@ -106,6 +107,9 @@ export function MarketplacePage() {
     beginProofRecovery,
     smartAccount,
     settlementAddress,
+    smartAccountCreating,
+    smartAccountStale,
+    replaceSmartAccount,
     ensureProofForAsset,
   } = useApp();
 
@@ -260,6 +264,7 @@ export function MarketplacePage() {
     }
     if (!address || !credential) return 'Complete your passport first';
     if (!smartAccount) return 'Create your smart account first';
+    if (smartAccountStale) return 'Upgrade your smart account on Verify or Send first';
 
     if (policyKey !== offering.requiredPolicy) {
 
@@ -612,6 +617,16 @@ export function MarketplacePage() {
               beginProofRecovery();
               navigate('/app/verify#recovery-credential');
             }}
+          />
+        </div>
+      ) : null}
+
+      {address && smartAccountStale ? (
+        <div className="mb-6">
+          <StaleSmartAccountUpgradePanel
+            legacyAddress={settlementAddress}
+            loading={smartAccountCreating}
+            onReplace={replaceSmartAccount}
           />
         </div>
       ) : null}

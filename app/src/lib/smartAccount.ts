@@ -13,6 +13,11 @@ import { passkeyUserName } from './passkeyUserHandle';
 
 export { passkeyUserName } from './passkeyUserHandle';
 
+/** Immutable policy contracts superseded by check_passport auth fix (commit 1f80276). */
+export const LEGACY_COMPLIANCE_POLICY_IDS = [
+  'CDONRLSIDIT7D5DN2PRQY6SR64FRBZ7MBJP5HCODFAP5M4JZ2USM6HS4',
+] as const;
+
 export type SmartAccountState = {
   smartAccountAddress: string;
   credentialId: string;
@@ -25,6 +30,21 @@ export type SmartAccountState = {
   compliancePolicyInstalled?: boolean;
   compliancePolicyTxHash?: string;
 };
+
+/** True when the stored account was deployed with a superseded compliance policy. */
+export function isStaleSmartAccountPolicy(
+  state: SmartAccountState | null | undefined,
+  config: DeploymentConfig,
+): boolean {
+  if (!state || !config.compliancePolicyId) return false;
+  const installed = state.compliancePolicyId?.trim();
+  if (!installed) return true;
+  if (installed === config.compliancePolicyId) return false;
+  return (
+    LEGACY_COMPLIANCE_POLICY_IDS.includes(installed as (typeof LEGACY_COMPLIANCE_POLICY_IDS)[number]) ||
+    installed !== config.compliancePolicyId
+  );
+}
 
 export type SmartAccountStatus = {
   ready: boolean;

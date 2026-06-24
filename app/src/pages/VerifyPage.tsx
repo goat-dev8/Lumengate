@@ -18,6 +18,7 @@ import { friendlyIssuerError } from '../lib/advancedMode';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
+import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
@@ -59,7 +60,9 @@ export function VerifyPage() {
     beginProofRecovery,
     smartAccount,
     smartAccountCreating,
+    smartAccountStale,
     createSmartAccount,
+    replaceSmartAccount,
     settlementAddress,
     fundSmartAccountUsdc,
     fundSmartAccountXlm,
@@ -246,6 +249,14 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
+        {address && smartAccountStale ? (
+          <StaleSmartAccountUpgradePanel
+            legacyAddress={settlementAddress}
+            loading={smartAccountCreating}
+            onReplace={replaceSmartAccount}
+          />
+        ) : null}
+
         {address && !smartAccount ? (
           <Card>
             <CardHeader title="Step 2 — Create passkey smart account" badge={<Badge tone="brand">Passkey</Badge>} />
@@ -256,7 +267,7 @@ export function VerifyPage() {
               Create passkey smart account
             </Button>
           </Card>
-        ) : address && smartAccount && settlementAddress ? (
+        ) : address && smartAccount && settlementAddress && !smartAccountStale ? (
           <FundSmartAccountPanel
             config={config}
             smartAccountAddress={settlementAddress}

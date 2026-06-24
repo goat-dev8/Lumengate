@@ -15,6 +15,7 @@ import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
+import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
@@ -62,7 +63,9 @@ export function TransferPage() {
     smartAccount,
     settlementAddress,
     smartAccountCreating,
+    smartAccountStale,
     createSmartAccount,
+    replaceSmartAccount,
     ensureProofForAsset,
     fundSmartAccountUsdc,
     fundSmartAccountXlm,
@@ -337,7 +340,15 @@ export function TransferPage() {
           </Card>
         ) : null}
 
-        {address && smartAccount && settlementAddress ? (
+        {address && smartAccountStale ? (
+          <StaleSmartAccountUpgradePanel
+            legacyAddress={settlementAddress}
+            loading={smartAccountCreating}
+            onReplace={replaceSmartAccount}
+          />
+        ) : null}
+
+        {address && smartAccount && settlementAddress && !smartAccountStale ? (
           <FundSmartAccountPanel
             config={config}
             smartAccountAddress={settlementAddress}
@@ -551,7 +562,15 @@ export function TransferPage() {
 
                 loading={loading}
 
-                disabled={!address || !credential || !smartAccount || !to || !amount || !sendReady}
+                disabled={
+                  !address ||
+                  !credential ||
+                  !smartAccount ||
+                  smartAccountStale ||
+                  !to ||
+                  !amount ||
+                  !sendReady
+                }
 
                 onClick={handleTransfer}
 

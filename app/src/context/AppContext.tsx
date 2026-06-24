@@ -66,6 +66,7 @@ import {
   createPersonalSmartAccount,
   isAssembledTransaction,
   isContractAddress,
+  isStaleSmartAccountPolicy,
   submitWithSmartAccount,
   type SignableTransaction,
   type SmartAccountAssembledTransaction,
@@ -82,7 +83,9 @@ type AppContextValue = {
   smartAccount: SmartAccountState | null;
   settlementAddress: string | null;
   smartAccountCreating: boolean;
+  smartAccountStale: boolean;
   createSmartAccount: () => Promise<SmartAccountState>;
+  replaceSmartAccount: () => Promise<SmartAccountState>;
   ensureProofForAsset: (asset: SettlementAsset) => Promise<{
     proof: ProofBundle;
     credential: IssuerCredentialResponse;
@@ -179,6 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [activity, setActivity] = useState<ActivityEntry[]>(() => loadActivity());
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
+  const smartAccountStale = isStaleSmartAccountPolicy(smartAccount, config);
 
   const kit = useMemo(
     () =>
@@ -596,6 +600,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSmartAccountCreating(false);
     }
   }, [address, walletField, config, persistSession, pushActivity]);
+
+  const replaceSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
+    if (!address || !walletField) throw new Error('Connect wallet first');
+    setSmartAccount(null);
+    persistSession({ address, walletField, smartAccount: null });
+    return createSmartAccount();
+  }, [address, walletField, persistSession, createSmartAccount]);
 
   const setCredential = useCallback((c: IssuerCredentialResponse | null) => {
     setCredentialState(c);
@@ -1029,9 +1040,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error('Create and fund your smart account before settlement.');
       }
       if (!address) throw new Error('Connect wallet first');
-      if (smartAccount.compliancePolicyId !== config.compliancePolicyId) {
+      if (isStaleSmartAccountPolicy(smartAccount, config)) {
         throw new Error(
-          'This smart account was created with the older compliance policy. Create a fresh smart account passkey, then fund it before settlement.',
+          'This smart account uses the older compliance policy and cannot send. Tap “Create new passkey smart account” above, fund the new deposit address, then retry.',
         );
       }
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
@@ -1088,7 +1099,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     smartAccount,
     settlementAddress,
     smartAccountCreating,
+    smartAccountStale,
     createSmartAccount,
+    replaceSmartAccount,
     connecting,
     connect,
     disconnect,
