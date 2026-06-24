@@ -173,6 +173,8 @@ check "lumengate circuit artifacts" bash -c "[[ -f '$ROOT/circuits/lumengate/tar
 
   check "shared smart account id removed" bash -c "! grep -qE '^(LUMENGATE_SMART_ACCOUNT_ID|VITE_LUMENGATE_SMART_ACCOUNT_ID)=' '$ROOT/.env'"
 
+  check "passkey auth payload encoding" bash "$ROOT/scripts/verify_passkey_auth_encoding.sh"
+
   check "passkey user handle within 64 bytes" node -e "
     const { createHash } = require('crypto');
     const maxLen = 64 - 39;

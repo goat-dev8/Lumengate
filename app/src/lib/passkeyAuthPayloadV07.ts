@@ -72,6 +72,11 @@ function buildAuthPayloadScVal(signerMapEntry: xdr.ScMapEntry, contextRuleIds: n
   return xdr.ScVal.scvMap(entries);
 }
 
+/** Soroban address credentials expect AuthPayload as XDR bytes, not a raw ScVal map. */
+function buildAuthPayloadSignature(signerMapEntry: xdr.ScMapEntry, contextRuleIds: number[]): xdr.ScVal {
+  return xdr.ScVal.scvBytes(buildAuthPayloadScVal(signerMapEntry, contextRuleIds).toXDR());
+}
+
 function buildSignatureMapEntry(
   webauthnVerifierAddress: string,
   keyData: Buffer,
@@ -82,7 +87,7 @@ function buildSignatureMapEntry(
     xdr.ScVal.scvAddress(Address.fromString(webauthnVerifierAddress).toScAddress()),
     xdr.ScVal.scvBytes(keyData),
   ]);
-  const sigDataScVal = xdr.ScVal.scvMap([
+  const sigDataEntries = [
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('authenticator_data'),
       val: xdr.ScVal.scvBytes(sigData.authenticator_data),
@@ -95,7 +100,9 @@ function buildSignatureMapEntry(
       key: xdr.ScVal.scvSymbol('signature'),
       val: xdr.ScVal.scvBytes(sigData.signature),
     }),
-  ]);
+  ];
+  sigDataEntries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
+  const sigDataScVal = xdr.ScVal.scvMap(sigDataEntries);
   return new xdr.ScMapEntry({
     key: keyVal,
     val: xdr.ScVal.scvBytes(sigDataScVal.toXDR()),
@@ -224,7 +231,7 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
       client_data: base64url.toBuffer(authResponse.response.clientDataJSON),
       signature: Buffer.from(compactedSignature),
     });
-    credentials.signature(buildAuthPayloadScVal(scMapEntry, contextRuleIds));
+    credentials.signature(buildAuthPayloadSignature(scMapEntry, contextRuleIds));
 
     if (credentialIdStr) {
       await kitAny.storage.update(credentialIdStr, { lastUsedAt: Date.now() });
