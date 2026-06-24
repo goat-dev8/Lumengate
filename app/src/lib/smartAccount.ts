@@ -1,4 +1,4 @@
-import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address } from '@stellar/stellar-sdk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import base64url from 'base64url';
 import {
@@ -15,6 +15,8 @@ export { passkeyUserName } from './passkeyUserHandle';
 export type SmartAccountState = {
   smartAccountAddress: string;
   credentialId: string;
+  /** Base64-encoded secp256r1 public key for passkey signing lookups. */
+  passkeyPublicKey?: string;
   createdAt: number;
   deploymentHash?: string;
   compliancePolicyInstalled?: boolean;
@@ -76,17 +78,44 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
   });
 }
 
-function complianceInstallParam(config: DeploymentConfig): xdr.ScVal {
-  return xdr.ScVal.scvMap([
-    new xdr.ScMapEntry({
-      key: xdr.ScVal.scvSymbol('adapter'),
-      val: nativeToScVal(config.rwaAdapterId, { type: 'address' }),
-    }),
-    new xdr.ScMapEntry({
-      key: xdr.ScVal.scvSymbol('policy_id'),
-      val: nativeToScVal(config.policyId, { type: 'u32' }),
-    }),
+function complianceInstallParam(config: DeploymentConfig): Record<string, unknown> {
+  return {
+    adapter: config.rwaAdapterId,
+    policy_id: config.policyId,
+  };
+}
+
+/** smart-account-kit-bindings decode stale ContextRule specs; avoid on-chain get_context_rules during signing. */
+function patchWalletContextRulesLookup(
+  kit: SmartAccountKit,
+  config: DeploymentConfig,
+  created: Pick<CreateWalletResult, 'credentialId' | 'publicKey'>,
+): void {
+  const wallet = kit.wallet as { get_context_rules?: (...args: unknown[]) => Promise<{ result: unknown[] }> } | undefined;
+  if (!wallet?.get_context_rules || !config.webauthnVerifierId) return;
+
+  const keyData = Buffer.concat([
+    Buffer.from(created.publicKey),
+    base64url.toBuffer(created.credentialId),
   ]);
+  const defaultRule = {
+    id: 0,
+    context_type: { tag: 'Default' as const },
+    name: 'default',
+    policies: [] as string[],
+    signers: [
+      {
+        tag: 'External' as const,
+        values: [config.webauthnVerifierId, keyData],
+      },
+    ],
+    valid_until: undefined,
+  };
+
+  (wallet as { get_context_rules: (args: { context_rule_type: { tag: string } }) => Promise<{ result: unknown[] }> })
+    .get_context_rules = async (args) => ({
+    result: args.context_rule_type.tag === 'Default' ? [defaultRule] : [],
+  });
 }
 
 async function submitResultOrThrow(result: TransactionResult, fallback: string): Promise<string> {
@@ -120,6 +149,8 @@ export async function createPersonalSmartAccount(
     ? await submitResultOrThrow(created.submitResult, 'Smart account deployment failed')
     : undefined;
 
+  patchWalletContextRulesLookup(kit, config, created);
+
   const policyTx = await kit.policies.add(0, config.compliancePolicyId, complianceInstallParam(config));
   const policyResult = await kit.signAndSubmit(policyTx, {
     forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
@@ -132,6 +163,7 @@ export async function createPersonalSmartAccount(
   return {
     smartAccountAddress: created.contractId,
     credentialId: created.credentialId,
+    passkeyPublicKey: Buffer.from(created.publicKey).toString('base64'),
     createdAt: Date.now(),
     deploymentHash,
     compliancePolicyInstalled: true,
@@ -148,6 +180,12 @@ export async function connectPersonalSmartAccount(
     contractId: state.smartAccountAddress,
     credentialId: state.credentialId,
   });
+  if (state.passkeyPublicKey) {
+    patchWalletContextRulesLookup(kit, config, {
+      credentialId: state.credentialId,
+      publicKey: Buffer.from(state.passkeyPublicKey, 'base64'),
+    });
+  }
   return kit;
 }
 
