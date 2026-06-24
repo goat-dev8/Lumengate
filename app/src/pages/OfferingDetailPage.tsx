@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowRight, Shield, ExternalLink } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -7,6 +7,8 @@ import { Button } from '../components/ui/Button';
 import { EmptyState, Skeleton } from '../components/ui/States';
 import { PageHeader } from '../components/fintech/PageHeader';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
+import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
+import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { useApp } from '../context/AppContext';
 import { useOffering } from '../hooks/useOfferings';
 import type { LiveOffering } from '../lib/offerings';
@@ -27,6 +29,8 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
     setPolicyKey,
     setSelectedOfferingId,
   } = useApp();
+  const navigate = useNavigate();
+  const advanced = useAdvancedMode();
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
   const policy = policyByKey(offering.requiredPolicy);
   const canInvest = Boolean(address && activeProof);
@@ -39,11 +43,16 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
     setSelectedOfferingId(offering.id);
     setPolicyKey(offering.requiredPolicy);
     await requestCredential(offering.requiredPolicy);
+    navigate('/app/verify');
   };
 
   return (
     <AppShell>
       <PageHeader eyebrow="Investment detail" title={offering.title} subtitle={offering.description} />
+
+      <div className="mb-6 flex justify-end">
+        <AdvancedModeToggle />
+      </div>
 
       <div className="grid gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-6">
@@ -97,7 +106,9 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
             </ul>
           </Card>
 
-          <UsdcCompliancePanel config={config} walletAddress={address} variant="compact" />
+          {advanced ? (
+            <UsdcCompliancePanel config={config} walletAddress={address} variant="compact" />
+          ) : null}
         </div>
 
         <div className="space-y-6">
@@ -118,6 +129,7 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
           <Card>
             <CardHeader title="Invest" />
             <div className="space-y-3">
+              <WalletSigningNotice compact />
               {!address ? (
                 <Button loading={connecting} className="w-full" onClick={() => connect()}>
                   Connect account

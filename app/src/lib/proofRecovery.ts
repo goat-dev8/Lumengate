@@ -1,6 +1,6 @@
 import type { ProofLifecycleState } from './proofLifecycle';
 
-export type RecoveryStep = 'credential' | 'proof' | 'passport';
+export type RecoveryStep = 'credential' | 'proof' | 'ready';
 
 export type RecoveryPlan = {
   step: RecoveryStep;
@@ -34,20 +34,20 @@ export function isStaleCredentialState(
   return lifecycle.lifecycle === 'consumed' && hasCredential;
 }
 
+export type VerifyStepId = 'wallet' | 'credential' | 'proof' | 'ready';
+
+/** Four-step consumer verify flow — passkey is optional and not part of gating. */
 export function verifyStepFlags(input: {
   address: boolean;
-  passkey: boolean;
   credential: boolean;
   activeProof: boolean;
-  passportActivated: boolean;
   lifecycle: ProofLifecycleState['lifecycle'];
-}) {
+}): Record<VerifyStepId, boolean> {
   const consumed = input.lifecycle === 'consumed';
   return {
     wallet: input.address,
-    passkey: input.passkey,
     credential: input.credential && !consumed,
     proof: input.activeProof,
-    passport: input.passportActivated && input.activeProof,
+    ready: input.activeProof,
   };
 }

@@ -11,7 +11,7 @@ import { InstitutionalWidget } from '../components/fintech/InstitutionalWidget';
 import { useApp } from '../context/AppContext';
 import { buildPassportSnapshot } from '../lib/passport';
 import { proofMatchesCredential } from '../lib/credentialProof';
-import { readBalance, readUsdcSacBalance } from '../lib/contracts';
+import { readBalance, readComplianceAdminUsdcBalance } from '../lib/contracts';
 import { allocationFromActivity } from '../lib/portfolio';
 import { truncateMiddle } from '../lib/utils';
 
@@ -35,9 +35,13 @@ export function PortfolioPage() {
         setBalance(null);
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
-    readUsdcSacBalance(config, address)
-      .then(setUsdcBalance)
-      .catch(() => setUsdcBalance(null));
+    if (config.complianceSacAdminId) {
+      readComplianceAdminUsdcBalance(config, address)
+        .then((snap) => setUsdcBalance(snap.formatted))
+        .catch(() => setUsdcBalance(null));
+    } else {
+      setUsdcBalance(null);
+    }
   }, [address, config, activity]);
 
   useEffect(() => {
@@ -118,9 +122,9 @@ export function PortfolioPage() {
             <InstitutionalWidget label="Confirmation" value={proofStatus} sub="Settlement readiness" href="/app/verify" />
             <InstitutionalWidget label="Holdings" value={balanceError ? 'RPC error' : `${balance ?? '—'} RWA`} sub="Treasury units" />
             <InstitutionalWidget
-              label="USDC (SAC)"
+              label="USDC (settlement)"
               value={usdcBalance !== null ? `${usdcBalance} USDC` : '—'}
-              sub="Official testnet SAC balance"
+              sub="Compliance pool balance"
             />
             <InstitutionalWidget
               label="Wallet"

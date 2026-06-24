@@ -10,8 +10,8 @@ const PRIVATE = [
 
 const DISCLOSED = [
   'Policy requirements satisfied at settlement',
-  'Nullifier validity and replay protection',
-  'Settlement transaction hash for audit',
+  'One-time passport use per settlement',
+  'Settlement reference for audit',
 ];
 
 export function PrivacyJourney({ compact }: { compact?: boolean }) {

@@ -50,10 +50,10 @@ export function CompliancePage() {
   });
 
   useEffect(() => {
-    if (address && credential && proof) {
+    if (address && (proofReceipt || settlementTx || (credential && proof))) {
       refreshProofReceipt().catch(() => undefined);
     }
-  }, [address, credential, proof, refreshProofReceipt]);
+  }, [address, credential, proof, proofReceipt, settlementTx, refreshProofReceipt]);
 
   const handleReplay = async () => {
     if (!address) return;

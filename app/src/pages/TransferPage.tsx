@@ -17,15 +17,17 @@ import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
+import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { isProofUsable } from '../lib/proofLifecycle';
 import { friendlyAssetName } from '../lib/productState';
+import { parseStellarAmount } from '../lib/assetAmount';
 import {
   buildTransferTransaction,
   buildUsdcTransferTransaction,
   buildEurcTransferTransaction,
   formatSorobanUserError,
   readBalance,
-  readUsdcSacBalance,
+  readComplianceAdminUsdcBalance,
   readEurcSacBalance,
   validateStellarAddress,
 } from '../lib/contracts';
@@ -48,7 +50,6 @@ export function TransferPage() {
     signAndSubmit,
     pushActivity,
     recordTransferTx,
-    setPassportActivated,
     proofLifecycle,
     syncProofLifecycle,
     beginProofRecovery,
@@ -81,9 +82,13 @@ export function TransferPage() {
     readBalance(config, address)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
-    readUsdcSacBalance(config, address)
-      .then(setUsdcBalance)
-      .catch(() => setUsdcBalance(null));
+    if (config.complianceSacAdminId) {
+      readComplianceAdminUsdcBalance(config, address)
+        .then((snap) => setUsdcBalance(snap.formatted))
+        .catch(() => setUsdcBalance(null));
+    } else {
+      setUsdcBalance(null);
+    }
     if (config.eurcSacId) {
       readEurcSacBalance(config, address)
         .then(setEurcBalance)
@@ -115,11 +120,15 @@ export function TransferPage() {
     }
 
     if (Number(amount) <= 0) {
-
       setError('Enter a positive amount.');
-
       return;
+    }
 
+    try {
+      parseStellarAmount(amount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
     }
 
     if (asset === 'usdc') {
@@ -182,14 +191,12 @@ export function TransferPage() {
         status: 'success',
       });
 
-      setPassportActivated(false);
       navigate('/app/compliance');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       const friendly = formatSorobanUserError(raw);
       setError(friendly);
       if (raw.includes('Error(Contract, #6)')) {
-        setPassportActivated(false);
         await syncProofLifecycle();
       }
 
@@ -240,10 +247,11 @@ export function TransferPage() {
         </div>
         <ProductHero
           eyebrow="Send"
-          title="Send regulated assets privately"
-          subtitle="Choose an asset, enter a recipient, and Lumengate confirms you are allowed before settlement. No identity details are shown to the recipient or public viewers."
+          title="Send privately"
+          subtitle="Move regulated assets with a private eligibility check. Your wallet signs the settlement."
         />
 
+        <WalletSigningNotice compact />
         <PrivacyJourney compact />
 
 

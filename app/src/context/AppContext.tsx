@@ -739,7 +739,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPofProofState(null);
     setProofDurationSec(null);
     setPassportActivatedState(false);
-    setProofReceipt(null);
     setReplayBlocked(false);
     setReplayMessage(null);
     setProofLifecycle({

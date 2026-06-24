@@ -2,7 +2,7 @@ import type { IssuerCredentialResponse } from './config';
 import type { ProofBundle } from './contracts';
 import type { ProofLifecycleState } from './proofLifecycle';
 
-export type ProductStepId = 'connect' | 'secure' | 'passport' | 'confirm' | 'invest' | 'receipt';
+export type ProductStepId = 'connect' | 'verify' | 'passport' | 'invest' | 'receipt';
 
 export type ProductStep = {
   id: ProductStepId;
@@ -21,7 +21,6 @@ export type ProductReadiness = {
 
 export function buildProductSteps(input: {
   address: string | null;
-  passkeyReady?: boolean;
   credential: IssuerCredentialResponse | null;
   proof: ProofBundle | null;
   lifecycle: ProofLifecycleState['lifecycle'];
@@ -29,21 +28,19 @@ export function buildProductSteps(input: {
 }): ProductStep[] {
   const flags = [
     Boolean(input.address),
-    Boolean(input.passkeyReady),
     Boolean(input.credential && input.lifecycle !== 'consumed'),
     Boolean(input.proof && input.lifecycle === 'ready'),
-    Boolean(input.hasSettlement),
+    Boolean(input.proof && input.lifecycle === 'ready'),
     Boolean(input.hasSettlement),
   ];
-  const current = Math.max(0, flags.findIndex((flag) => !flag));
-  const currentIndex = current === -1 ? flags.length - 1 : current;
+  const firstIncomplete = flags.findIndex((flag) => !flag);
+  const currentIndex = firstIncomplete === -1 ? flags.length - 1 : firstIncomplete;
   const steps: Omit<ProductStep, 'state'>[] = [
-    { id: 'connect', label: 'Connect', description: 'Link your Stellar account.' },
-    { id: 'secure', label: 'Secure', description: 'Enable passkey on this device.' },
-    { id: 'passport', label: 'Passport', description: 'Receive private eligibility.' },
-    { id: 'confirm', label: 'Confirm', description: 'Confirm you are allowed.' },
-    { id: 'invest', label: 'Invest', description: 'Choose an eligible asset.' },
-    { id: 'receipt', label: 'Receipt', description: 'Keep an audit-ready record.' },
+    { id: 'connect', label: 'Connect', description: 'Link your Stellar wallet.' },
+    { id: 'verify', label: 'Verify', description: 'Confirm you meet the policy.' },
+    { id: 'passport', label: 'Passport', description: 'Receive your private passport.' },
+    { id: 'invest', label: 'Invest', description: 'Choose a regulated offering.' },
+    { id: 'receipt', label: 'Receipt', description: 'Keep your settlement record.' },
   ];
 
   return steps.map((step, index) => ({
@@ -60,17 +57,17 @@ export function getProductReadiness(input: {
 }): ProductReadiness {
   if (!input.address) {
     return {
-      title: 'Start with a private compliance passport',
-      description: 'Connect once, confirm eligibility privately, then access regulated assets.',
-      cta: 'Connect account',
+      title: 'Private investing on Stellar',
+      description: 'Connect once, verify eligibility privately, then access regulated investments.',
+      cta: 'Connect wallet',
       href: '/app/verify',
       tone: 'default',
     };
   }
   if (input.lifecycle === 'consumed') {
     return {
-      title: 'Renew your passport for the next settlement',
-      description: 'Your last confirmation was used successfully. Renew to invest or send again.',
+      title: 'Renew your passport for the next move',
+      description: 'Your last settlement succeeded. Issue a fresh passport before you invest or send again.',
       cta: 'Renew passport',
       href: '/app/verify#recovery-credential',
       tone: 'warning',
@@ -78,25 +75,25 @@ export function getProductReadiness(input: {
   }
   if (!input.credential) {
     return {
-      title: 'Get your compliance passport',
-      description: 'The issuer confirms you meet the selected policy without publishing personal details.',
-      cta: 'Get passport',
+      title: 'Verify your eligibility',
+      description: 'Get a private passport that proves you are allowed without revealing who you are.',
+      cta: 'Start verification',
       href: '/app/verify',
       tone: 'default',
     };
   }
   if (!input.proof || input.lifecycle !== 'ready') {
     return {
-      title: 'Confirm eligibility privately',
-      description: 'Create a private confirmation in your browser before settlement.',
+      title: 'Finish your private passport',
+      description: 'Confirm eligibility in your browser — takes a few seconds and stays on your device.',
       cta: 'Confirm eligibility',
       href: '/app/verify',
       tone: 'default',
     };
   }
   return {
-    title: 'Ready to invest',
-    description: 'Your passport is active for one compliant settlement.',
+    title: 'You are ready to invest',
+    description: 'Your passport is active for one compliant settlement. Choose an offering or send privately.',
     cta: 'Browse investments',
     href: '/app/marketplace',
     tone: 'ready',

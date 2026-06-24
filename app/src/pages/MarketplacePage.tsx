@@ -22,7 +22,9 @@ import { useOfferings } from '../hooks/useOfferings';
 
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { isProofUsable } from '../lib/proofLifecycle';
+import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
 
 import {
 
@@ -35,7 +37,7 @@ import {
   nullifierHexFromBundle,
   readBalance,
   readNullifierSpent,
-  readUsdcSacBalance,
+  readComplianceAdminUsdcBalance,
 } from '../lib/contracts';
 
 import type { LiveOffering } from '../lib/offerings';
@@ -109,6 +111,7 @@ export function MarketplacePage() {
 
   const [balance, setBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [usdcBalanceRaw, setUsdcBalanceRaw] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const [settling, setSettling] = useState(false);
@@ -150,9 +153,20 @@ export function MarketplacePage() {
         setBalance(null);
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
-    readUsdcSacBalance(config, address)
-      .then(setUsdcBalance)
-      .catch(() => setUsdcBalance(null));
+    if (config.complianceSacAdminId) {
+      readComplianceAdminUsdcBalance(config, address)
+        .then((snap) => {
+          setUsdcBalance(snap.formatted);
+          setUsdcBalanceRaw(snap.raw);
+        })
+        .catch(() => {
+          setUsdcBalance(null);
+          setUsdcBalanceRaw(null);
+        });
+    } else {
+      setUsdcBalance(null);
+      setUsdcBalanceRaw(null);
+    }
 
   }, [address, config, txHash, pofTxHash]);
 
@@ -271,11 +285,14 @@ export function MarketplacePage() {
     if (route === 'dex' && !config.compliantDexId) return 'CompliantDEX not configured';
     if (route === 'payroll' && !config.compliantPayrollId) return 'CompliantPayroll not configured';
     if (isUsdc) {
-      if (route === 'sac' && !config.complianceSacAdminId) return 'USDC admin contract not configured';
-      const min = Number(offering.minimumAmount);
-      const bal = usdcBalance !== null ? Number(usdcBalance) : NaN;
-      if (!Number.isNaN(bal) && bal < min) {
-        return `Minimum ${min} USDC (available ${usdcBalance})`;
+      if (route === 'sac' && !config.complianceSacAdminId) return 'USDC settlement not configured';
+      try {
+        const minRaw = parseStellarAmount(offering.minimumAmount);
+        if (usdcBalanceRaw !== null && !hasSufficientBalance(usdcBalanceRaw, minRaw)) {
+          return `Minimum ${offering.minimumAmount} USDC (available ${usdcBalance ?? '0'})`;
+        }
+      } catch {
+        return 'Invalid offering minimum amount';
       }
     } else if (balance !== null && BigInt(balance) < amount) {
       return `Minimum investment ${amount.toString()} units`;
@@ -522,44 +539,47 @@ export function MarketplacePage() {
 
           <p className="lg-section-eyebrow">Invest</p>
 
-          <h1 className="lg-section-title text-2xl lg:text-3xl">Passport-gated investments</h1>
+          <h1 className="lg-section-title text-2xl lg:text-3xl">Private investments</h1>
 
           <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
 
             {proofConsumed
               ? 'Your passport was used — renew it to invest again.'
               : activeProof
-                ? 'Your passport is verified. Select an offering to invest.'
+                ? 'You are verified. Choose an offering and confirm in your wallet.'
                 : credential
-                  ? 'Confirm eligibility to unlock investing.'
-                  : `${offerings.length} investments available — get your passport first.`}
+                  ? 'Finish eligibility to unlock investing.'
+                  : `${offerings.length} offerings available — verify once to get started.`}
 
           </p>
 
         </div>
 
         {address ? (
-
-          <div className="rounded-xl border border-[#e3e8ee] bg-white px-5 py-3 shadow-sm">
-
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Available treasury units</div>
-
-            {balanceError ? (
-
-              <p className="mt-1 text-sm text-status-err">{balanceError}</p>
-
-            ) : (
-
-              <div className="text-xl font-semibold tabular-nums text-[#012b54]">
-
-                {balance !== null ? `${balance} units` : 'Reading…'}
-
+          <div className="flex flex-wrap gap-3">
+            <div className="rounded-xl border border-[#e3e8ee] bg-white px-5 py-3 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
+                Treasury units
               </div>
-
-            )}
-
+              {balanceError ? (
+                <p className="mt-1 text-sm text-status-err">{balanceError}</p>
+              ) : (
+                <div className="text-xl font-semibold tabular-nums text-[#012b54]">
+                  {balance !== null ? balance : 'Reading…'}
+                </div>
+              )}
+            </div>
+            {config.complianceSacAdminId ? (
+              <div className="rounded-xl border border-[#e3e8ee] bg-white px-5 py-3 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
+                  USDC for settlement
+                </div>
+                <div className="text-xl font-semibold tabular-nums text-[#012b54]">
+                  {usdcBalance !== null ? `${usdcBalance} USDC` : 'Reading…'}
+                </div>
+              </div>
+            ) : null}
           </div>
-
         ) : null}
 
       </div>
@@ -574,6 +594,12 @@ export function MarketplacePage() {
               navigate('/app/verify#recovery-credential');
             }}
           />
+        </div>
+      ) : null}
+
+      {address && activeProof ? (
+        <div className="mb-6">
+          <WalletSigningNotice compact />
         </div>
       ) : null}
 

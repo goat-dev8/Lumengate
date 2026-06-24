@@ -33,8 +33,8 @@ test.describe('Lumengate institutional shell', () => {
 
   test('verify page shows guided compliance flow', async ({ page }) => {
     await page.goto('/app/verify');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(/prove compliance/i);
-    await expect(page.getByText(/Secure this device|Passkey/i)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/verify eligibility/i);
+    await expect(page.getByText(/Settlements are signed with your Stellar wallet/i)).toBeVisible();
   });
 
   test('issuer health reachable when service configured', async ({ request }) => {

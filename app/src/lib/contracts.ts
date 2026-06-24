@@ -10,6 +10,7 @@ import {
   BASE_FEE,
 } from '@stellar/stellar-sdk';
 import type { DeploymentConfig } from './config';
+import { formatStellarAmount, hasSufficientBalance, parseStellarAmount } from './assetAmount';
 import { bytesToHex } from './utils';
 
 export type ProofBundle = {
@@ -152,7 +153,11 @@ export async function readEurcSacBalance(config: DeploymentConfig, holder: strin
   return readSacBalance(config, config.eurcSacId, holder);
 }
 
-async function readSacBalance(config: DeploymentConfig, sacId: string, holder: string): Promise<string> {
+async function readSacBalanceRaw(
+  config: DeploymentConfig,
+  sacId: string,
+  holder: string,
+): Promise<bigint> {
   const s = server(config.rpcUrl);
   const contract = new Contract(sacId);
   const tx = new TransactionBuilder(readOnlyLedgerAccount(), {
@@ -166,10 +171,61 @@ async function readSacBalance(config: DeploymentConfig, sacId: string, holder: s
   if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
   const val = sim.result?.retval;
   if (!val) throw new Error('No SAC balance returned');
-  const raw = BigInt(String(scValToNative(val)));
-  const whole = raw / 10_000_000n;
-  const frac = (raw % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
-  return frac ? `${whole}.${frac}` : whole.toString();
+  return BigInt(String(scValToNative(val)));
+}
+
+async function readSacBalance(config: DeploymentConfig, sacId: string, holder: string): Promise<string> {
+  const raw = await readSacBalanceRaw(config, sacId, holder);
+  return formatStellarAmount(raw);
+}
+
+/** Balance on the exact USDC SAC wired into ComplianceSacAdmin (settlement source of truth). */
+export async function readComplianceAdminUsdcBalance(
+  config: DeploymentConfig,
+  holder: string,
+): Promise<{ formatted: string; raw: bigint; sacId: string }> {
+  if (!config.complianceSacAdminId) {
+    throw new Error('ComplianceSacAdmin not configured');
+  }
+  const s = server(config.rpcUrl);
+  const admin = new Contract(config.complianceSacAdminId);
+  const sacTx = new TransactionBuilder(readOnlyLedgerAccount(), {
+    fee: '100000',
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(admin.call('sac_address'))
+    .setTimeout(30)
+    .build();
+  const sacSim = await s.simulateTransaction(sacTx);
+  if (rpc.Api.isSimulationError(sacSim)) throw new Error(sacSim.error);
+  const sacVal = sacSim.result?.retval;
+  if (!sacVal) throw new Error('ComplianceSacAdmin sac_address unavailable');
+  const sacId = String(scValToNative(sacVal));
+  const raw = await readSacBalanceRaw(config, sacId, holder);
+  return { formatted: formatStellarAmount(raw), raw, sacId };
+}
+
+export async function assertSufficientSacBalance(
+  config: DeploymentConfig,
+  holder: string,
+  amount: string,
+  assetLabel: string,
+  sacId?: string,
+): Promise<void> {
+  const amountRaw = parseStellarAmount(amount);
+  let balanceRaw: bigint;
+  if (sacId) {
+    balanceRaw = await readSacBalanceRaw(config, sacId, holder);
+  } else {
+    const snap = await readComplianceAdminUsdcBalance(config, holder);
+    balanceRaw = snap.raw;
+  }
+  if (!hasSufficientBalance(balanceRaw, amountRaw)) {
+    throw new Error(
+      `Insufficient ${assetLabel} for this transfer. Available: ${formatStellarAmount(balanceRaw)} ${assetLabel}. ` +
+        'Compliant settlement uses your Soroban token balance — try a smaller amount or use Treasury units instead.',
+    );
+  }
 }
 
 export async function buildUsdcTransferTransaction(
@@ -190,7 +246,8 @@ export async function buildUsdcTransferTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
-  const amountRaw = BigInt(Math.round(Number(amount) * 1e7));
+  const amountRaw = parseStellarAmount(amount);
+  await assertSufficientSacBalance(config, from, amount, 'USDC');
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
@@ -236,7 +293,9 @@ export async function buildEurcTransferTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
-  const amountRaw = BigInt(Math.round(Number(amount) * 1e7));
+  const amountRaw = parseStellarAmount(amount);
+  if (!config.eurcSacId) throw new Error('EURC SAC not configured');
+  await assertSufficientSacBalance(config, from, amount, 'EURC', config.eurcSacId);
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
@@ -576,6 +635,15 @@ export function formatSorobanUserError(message: string): string {
     return (
       'Recipient cannot receive USDC — they have no trustline for the official testnet USDC issuer. ' +
       'Use the treasury settlement address (pre-filled on USDC transfers) or ask the recipient to add USDC in their wallet first.'
+    );
+  }
+  if (
+    message.includes('Error(Contract, #10)') ||
+    message.toLowerCase().includes('balance is not within the allowed range')
+  ) {
+    return (
+      'Insufficient balance for this transfer. Compliant USDC settlement uses your Soroban token balance, ' +
+      'which can differ from the classic wallet display. Try a smaller amount or send Treasury units instead.'
     );
   }
   return message;

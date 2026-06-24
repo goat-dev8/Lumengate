@@ -27,7 +27,7 @@ export type JourneyInput = {
   replayBlocked: boolean;
 };
 
-/** Institutional onboarding progress — no demo framing. */
+/** Consumer onboarding progress on the receipt page. */
 export function buildUserJourney(input: JourneyInput): JourneyStep[] {
   const hasWallet = Boolean(input.address);
   const hasCredential = Boolean(input.credential);
@@ -35,44 +35,44 @@ export function buildUserJourney(input: JourneyInput): JourneyStep[] {
   const hasTransfer =
     Boolean(input.receipt?.transactions.transfer) ||
     input.receipt?.settlementStatus === 'verified';
-  const hasReceipt = input.receipt?.settlementStatus === 'verified';
+  const hasReceipt = input.receipt?.settlementStatus === 'verified' || Boolean(input.receipt?.transactions.transfer);
   const hasReplay = input.replayBlocked || Boolean(input.receipt?.replayBlocked);
 
   const steps: Omit<JourneyStep, 'state'>[] = [
     {
       id: 'connect',
-      label: 'Connect account',
-      description: 'Link your Stellar account to begin eligibility verification.',
+      label: 'Connect wallet',
+      description: 'Link your Stellar account to begin.',
       href: '/app/verify',
     },
     {
       id: 'credential',
-      label: 'Receive credential',
-      description: 'Issuer attestation bound to your account — identity stays off-chain.',
+      label: 'Get passport',
+      description: 'Receive your private eligibility passport.',
       href: '/app/verify',
     },
     {
       id: 'prove',
       label: 'Confirm eligibility',
-      description: 'Private confirmation that you satisfy the active policy.',
+      description: 'Private confirmation that you are allowed to invest.',
       href: '/app/verify',
     },
     {
       id: 'invest',
-      label: 'Settle privately',
-      description: 'Move USDC, EURC, or tokenized assets with compliance enforced at settlement.',
-      href: '/app/send',
+      label: 'Invest or send',
+      description: 'Complete a compliant settlement on Stellar.',
+      href: '/app/marketplace',
     },
     {
       id: 'receipt',
-      label: 'Compliance receipt',
-      description: 'Verifiable settlement record for your auditor.',
+      label: 'Settlement receipt',
+      description: 'Your audit-ready record is saved here.',
       href: '/app/compliance',
     },
     {
       id: 'replay',
-      label: 'Replay protection',
-      description: 'Each confirmation can authorize settlement once — reuse is blocked on-chain.',
+      label: 'One-time use',
+      description: 'Each passport authorizes one settlement — renew for the next one.',
       href: '/app/compliance',
     },
   ];

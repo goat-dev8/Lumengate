@@ -30,6 +30,7 @@ function AppRoutes() {
       <Route path="/app/marketplace/:offeringId" element={<OfferingDetailRoute />} />
       <Route path="/app/portfolio" element={<PortfolioPage />} />
       <Route path="/app/compliance" element={<CompliancePage />} />
+      <Route path="/app/receipt" element={<Navigate to="/app/compliance" replace />} />
       <Route path="/app/activity" element={<ActivityPage />} />
       <Route path="/app/settings" element={<SettingsPage />} />
       <Route path="/app/credential" element={<Navigate to="/app/verify" replace />} />
