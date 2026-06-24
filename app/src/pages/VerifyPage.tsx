@@ -225,7 +225,7 @@ export function VerifyPage() {
     (currentStep === 'credential' || flags.credential || proofConsumed || inRecovery) && Boolean(address);
   const needsNewPassport = proofConsumed || inRecovery || currentStep === 'credential' || !credential;
   const showProofStep =
-    Boolean(credential) && (currentStep === 'proof' || flags.proof || proofConsumed || inRecovery);
+    Boolean(credential) && !proofConsumed && flags.credential && (currentStep === 'proof' || flags.proof);
 
   return (
     <AppShell>
