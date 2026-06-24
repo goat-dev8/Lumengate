@@ -1,6 +1,7 @@
-import { Address } from '@stellar/stellar-sdk';
+import { Address, hash, Keypair, xdr } from '@stellar/stellar-sdk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import base64url from 'base64url';
+import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
 import {
   IndexedDBStorage,
   SmartAccountKit,
@@ -78,10 +79,68 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
   });
 }
 
-function complianceInstallParam(config: DeploymentConfig): Record<string, unknown> {
-  return {
-    adapter: config.rwaAdapterId,
-    policy_id: config.policyId,
+/** CompliancePolicyParams encoded for Soroban Val (add_policy / deploy policies map). */
+function complianceInstallParamScVal(config: DeploymentConfig): xdr.ScVal {
+  if (!config.rwaAdapterId) {
+    throw new Error('RWA adapter is not configured.');
+  }
+  const entries = [
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('adapter'),
+      val: Address.fromString(config.rwaAdapterId).toScVal(),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('policy_id'),
+      val: xdr.ScVal.scvU32(config.policyId),
+    }),
+  ];
+  entries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
+  return xdr.ScVal.scvMap(entries);
+}
+
+const SMART_ACCOUNT_DEPLOYER = Keypair.fromRawEd25519Seed(
+  hash(Buffer.from('openzeppelin-smart-account-kit')),
+);
+
+type KitDeployInternals = {
+  buildDeployTransaction: (
+    credentialId: Buffer,
+    publicKey: Buffer,
+  ) => ReturnType<typeof SmartAccountClient.deploy>;
+  accountWasmHash: string;
+  webauthnVerifierAddress: string;
+  networkPassphrase: string;
+  rpcUrl: string;
+  timeoutInSeconds: number;
+};
+
+/** Install compliance policy in __constructor so deploy does not need a passkey-signed add_policy tx. */
+function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: DeploymentConfig): void {
+  if (!config.compliancePolicyId) return;
+  const deployable = kit as unknown as KitDeployInternals;
+  deployable.buildDeployTransaction = async (credentialId, publicKey) => {
+    const keyData = Buffer.concat([Buffer.from(publicKey), credentialId]);
+    const policies = new Map<string, xdr.ScVal>();
+    policies.set(config.compliancePolicyId!, complianceInstallParamScVal(config));
+    return SmartAccountClient.deploy(
+      {
+        signers: [
+          {
+            tag: 'External',
+            values: [deployable.webauthnVerifierAddress, keyData],
+          },
+        ],
+        policies,
+      },
+      {
+        networkPassphrase: deployable.networkPassphrase,
+        rpcUrl: deployable.rpcUrl,
+        wasmHash: deployable.accountWasmHash,
+        publicKey: SMART_ACCOUNT_DEPLOYER.publicKey(),
+        salt: hash(credentialId),
+        timeoutInSeconds: deployable.timeoutInSeconds,
+      },
+    );
   };
 }
 
@@ -133,6 +192,7 @@ export async function createPersonalSmartAccount(
     throw new Error('Smart account compliance policy is not configured.');
   }
   const kit = createSmartAccountKit(config);
+  patchDeployWithCompliancePolicy(kit, config);
   const created: CreateWalletResult & { submitResult?: TransactionResult } = await kit.createWallet(
     'Lumengate',
     passkeyUserName(walletAddress),
@@ -151,15 +211,6 @@ export async function createPersonalSmartAccount(
 
   patchWalletContextRulesLookup(kit, config, created);
 
-  const policyTx = await kit.policies.add(0, config.compliancePolicyId, complianceInstallParam(config));
-  const policyResult = await kit.signAndSubmit(policyTx, {
-    forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
-  });
-  const compliancePolicyTxHash = await submitResultOrThrow(
-    policyResult,
-    'Compliance policy installation failed',
-  );
-
   return {
     smartAccountAddress: created.contractId,
     credentialId: created.credentialId,
@@ -167,7 +218,7 @@ export async function createPersonalSmartAccount(
     createdAt: Date.now(),
     deploymentHash,
     compliancePolicyInstalled: true,
-    compliancePolicyTxHash,
+    compliancePolicyTxHash: deploymentHash,
   };
 }
 
