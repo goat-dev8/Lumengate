@@ -161,7 +161,7 @@ function patchWalletContextRulesLookup(
     id: 0,
     context_type: { tag: 'Default' as const },
     name: 'default',
-    policies: [] as string[],
+    policies: config.compliancePolicyId ? [config.compliancePolicyId] : [],
     signers: [
       {
         tag: 'External' as const,

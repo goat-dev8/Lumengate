@@ -68,7 +68,7 @@ import {
   type SignableTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
-import { buildFundSmartAccountUsdcXdr } from '../lib/smartAccountFunding';
+import { buildFundSmartAccountUsdcXdr, buildFundSmartAccountXlmXdr } from '../lib/smartAccountFunding';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -85,6 +85,7 @@ type AppContextValue = {
     credential: IssuerCredentialResponse;
   }>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
+  fundSmartAccountXlm: (amountXlm: string) => Promise<string>;
   connecting: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -1027,6 +1028,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [address, settlementAddress, config, signAndSubmit, pushActivity],
   );
 
+  const fundSmartAccountXlm = useCallback(
+    async (amountXlm: string): Promise<string> => {
+      if (!address) throw new Error('Connect wallet first');
+      if (!settlementAddress) throw new Error('Create your smart account first');
+      const xdr = await buildFundSmartAccountXlmXdr(config, address, settlementAddress, amountXlm);
+      const hash = await signAndSubmit(xdr);
+      pushActivity({
+        kind: 'verify',
+        title: 'Smart account funded with XLM',
+        detail: `${amountXlm} XLM → ${settlementAddress.slice(0, 8)}…`,
+        txHash: hash,
+        status: 'success',
+      });
+      return hash;
+    },
+    [address, settlementAddress, config, signAndSubmit, pushActivity],
+  );
+
   const value: AppContextValue = {
     config,
     address,
@@ -1064,6 +1083,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPofProof,
     ensureProofForAsset,
     fundSmartAccountUsdc,
+    fundSmartAccountXlm,
     generatePofProofForWallet,
     setPolicyKey,
     setSelectedOfferingId,

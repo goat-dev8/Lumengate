@@ -65,6 +65,7 @@ export function TransferPage() {
     createSmartAccount,
     ensureProofForAsset,
     fundSmartAccountUsdc,
+    fundSmartAccountXlm,
   } = useApp();
 
   const navigate = useNavigate();
@@ -341,6 +342,7 @@ export function TransferPage() {
             config={config}
             smartAccountAddress={settlementAddress}
             onFundUsdc={fundSmartAccountUsdc}
+            onFundXlm={fundSmartAccountXlm}
             onFunded={() => setBalanceRefresh((n: number) => n + 1)}
           />
         ) : null}

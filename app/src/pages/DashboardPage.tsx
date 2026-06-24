@@ -33,6 +33,7 @@ export function DashboardPage() {
     beginProofRecovery,
     settlementAddress,
     fundSmartAccountUsdc,
+    fundSmartAccountXlm,
   } = useApp();
   const navigate = useNavigate();
   const { offerings } = useOfferings();
@@ -114,6 +115,7 @@ export function DashboardPage() {
             config={config}
             smartAccountAddress={settlementAddress}
             onFundUsdc={fundSmartAccountUsdc}
+            onFundXlm={fundSmartAccountXlm}
           />
         </div>
       ) : null}

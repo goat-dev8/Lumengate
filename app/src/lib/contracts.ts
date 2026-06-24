@@ -8,6 +8,7 @@ import {
   StrKey,
   Account,
   BASE_FEE,
+  type Transaction,
 } from '@stellar/stellar-sdk';
 import type { DeploymentConfig } from './config';
 import { formatStellarAmount, hasSufficientBalance, parseStellarAmount } from './assetAmount';
@@ -39,6 +40,75 @@ function server(rpcUrl: string) {
 
 function readOnlyLedgerAccount(): Account {
   return new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
+}
+
+export async function resolveComplianceUsdcSacId(config: DeploymentConfig): Promise<string> {
+  if (!config.complianceSacAdminId) {
+    return config.usdcSacId;
+  }
+  const s = server(config.rpcUrl);
+  const admin = new Contract(config.complianceSacAdminId);
+  const tx = new TransactionBuilder(readOnlyLedgerAccount(), {
+    fee: '100000',
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(admin.call('sac_address'))
+    .setTimeout(30)
+    .build();
+  const sim = await s.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    return config.usdcSacId;
+  }
+  const val = sim.result?.retval;
+  if (!val) return config.usdcSacId;
+  return String(scValToNative(val));
+}
+
+function isSmartAccountAddress(address: string): boolean {
+  return address.startsWith('C') && StrKey.isValidContract(address);
+}
+
+function appendSessionProofBind(
+  builder: TransactionBuilder,
+  config: DeploymentConfig,
+  smartAccount: string,
+  proof: ProofBundle,
+): TransactionBuilder {
+  if (!config.compliancePolicyId || !isSmartAccountAddress(smartAccount)) {
+    return builder;
+  }
+  const policy = new Contract(config.compliancePolicyId);
+  return builder.addOperation(
+    policy.call(
+      'set_session_proof',
+      nativeToScVal(smartAccount, { type: 'address' }),
+      scBytesFromHex(proof.proofHex),
+      scBytesFromHex(proof.publicInputsHex),
+    ),
+  );
+}
+
+async function simulateAssembledTx(
+  s: rpc.Server,
+  draft: Transaction,
+): Promise<SmartAccountAssembledTransaction> {
+  const sim = await s.simulateTransaction(draft);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(sim.error || 'Transaction simulation failed');
+  }
+  return { built: draft, simulationData: sim };
+}
+
+export async function readContractXlmBalance(config: DeploymentConfig, contractId: string): Promise<string> {
+  try {
+    const res = await fetch(`${config.horizonUrl}/accounts/${contractId}`);
+    if (!res.ok) return '0';
+    const json = (await res.json()) as { balances?: Array<{ asset_type?: string; balance?: string }> };
+    const native = json.balances?.find((b) => b.asset_type === 'native');
+    return native?.balance ?? '0';
+  } catch {
+    return '0';
+  }
 }
 
 export async function readOnChainRoots(config: DeploymentConfig): Promise<{ root: string; revocationRoot: string; noteRoot: string }> {
@@ -291,10 +361,15 @@ export async function buildUsdcTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
-  const draft = new TransactionBuilder(acct, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
+  const draft = appendSessionProofBind(
+    new TransactionBuilder(acct, {
+      fee: String(Number(BASE_FEE) * 100),
+      networkPassphrase: config.networkPassphrase,
+    }),
+    config,
+    from,
+    proof,
+  )
     .addOperation(
       contract.call(
         'transfer_compliant',
@@ -307,11 +382,7 @@ export async function buildUsdcTransferTransaction(
     )
     .setTimeout(120)
     .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'USDC transfer simulation failed');
-  }
-  return { built: draft, simulationData: sim };
+  return simulateAssembledTx(s, draft);
 }
 
 export async function buildEurcTransferTransaction(
@@ -342,10 +413,15 @@ export async function buildEurcTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.complianceSacAdminId);
-  const draft = new TransactionBuilder(acct, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
+  const draft = appendSessionProofBind(
+    new TransactionBuilder(acct, {
+      fee: String(Number(BASE_FEE) * 100),
+      networkPassphrase: config.networkPassphrase,
+    }),
+    config,
+    from,
+    proof,
+  )
     .addOperation(
       contract.call(
         'transfer_compliant_eurc',
@@ -358,11 +434,7 @@ export async function buildEurcTransferTransaction(
     )
     .setTimeout(120)
     .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'EURC transfer simulation failed');
-  }
-  return { built: draft, simulationData: sim };
+  return simulateAssembledTx(s, draft);
 }
 
 export async function buildSwapCompliantTransaction(
@@ -386,10 +458,15 @@ export async function buildSwapCompliantTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantDexId);
-  const draft = new TransactionBuilder(acct, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
+  const draft = appendSessionProofBind(
+    new TransactionBuilder(acct, {
+      fee: String(Number(BASE_FEE) * 100),
+      networkPassphrase: config.networkPassphrase,
+    }),
+    config,
+    trader,
+    proof,
+  )
     .addOperation(
       contract.call(
         'swap_compliant',
@@ -402,11 +479,7 @@ export async function buildSwapCompliantTransaction(
     )
     .setTimeout(120)
     .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'CompliantDEX swap simulation failed');
-  }
-  return { built: draft, simulationData: sim };
+  return simulateAssembledTx(s, draft);
 }
 
 export async function buildPayCompliantTransaction(
@@ -416,7 +489,7 @@ export async function buildPayCompliantTransaction(
   employee: string,
   amount: string,
   proof: ProofBundle,
-): Promise<string> {
+): Promise<SmartAccountAssembledTransaction> {
   if (!config.compliantPayrollId) {
     throw new Error('CompliantPayroll not deployed. Set VITE_COMPLIANT_PAYROLL_ID.');
   }
@@ -430,10 +503,15 @@ export async function buildPayCompliantTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantPayrollId);
-  const draft = new TransactionBuilder(acct, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
+  const draft = appendSessionProofBind(
+    new TransactionBuilder(acct, {
+      fee: String(Number(BASE_FEE) * 100),
+      networkPassphrase: config.networkPassphrase,
+    }),
+    config,
+    payer,
+    proof,
+  )
     .addOperation(
       contract.call(
         'pay_compliant',
@@ -446,11 +524,7 @@ export async function buildPayCompliantTransaction(
     )
     .setTimeout(120)
     .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'CompliantPayroll payout simulation failed');
-  }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return simulateAssembledTx(s, draft);
 }
 
 export async function buildTransferTransaction(
@@ -461,7 +535,7 @@ export async function buildTransferTransaction(
   amount: string,
   proof: ProofBundle,
   scope: AssetScope,
-): Promise<string> {
+): Promise<SmartAccountAssembledTransaction> {
   const recipient = to.trim();
   if (!validateStellarAddress(recipient)) {
     throw new Error('Recipient must be a valid Stellar G-address');
@@ -473,10 +547,15 @@ export async function buildTransferTransaction(
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.rwaTokenId);
-  const draft = new TransactionBuilder(acct, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
+  const draft = appendSessionProofBind(
+    new TransactionBuilder(acct, {
+      fee: String(Number(BASE_FEE) * 100),
+      networkPassphrase: config.networkPassphrase,
+    }),
+    config,
+    from,
+    proof,
+  )
     .addOperation(
       contract.call(
         'transfer',
@@ -490,12 +569,7 @@ export async function buildTransferTransaction(
     .setTimeout(120)
     .build();
 
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'Transfer simulation failed');
-  }
-
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return simulateAssembledTx(s, draft);
 }
 
 export async function buildVerifyTransaction(
@@ -647,8 +721,20 @@ async function fetchTransactionStatus(rpcUrl: string, hash: string): Promise<str
 }
 
 function formatSubmitError(result: rpc.Api.SendTransactionResponse): string {
+  if (result.status === 'ERROR') {
+    const malformed =
+      typeof result.errorResult === 'object' &&
+      result.errorResult !== null &&
+      'result' in result.errorResult &&
+      (result.errorResult as { result?: { _switch?: { name?: string } } }).result?._switch?.name ===
+        'txMalformed';
+    if (malformed) {
+      return 'Transaction was rejected as malformed. Refresh the page and retry.';
+    }
+  }
   try {
-    return JSON.stringify(result);
+    const raw = JSON.stringify(result);
+    return formatSorobanUserError(raw);
   } catch {
     return 'Transaction submission failed';
   }
@@ -687,6 +773,22 @@ export function formatSorobanUserError(message: string): string {
       'Recipient cannot receive USDC — they have no trustline for the official testnet USDC issuer. ' +
       'Use the treasury settlement address (pre-filled on USDC transfers) or ask the recipient to add USDC in their wallet first.'
     );
+  }
+  if (
+    message.includes('Error(Auth, InvalidAction)') ||
+    message.includes('__check_auth') ||
+    message.includes('UnreachableCodeReached')
+  ) {
+    return (
+      'Passkey authorization failed. Confirm eligibility for this asset on Send, then retry. ' +
+      'If it persists, renew your passport on Verify and create a fresh smart account passkey.'
+    );
+  }
+  if (message.includes('Error(Contract, #1)') && message.toLowerCase().includes('notconfigured')) {
+    return 'Settlement proof is not bound to your smart account. Confirm eligibility and retry send.';
+  }
+  if (message.includes('txMalformed') || message.toLowerCase().includes('malformed')) {
+    return 'Transaction format was rejected. Refresh the page and retry funding or sending.';
   }
   if (
     message.includes('Error(Contract, #10)') ||
