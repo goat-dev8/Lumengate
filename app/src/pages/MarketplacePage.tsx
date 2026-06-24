@@ -43,11 +43,6 @@ import {
 import type { LiveOffering } from '../lib/offerings';
 
 import { offeringMinimumBigInt } from '../lib/offerings';
-import { loadStoredPasskey } from '../lib/passkeys';
-import {
-  authorizeSmartAccountTransaction,
-  smartAccountSettlementAddress,
-} from '../lib/smartAccount';
 
 import { policyByKey } from '../lib/policies';
 
@@ -149,7 +144,7 @@ export function MarketplacePage() {
 
     }
 
-    const balanceHolder = smartAccountSettlementAddress(config, loadStoredPasskey()) ?? address;
+    const balanceHolder = address;
     readBalance(config, balanceHolder)
       .then((b) => {
         setBalance(b);
@@ -392,8 +387,7 @@ export function MarketplacePage() {
       const recipient = offering.settlementAddress || config.marketplaceSettlementAddress;
       const amount = offering.minimumAmount;
       const route = offering.settlementRoute ?? (offering.settlementAsset === 'usdc' ? 'sac' : 'rwa');
-      const passkey = loadStoredPasskey();
-      const settlementFrom = smartAccountSettlementAddress(config, passkey) ?? address;
+      const settlementFrom = address;
       let xdr: string;
       if (route === 'dex') {
         xdr = await buildSwapCompliantTransaction(
@@ -433,11 +427,7 @@ export function MarketplacePage() {
         );
       }
 
-      const signedAuthXdr = passkey && settlementFrom !== address
-        ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
-        : xdr;
-
-      const hash = await signAndSubmit(signedAuthXdr);
+      const hash = await signAndSubmit(xdr);
 
       setTxHash(hash);
 

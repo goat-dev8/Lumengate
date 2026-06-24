@@ -183,7 +183,7 @@ export function VerifyPage() {
         durationSec,
         nullifier: bundle.publicInputs.nullifier,
       });
-      setProof(bundle, durationSec);
+      setProof(bundle, durationSec, fresh);
       pushActivity({
         kind: 'proof',
         title: 'Eligibility confirmed',
@@ -388,14 +388,14 @@ export function VerifyPage() {
           <Card>
             <CardHeader title="Optional — Secure this device" badge={<Badge>Passkey</Badge>} />
             <p className="text-sm text-slate-muted">
-              Save a passkey for smart-account settlement on this device.
+              Save a passkey on this device.
               {` RP ID: ${passkeyEnv.rpId}`}
               {!passkeyEnv.supported ? ' — requires HTTPS' : ''}
             </p>
             {passkeyRegisteredFor(passkey, config.lumengateSmartAccountId, config.webauthnVerifierId) ? (
               <p className="mt-3 text-sm text-brand">
                 <ShieldCheck className="mr-1 inline h-4 w-4" />
-                Passkey registered for smart-account settlement
+                Passkey registered on-chain
               </p>
             ) : (
               <Button

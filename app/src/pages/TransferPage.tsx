@@ -32,12 +32,8 @@ import {
   validateStellarAddress,
 } from '../lib/contracts';
 
-import { checkRecipientUsdcTrustline } from '../lib/horizon';
-import { loadStoredPasskey } from '../lib/passkeys';
-import {
-  authorizeSmartAccountTransaction,
-  smartAccountSettlementAddress,
-} from '../lib/smartAccount';
+import { checkRecipientUsdcCapacity } from '../lib/horizon';
+import { proofMatchesCredential } from '../lib/credentialProof';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -50,6 +46,7 @@ type AssetKind = 'rwa' | 'usdc' | 'eurc';
 export function TransferPage() {
   const {
     address,
+    credential,
     proof,
     config,
     signAndSubmit,
@@ -65,7 +62,10 @@ export function TransferPage() {
     beginProofRecovery();
     navigate('/app/verify#recovery-credential');
   };
-  const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
+  const activeProof =
+    proofLifecycle.lifecycle === 'ready' && proofMatchesCredential(proof, credential)
+      ? proof
+      : null;
 
   const [asset, setAsset] = useState<AssetKind>('rwa');
   const [to, setTo] = useState('');
@@ -84,19 +84,18 @@ export function TransferPage() {
 
   useEffect(() => {
     if (!address) return;
-    const balanceHolder = smartAccountSettlementAddress(config, loadStoredPasskey()) ?? address;
-    readBalance(config, balanceHolder)
+    readBalance(config, address)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, balanceHolder)
+      readComplianceAdminUsdcBalance(config, address)
         .then((snap) => setUsdcBalance(snap.formatted))
         .catch(() => setUsdcBalance(null));
     } else {
       setUsdcBalance(null);
     }
     if (config.eurcSacId) {
-      readEurcSacBalance(config, balanceHolder)
+      readEurcSacBalance(config, address)
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
@@ -139,7 +138,7 @@ export function TransferPage() {
 
     if (asset === 'usdc') {
 
-      const trustlineStatus = await checkRecipientUsdcTrustline(config, recipient);
+      const trustlineStatus = await checkRecipientUsdcCapacity(config, recipient, amount);
 
       if (trustlineStatus === 'missing') {
 
@@ -154,14 +153,17 @@ export function TransferPage() {
         return;
 
       }
+      if (trustlineStatus === 'insufficient_limit') {
+        setError('This recipient USDC trustline limit is too low for the amount.');
+        return;
+      }
 
     }
 
     setLoading(true);
     setError(null);
     try {
-      const passkey = loadStoredPasskey();
-      const settlementFrom = smartAccountSettlementAddress(config, passkey) ?? address;
+      const settlementFrom = address;
       const xdr =
         asset === 'usdc'
           ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
@@ -169,11 +171,7 @@ export function TransferPage() {
             ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
             : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof);
 
-      const signedAuthXdr = passkey && settlementFrom !== address
-        ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
-        : xdr;
-
-      const hash = await signAndSubmit(signedAuthXdr);
+      const hash = await signAndSubmit(xdr);
 
       setTxHash(hash);
 

@@ -16,7 +16,7 @@ export function WalletSigningNotice({ compact }: Props) {
         Settlements are signed before submission
       </p>
       <p className={`${compact ? 'mt-1' : 'mt-2'} text-sm text-[#475569]`}>
-        A registered passkey authorizes smart-account settlement; your Stellar wallet still pays network fees.
+        Your connected Stellar wallet authorizes and funds the settlement transaction.
       </p>
     </div>
   );

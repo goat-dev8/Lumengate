@@ -86,8 +86,8 @@ export function AdminPage() {
               />
               <p className="text-sm text-slate-muted">
                 {status.smartRules && status.smartRules > 0
-                  ? `Smart-account settlement has ${status.smartRules} active context rule${status.smartRules === 1 ? '' : 's'}.`
-                  : status.smartRulesError || 'Smart-account rules are not available from RPC yet.'}
+                  ? `Account contract has ${status.smartRules} active context rule${status.smartRules === 1 ? '' : 's'}.`
+                  : status.smartRulesError || 'Account contract rules are not available from RPC yet.'}
               </p>
             </Card>
             <Card>
@@ -142,7 +142,7 @@ export function AdminPage() {
                 ))}
               </dl>
               <p className="mt-4 text-sm text-slate-muted">
-                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}. Smart account
+                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}. Account contract
                 context rules: {status.smartRules ?? 'unavailable'}.
               </p>
             </Card>

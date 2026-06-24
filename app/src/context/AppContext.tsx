@@ -80,7 +80,11 @@ type AppContextValue = {
   proofReceipt: ProofReceipt | null;
   receiptLoading: boolean;
   setCredential: (c: IssuerCredentialResponse | null) => void;
-  setProof: (p: ProofBundle | null, durationSec?: number | null) => void;
+  setProof: (
+    p: ProofBundle | null,
+    durationSec?: number | null,
+    credentialOverride?: IssuerCredentialResponse | null,
+  ) => void;
   setPofProof: (p: ProofBundle | null) => void;
   generatePofProofForWallet: (threshold: bigint) => Promise<ProofBundle>;
   setPolicyKey: (key: PolicyKey) => void;
@@ -596,7 +600,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setProof = useCallback(
-    (p: ProofBundle | null, durationSec?: number | null) => {
+    (
+      p: ProofBundle | null,
+      durationSec?: number | null,
+      credentialOverride?: IssuerCredentialResponse | null,
+    ) => {
+      const proofCredential =
+        credentialOverride !== undefined ? credentialOverride : credential;
       setProofState(p);
       const duration = durationSec ?? null;
       setProofDurationSec(duration);
@@ -607,13 +617,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setReplayMessage(null);
         setProofReceipt(null);
         setConsumedTxHash(null);
-        setProofLifecycle(deriveProofLifecycle(credential, p, null));
+        setProofLifecycle(deriveProofLifecycle(proofCredential, p, null));
       }
       if (address && walletField) {
         persistSession({
           address,
           walletField,
-          credential,
+          credential: proofCredential,
           proof: p,
           pofProof,
           proofDurationSec: duration,
