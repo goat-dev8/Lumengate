@@ -52,11 +52,11 @@ echo "=== Deploy LumengateSmartAccount ==="
 SMART=$(deploy "$WASM/lumengate_smart_account.wasm" --admin "$ADMIN" --compliance_policy "$COMPLIANCE_POLICY" --adapter "$ADAPTER" --policy_id "$POLICY_ID")
 echo "LumengateSmartAccount: $SMART"
 
-echo "=== Register sample auditor (viewing key hash from env) ==="
-VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-demo-key}"
+echo "=== Register auditor (viewing key hash from env) ==="
+VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-testnet-key}"
 VIEWING_HASH=$(node -e "const c=require('crypto'); console.log(c.createHash('sha256').update(process.argv[1]).digest('hex'))" "$VIEWING_KEY")
 stellar contract invoke --id "$AUDITOR" --source-account admin --network testnet --send yes -- \
-  register_auditor --caller "$ADMIN" --auditor_id 1 --viewing_key_hash "$VIEWING_HASH" --label "Demo auditor" \
+  register_auditor --caller "$ADMIN" --auditor_id 1 --viewing_key_hash "$VIEWING_HASH" --label "Testnet auditor" \
   2>&1 | tee /tmp/register_auditor.log || true
 
 node -e "

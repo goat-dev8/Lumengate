@@ -12,7 +12,7 @@ export type UsdcBalanceSnapshot = {
   note: string;
 };
 
-/** Read classic USDC trustline balance via Horizon (compliance target — not demo settlement). */
+/** Read classic USDC trustline balance via Horizon; settlement checks use Soroban balances. */
 export async function fetchUsdcBalanceSnapshot(
   config: DeploymentConfig,
   accountId: string | null,

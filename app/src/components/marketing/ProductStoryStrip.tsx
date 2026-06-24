@@ -1,10 +1,10 @@
 import { KeyRound, Cpu, ShieldCheck, ArrowRightLeft } from 'lucide-react';
 
 const STEPS = [
-  { icon: KeyRound, label: 'Credential' },
-  { icon: Cpu, label: 'ZK Proof' },
-  { icon: ShieldCheck, label: 'Verify' },
-  { icon: ArrowRightLeft, label: 'Transfer' },
+  { icon: KeyRound, label: 'Passport' },
+  { icon: Cpu, label: 'Eligibility' },
+  { icon: ShieldCheck, label: 'Approve' },
+  { icon: ArrowRightLeft, label: 'Settle' },
 ];
 
 export function ProductStoryStrip() {

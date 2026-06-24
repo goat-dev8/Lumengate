@@ -96,21 +96,21 @@ function classifyEvent(contractId: string, config: DeploymentConfig, topic: xdr.
 function summarize(kind: ChainEventKind, contractId: string, topic: xdr.ScVal[]): string {
   switch (kind) {
     case 'EligibilityVerified':
-      return 'PolicyVerifier recorded eligibility (UltraHonk + nullifier consumed)';
+      return 'Eligibility checker recorded one-time settlement approval';
     case 'TransferGated':
-      return 'RwaToken settled a proof-gated transfer';
+      return 'RWA token settled an eligible transfer';
     case 'UsdcTransferGated':
-      return 'ComplianceSacAdmin settled a proof-gated USDC transfer';
+      return 'USDC settlement account released funds after eligibility check';
     case 'PolicyRegistered':
       return 'Verification key registered for policy_id';
     case 'RootUpdated':
-      return 'CredentialRegistry Merkle root updated';
+      return 'Passport registry eligibility record updated';
     case 'RevocationRootUpdated':
-      return 'CredentialRegistry revocation root updated';
+      return 'Passport registry restriction record updated';
     case 'HolderFrozen':
       return 'RwaToken holder freeze flag set';
     case 'NullifierSpent':
-      return 'PolicyVerifier persistent storage marks nullifier spent (anti-replay)';
+      return 'Passport was marked used so it cannot settle again';
     default: {
       const sym = topicSymbol(topic);
       return sym
@@ -357,7 +357,7 @@ export async function fetchEventsForContracts(
   });
 }
 
-/** Synthetic evidence when nullifier is spent on-chain (not an emitted contract event). */
+/** Synthetic evidence when the one-time passport marker is spent on-chain. */
 export function nullifierSpentEvidence(
   config: DeploymentConfig,
   txHash: string,
@@ -370,7 +370,7 @@ export function nullifierSpentEvidence(
     txHash,
     ledger,
     ledgerClosedAt: new Date().toISOString(),
-    summary: `Nullifier 0x${nullifierHex.slice(0, 16)}… recorded spent on PolicyVerifier`,
+    summary: `Passport settlement reference 0x${nullifierHex.slice(0, 16)}… recorded as used`,
     rawTopic: ['nullifier_spent', nullifierHex],
     source: 'chain_read',
   };

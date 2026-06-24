@@ -58,11 +58,11 @@ function IconRwa() {
 }
 
 const STEPS: Step[] = [
-  { id: 'eth', title: 'Ethereum', subtitle: 'Issuer signs', color: BRAND.eth, Icon: IconEth },
-  { id: 'cred', title: 'Credential', subtitle: 'Merkle anchored', color: BRAND.brand, Icon: IconCredential },
-  { id: 'zk', title: 'ZK Proof', subtitle: 'Private verify', color: BRAND.brand, Icon: IconProof },
-  { id: 'stellar', title: 'Stellar', subtitle: 'Policy check', color: BRAND.brand, Icon: IconStellar },
-  { id: 'rwa', title: 'RWA Access', subtitle: 'Settle', color: BRAND.navy, Icon: IconRwa },
+  { id: 'issuer', title: 'Issuer', subtitle: 'Checks access', color: BRAND.eth, Icon: IconEth },
+  { id: 'passport', title: 'Passport', subtitle: 'Private record', color: BRAND.brand, Icon: IconCredential },
+  { id: 'eligibility', title: 'Eligibility', subtitle: 'Confirmed privately', color: BRAND.brand, Icon: IconProof },
+  { id: 'stellar', title: 'Stellar', subtitle: 'Allows settlement', color: BRAND.brand, Icon: IconStellar },
+  { id: 'assets', title: 'Assets', subtitle: 'Receipt created', color: BRAND.navy, Icon: IconRwa },
 ];
 
 export function BrandFlowDiagram({
@@ -81,7 +81,7 @@ export function BrandFlowDiagram({
     <div
       className={`brand-flow ${isCompact ? 'brand-flow-compact' : ''} ${isWide ? 'brand-flow-wide' : ''} ${className}`}
       role="img"
-      aria-label="Ethereum issuer to credential, ZK proof, Stellar verification, RWA access"
+      aria-label="Issuer to passport, private eligibility confirmation, Stellar settlement, receipt"
     >
       <div className="brand-flow-track" aria-hidden>
         <div className={`brand-flow-track-line ${animated ? 'brand-flow-track-animated' : ''}`} />

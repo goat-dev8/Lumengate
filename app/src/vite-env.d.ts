@@ -25,12 +25,6 @@ interface ImportMetaEnv {
   readonly VITE_REFERENCE_TRANSFER_TX: string;
   readonly VITE_REFERENCE_FREEZE_TX: string;
   readonly VITE_REFERENCE_MARKETPLACE_TX?: string;
-  /** @deprecated use VITE_REFERENCE_* */
-  readonly VITE_DEMO_VERIFY_TX: string;
-  /** @deprecated use VITE_REFERENCE_* */
-  readonly VITE_DEMO_TRANSFER_TX: string;
-  /** @deprecated use VITE_REFERENCE_* */
-  readonly VITE_DEMO_FREEZE_TX: string;
 }
 
 interface ImportMeta {

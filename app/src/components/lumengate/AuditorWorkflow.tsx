@@ -1,10 +1,10 @@
 import { ArrowDown } from 'lucide-react';
 
 const STEPS = [
-  'Disclosure pack / public inputs',
-  'PolicyVerifier (live RPC)',
-  'RwaAdapter (SEP-57-style)',
-  'Live Stellar RPC',
+  'Audit record',
+  'Eligibility check',
+  'Settlement check',
+  'Stellar records',
   'Verification result',
 ];
 

@@ -29,7 +29,7 @@ export function deriveProofLifecycle(
     return {
       lifecycle: 'invalid',
       consumedTxHash: null,
-      reason: 'Proof does not match current passport — regenerate proof.',
+      reason: 'Eligibility confirmation does not match current passport — confirm again.',
     };
   }
   return { lifecycle: 'ready', consumedTxHash: null, reason: null };
@@ -71,7 +71,7 @@ export async function syncProofLifecycleOnChain(
       return {
         lifecycle: 'consumed',
         consumedTxHash: settlementTxHash,
-        reason: 'Proof consumed by a previous settlement.',
+        reason: 'Passport used by a previous settlement.',
       };
     }
     return { lifecycle: 'ready', consumedTxHash: null, reason: null };
@@ -81,7 +81,7 @@ export async function syncProofLifecycleOnChain(
     return {
       lifecycle: 'invalid',
       consumedTxHash: null,
-      reason: 'Proof does not match current passport — regenerate proof.',
+      reason: 'Eligibility confirmation does not match current passport — confirm again.',
     };
   }
 
@@ -89,7 +89,7 @@ export async function syncProofLifecycleOnChain(
     return {
       lifecycle: 'consumed',
       consumedTxHash: settlementTxHash,
-      reason: 'This passport nullifier was already spent. Request a new passport.',
+      reason: 'This passport was already used for settlement. Request a new passport.',
     };
   }
 

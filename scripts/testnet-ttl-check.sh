@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Extend Soroban contract instance TTL before demo / judging.
-# Run ~24h before a live demo to avoid archival failures on get_roots / transfer.
+# Extend Soroban contract instance TTL before production-readiness verification.
+# Run before live testnet checks to avoid archival failures on get_roots / transfer.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -44,19 +44,19 @@ extend_instance() {
     --network "$NETWORK"
 }
 
-echo "Lumengate demo TTL extend — network=$NETWORK ledgers=$LEDGERS source=$SOURCE"
+echo "Lumengate testnet TTL extend — network=$NETWORK ledgers=$LEDGERS source=$SOURCE"
 echo ""
 
-extend_instance "$PV" "PolicyVerifier"
-extend_instance "$CR" "CredentialRegistry"
-extend_instance "$RWA" "RwaToken"
+extend_instance "$PV" "Eligibility checker"
+extend_instance "$CR" "Passport registry"
+extend_instance "$RWA" "Asset token"
 
 if [[ -n "$IR" ]]; then
-  extend_instance "$IR" "IssuerRegistry"
+  extend_instance "$IR" "Issuer registry"
 fi
 
 echo ""
-echo "Done. Instance TTL extended for demo contracts."
-echo "If simulation still fails with StorageEntryNotFound, restore archived entries:"
+echo "Done. Instance TTL extended for testnet contracts."
+echo "If transaction preparation still fails with StorageEntryNotFound, restore archived entries:"
 echo "  stellar contract restore --id <CONTRACT_ID> --key <KEY> --source-account $SOURCE --network $NETWORK"
-echo "See DEMO_RUNBOOK.md for full pre-demo checklist."
+echo "See PRODUCTION_READINESS_RUNBOOK.md for the full preflight checklist."

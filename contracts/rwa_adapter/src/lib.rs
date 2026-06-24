@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contracterror, contractimpl, contracttrait, Address, Bytes, Env, IntoVal, Symbol, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, Address, Bytes, Env, IntoVal, Symbol, Vec};
 use stellar_access::access_control::{grant_role_no_auth, set_admin, AccessControl};
 use stellar_macros::only_role;
 
@@ -63,7 +63,7 @@ impl RwaAdapter {
         args.push_back(public_inputs.into_val(&env));
         let ok: bool = env.invoke_contract(
             &verifier,
-            &Symbol::new(&env, "verify"),
+            &Symbol::new(&env, "check"),
             args,
         );
         if !ok {

@@ -5,26 +5,26 @@ import { cn } from '../../lib/cn';
 const STEPS = [
   {
     icon: KeyRound,
-    title: 'Get credential',
-    tag: 'Issuer service',
+    title: 'Get passport',
+    tag: 'Private access',
     color: '#012b54',
   },
   {
     icon: Cpu,
-    title: 'Generate proof',
-    tag: 'Browser WASM',
+    title: 'Confirm eligibility',
+    tag: 'In your browser',
     color: '#6366f1',
   },
   {
     icon: ShieldCheck,
-    title: 'Verify',
-    tag: 'BN254 on-chain',
+    title: 'Approve',
+    tag: 'On Stellar',
     color: '#007dfc',
   },
   {
     icon: ArrowRightLeft,
-    title: 'Transfer',
-    tag: 'RwaToken',
+    title: 'Settle',
+    tag: 'Receipt-ready',
     color: '#15803d',
   },
 ];

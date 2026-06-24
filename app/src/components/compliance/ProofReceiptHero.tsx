@@ -12,7 +12,7 @@ type Props = {
   receipt: ProofReceipt;
   loading?: boolean;
   onRefresh?: () => void;
-  onDemonstrateReplay?: () => void;
+  onVerifyDuplicate?: () => void;
   replayLoading?: boolean;
 };
 
@@ -44,7 +44,7 @@ export function ProofReceiptHero({
   receipt,
   loading,
   onRefresh,
-  onDemonstrateReplay,
+  onVerifyDuplicate,
   replayLoading,
 }: Props) {
   const advanced = useAdvancedMode();
@@ -75,7 +75,7 @@ export function ProofReceiptHero({
                 : 'Settlement failed'}
           </Badge>
           {receipt.verificationResult === 'passed' && receipt.settlementStatus !== 'verified' ? (
-            <Badge tone="ok">Policy passed</Badge>
+            <Badge tone="ok">Eligibility passed</Badge>
           ) : null}
           <Badge tone="brand">Auditor ready</Badge>
           {advanced ? <Badge tone="brand">{receipt.verifierVersion.protocol}</Badge> : null}
@@ -115,8 +115,8 @@ export function ProofReceiptHero({
           <Download className="h-4 w-4" />
           Download receipt
         </Button>
-        {onDemonstrateReplay ? (
-          <Button variant="secondary" loading={replayLoading} onClick={onDemonstrateReplay}>
+        {onVerifyDuplicate ? (
+          <Button variant="secondary" loading={replayLoading} onClick={onVerifyDuplicate}>
             <XCircle className="h-4 w-4" />
             Test duplicate protection
           </Button>
@@ -131,15 +131,15 @@ export function ProofReceiptHero({
 
       {advanced ? <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Wallet & policy" description="External compliance policy approval" />
+          <CardHeader title="Wallet & eligibility" description="Private eligibility approval" />
           <dl className="grid gap-3">
             <CopyRow label="Wallet" value={receipt.walletAddress} />
             {receipt.walletModuleName ? (
               <CopyRow label="Wallet module" value={receipt.walletModuleName} />
             ) : null}
-            <CopyRow label="Policy ID" value={String(receipt.policyId)} />
+            <CopyRow label="Eligibility rule" value={String(receipt.policyId)} />
             <div className="rounded-xl bg-[#f6f9fc] p-3">
-              <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Claims proven (no PII)</dt>
+              <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Confirmed requirements</dt>
               <dd className="mt-2 flex flex-wrap gap-2">
                 {receipt.claims.map((c) => (
                   <Badge key={c} tone="ok">
@@ -152,19 +152,19 @@ export function ProofReceiptHero({
         </Card>
 
         <Card>
-          <CardHeader title="ZK verification" description="UltraHonk verified on PolicyVerifier" />
+          <CardHeader title="Private confirmation" description="Internal proof details" />
           <dl className="grid gap-3">
-            <CopyRow label="Nullifier" value={receipt.nullifier} />
-            <CopyRow label="Merkle root" value={receipt.merkleRoot} />
-            <CopyRow label="Revocation root" value={receipt.revocationRoot} />
+            <CopyRow label="Settlement reference" value={receipt.nullifier} />
+            <CopyRow label="Eligibility record" value={receipt.merkleRoot} />
+            <CopyRow label="Restriction record" value={receipt.revocationRoot} />
             <div className="rounded-xl bg-[#f6f9fc] p-3 text-sm">
               <dt className="text-[10px] font-semibold uppercase text-[#64748b]">On-chain checks</dt>
               <dd className="mt-2 space-y-1">
                 <p className={receipt.rootsMatchOnChain ? 'text-emerald-700' : 'text-amber-700'}>
-                  Roots match CredentialRegistry: {receipt.rootsMatchOnChain ? 'yes' : 'pending / mismatch'}
+                  Eligibility records match Stellar: {receipt.rootsMatchOnChain ? 'yes' : 'pending / mismatch'}
                 </p>
                 <p className={receipt.nullifierSpent ? 'text-emerald-700' : 'text-[#64748b]'}>
-                  Nullifier on PolicyVerifier: {receipt.nullifierSpent ? 'spent (anti-replay active)' : 'not spent yet'}
+                  Passport status: {receipt.nullifierSpent ? 'used once' : 'not used yet'}
                 </p>
               </dd>
             </div>
@@ -173,13 +173,13 @@ export function ProofReceiptHero({
       </div> : null}
 
       {advanced ? <Card>
-        <CardHeader title="Live on Stellar" description="Deployed contract IDs (testnet)" />
+        <CardHeader title="Live on Stellar" description="Internal contract IDs (testnet)" />
         <dl className="grid gap-3 md:grid-cols-2">
-          <CopyRow label="PolicyVerifier" value={receipt.contractIds.policyVerifier} />
-          <CopyRow label="RwaToken" value={receipt.contractIds.rwaToken} />
-          <CopyRow label="CredentialRegistry" value={receipt.contractIds.credentialRegistry} />
-          <CopyRow label="RwaAdapter" value={receipt.contractIds.rwaAdapter} />
-          <CopyRow label="IssuerRegistry" value={receipt.contractIds.issuerRegistry} />
+          <CopyRow label="Eligibility checker" value={receipt.contractIds.policyVerifier} />
+          <CopyRow label="Treasury asset" value={receipt.contractIds.rwaToken} />
+          <CopyRow label="Eligibility registry" value={receipt.contractIds.credentialRegistry} />
+          <CopyRow label="Asset adapter" value={receipt.contractIds.rwaAdapter} />
+          <CopyRow label="Issuer registry" value={receipt.contractIds.issuerRegistry} />
         </dl>
       </Card> : null}
 
@@ -218,15 +218,15 @@ export function ProofReceiptHero({
         </Card>
       )}
 
-      <Card>
+      {advanced ? <Card>
         <CardHeader
           title="Chain events"
-          description="Parsed from transaction meta (TransferGated) + on-chain nullifier read"
+          description="Internal chain diagnostics from transaction metadata and contract reads"
           badge={<Badge tone="brand">Live RPC</Badge>}
         />
         {receipt.events.length === 0 ? (
           <p className="text-sm text-[#64748b]">
-            Complete a gated transfer to load TransferGated events from transaction meta. Nullifier spent status comes from PolicyVerifier storage read.
+            Complete a settlement to load internal event diagnostics.
           </p>
         ) : (
           <ul className="space-y-3">
@@ -244,18 +244,18 @@ export function ProofReceiptHero({
             ))}
           </ul>
         )}
-      </Card>
+      </Card> : null}
 
-      <Card>
-        <CardHeader title="Universal asset targets" description="Compliance layer gates RWA today; USDC SAC is the real-money target" />
+      {advanced ? <Card>
+        <CardHeader title="Asset targets" description="Internal settlement contract references" />
         <dl className="grid gap-3 md:grid-cols-2">
           <CopyRow label={`${receipt.complianceTargets.usdcCode} issuer`} value={receipt.complianceTargets.usdcIssuer} />
           <CopyRow label="USDC SAC (SEP-41)" value={receipt.complianceTargets.usdcSac} />
         </dl>
         <p className="mt-3 text-xs text-[#64748b]">
-          RWA settlement uses proof-gated RwaToken.transfer. USDC uses ComplianceSacAdmin.transfer_compliant when deployed.
+          Treasury units and USDC use separate Stellar settlement contracts.
         </p>
-      </Card>
+      </Card> : null}
     </div>
   );
 }

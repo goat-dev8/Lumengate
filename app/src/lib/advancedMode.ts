@@ -13,7 +13,7 @@ export function writeAdvancedMode(enabled: boolean): void {
 export function friendlyIssuerError(raw: string): string {
   const lower = raw.toLowerCase();
   if (lower.includes('nargo: not found') || lower.includes('failed to build prover inputs')) {
-    return 'Credential service is temporarily unavailable. Our team has been notified — please retry in a minute.';
+    return 'Passport service is temporarily unavailable. Our team has been notified — please retry in a minute.';
   }
   if (lower.includes('on-chain roots') || lower.includes('merkle root')) {
     return 'Compliance registry is syncing. Wait a moment and try again.';

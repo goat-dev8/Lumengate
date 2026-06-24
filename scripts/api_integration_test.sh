@@ -31,7 +31,7 @@ check "pof nullifier" curl -sf -X POST "$ISSUER/pof/nullifier" \
   -d '{"noteSecret":"12345","policyId":"2"}'
 check "issuer offerings" bash -c 'curl -sf "$1/offerings" | python3 -c "import sys,json; d=json.load(sys.stdin); assert len(d.get(\"offerings\",[]))>=6"' _ "$ISSUER"
 
-VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-demo-key}"
+VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-testnet-key}"
 check "disclose store" curl -sf -X POST "$ISSUER/disclose/store" \
   -H 'Content-Type: application/json' \
   -d "{\"viewingKey\":\"$VIEWING_KEY\",\"auditorId\":1,\"pack\":{\"version\":1,\"walletAddress\":\"GTEST\",\"proofPublicInputsHex\":\"00\"}}"

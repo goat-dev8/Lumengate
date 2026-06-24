@@ -117,10 +117,11 @@ export async function verifyAuditorInput(
   if (nullifierHex) {
     try {
       nullifierSpent = await readNullifierSpent(config, nullifierHex, policyId);
+      const expectsSettlement = input.kind === 'disclosure';
       checks.push({
-        label: 'Nullifier spent on-chain',
-        pass: !nullifierSpent,
-        detail: nullifierSpent ? 'spent — proof already used' : 'available',
+        label: expectsSettlement ? 'Settlement recorded on-chain' : 'Passport available for settlement',
+        pass: expectsSettlement ? nullifierSpent : !nullifierSpent,
+        detail: nullifierSpent ? 'settlement recorded once' : 'not yet used',
       });
     } catch (err) {
       checks.push({

@@ -15,9 +15,9 @@ export function MetricsShowcase({ verifyTx, transferTx, freezeTx, network, explo
   const { ref, visible } = useScrollReveal();
 
   const metrics = [
-    { icon: Zap, label: 'BN254 verify', hash: verifyTx, desc: 'PolicyVerifier on-chain' },
-    { icon: Shield, label: 'Eligible transfer', hash: transferTx, desc: 'Proof-gated RWA settlement' },
-    { icon: Snowflake, label: 'Freeze enforcement', hash: freezeTx, desc: 'CAP-77 compliance narrative' },
+    { icon: Zap, label: 'Eligibility confirmed', hash: verifyTx, desc: 'Recorded on Stellar' },
+    { icon: Shield, label: 'Settlement completed', hash: transferTx, desc: 'Asset transfer reference' },
+    { icon: Snowflake, label: 'Restriction enforced', hash: freezeTx, desc: 'Blocked account reference' },
   ];
 
   return (

@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttrait, symbol_short, Address, Bytes,
+    contract, contracterror, contractevent, contractimpl, symbol_short, Address, Bytes,
     BytesN, Env, InvokeError, IntoVal, Map, Symbol, Vec,
 };
 use stellar_access::access_control::{grant_role_no_auth, set_admin, AccessControl};
@@ -114,11 +114,12 @@ impl PolicyVerifier {
         Ok(out)
     }
 
-    pub fn verify(
+    fn verify_inner(
         env: Env,
         policy_id: u32,
         proof: Bytes,
         public_inputs: Bytes,
+        spend_nullifier: bool,
     ) -> Result<bool, Error> {
         if proof.len() as usize != PROOF_BYTES {
             return Err(Error::ProofParseError);
@@ -159,11 +160,31 @@ impl PolicyVerifier {
             _ => return Err(Error::VerificationFailed),
         }
 
-        env.storage()
-            .persistent()
-            .set(&Self::spent_key(policy_id, &nullifier), &true);
+        if spend_nullifier {
+            env.storage()
+                .persistent()
+                .set(&Self::spent_key(policy_id, &nullifier), &true);
+        }
 
         Ok(true)
+    }
+
+    pub fn verify(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> Result<bool, Error> {
+        Self::verify_inner(env, policy_id, proof, public_inputs, true)
+    }
+
+    pub fn check(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> Result<bool, Error> {
+        Self::verify_inner(env, policy_id, proof, public_inputs, false)
     }
 
     pub fn verify_vec(

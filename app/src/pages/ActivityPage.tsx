@@ -4,9 +4,11 @@ import { PageHeader } from '../components/fintech/PageHeader';
 import { UnifiedTimeline, buildUnifiedTimeline } from '../components/product/UnifiedTimeline';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
 import { useApp } from '../context/AppContext';
+import { currentSettlementOwner } from '../lib/settlementOwner';
 
 export function ActivityPage() {
   const { activity, config, proofReceipt, address } = useApp();
+  const settlementOwner = currentSettlementOwner(config, address);
   const sessionItems = buildUnifiedTimeline(activity, proofReceipt);
 
   return (
@@ -25,7 +27,7 @@ export function ActivityPage() {
         />
       </Card>
 
-      <UsdcCompliancePanel config={config} walletAddress={address} variant="compact" />
+      <UsdcCompliancePanel config={config} walletAddress={settlementOwner} variant="compact" />
     </AppShell>
   );
 }

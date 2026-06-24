@@ -6,7 +6,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
-import { fetchIssuerHealth } from '../lib/config';
+import { fetchIssuerHealth, registerSmartAccountPasskey } from '../lib/config';
 import { policyList } from '../lib/policies';
 import { readOnChainRoots } from '../lib/contracts';
 import {
@@ -17,7 +17,9 @@ import {
 import {
   createPasskey,
   loadStoredPasskey,
+  markPasskeyRegistered,
   passkeyEnvSummary,
+  passkeyRegisteredFor,
   passkeySupported,
   type StoredPasskey,
 } from '../lib/passkeys';
@@ -31,7 +33,7 @@ import { recoveryLog, verifyStepFlags, type VerifyStepId } from '../lib/proofRec
 
 const STEP_META: { id: VerifyStepId; label: string; hint: string }[] = [
   { id: 'wallet', label: 'Connect wallet', hint: 'Link your Stellar account' },
-  { id: 'credential', label: 'Verify eligibility', hint: 'Issuer confirms the policy' },
+  { id: 'credential', label: 'Verify eligibility', hint: 'Issuer confirms access' },
   { id: 'proof', label: 'Private passport', hint: 'Confirm locally in your browser' },
   { id: 'ready', label: 'Unlock investments', hint: 'Invest or send privately' },
 ];
@@ -103,11 +105,24 @@ export function VerifyPage() {
     setError(null);
     try {
       const created = await createPasskey(address || 'lumengate-user');
-      setPasskey(created);
+      let next = created;
+      if (config.lumengateSmartAccountId && config.webauthnVerifierId) {
+        const registration = await registerSmartAccountPasskey(config.issuerServiceUrl, {
+          smartAccountId: config.lumengateSmartAccountId,
+          verifierId: config.webauthnVerifierId,
+          keyDataHex: created.keyDataHex,
+        });
+        next = markPasskeyRegistered({
+          smartAccountId: registration.smartAccountId,
+          verifierId: registration.verifierId,
+          txHash: registration.txHash,
+        });
+      }
+      setPasskey(next);
       pushActivity({
         kind: 'credential',
-        title: 'Device secured',
-        detail: 'Optional passkey saved on this browser',
+        title: 'Passkey registered',
+        detail: next.registrationTxHash ?? 'Passkey saved on this browser',
         status: 'success',
       });
     } catch (err) {
@@ -372,14 +387,14 @@ export function VerifyPage() {
           <Card>
             <CardHeader title="Optional — Secure this device" badge={<Badge>Passkey</Badge>} />
             <p className="text-sm text-slate-muted">
-              Save a passkey for faster return visits. Does not replace wallet signing.
+              Save a passkey for smart-account settlement on this device.
               {` RP ID: ${passkeyEnv.rpId}`}
               {!passkeyEnv.supported ? ' — requires HTTPS' : ''}
             </p>
-            {passkey ? (
+            {passkeyRegisteredFor(passkey, config.lumengateSmartAccountId, config.webauthnVerifierId) ? (
               <p className="mt-3 text-sm text-brand">
                 <ShieldCheck className="mr-1 inline h-4 w-4" />
-                Passkey saved on this device
+                Passkey registered for smart-account settlement
               </p>
             ) : (
               <Button

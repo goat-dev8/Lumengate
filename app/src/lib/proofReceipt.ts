@@ -78,8 +78,8 @@ export type ProofReceipt = {
   ledgerCloseTime?: string;
   verificationTimestamp?: string;
   asset: {
-    demo: string;
-    demoContractId: string;
+    label: string;
+    contractId: string;
     complianceTarget: string;
     complianceSac: string;
   };
@@ -188,8 +188,8 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
 
   return {
     version: 2,
-    productLabel: 'Lumengate — External Compliance Policy Layer',
-    tagline: 'No PII on-chain. No proof. No settlement.',
+    productLabel: 'Lumengate settlement receipt',
+    tagline: 'Your identity stays private. Your settlement stays verifiable.',
     createdAt: Date.now(),
     walletAddress: address,
     walletField,
@@ -209,7 +209,7 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
     rootsMatchOnChain,
     proofPublicInputsHex: proof.publicInputsHex,
     verifierVersion: {
-      stack: 'Noir + UltraHonk + BN254 + Poseidon2',
+      stack: 'Private eligibility confirmation',
       proofBytes: ULTRA_HONK_PROOF_BYTES,
       publicInputBytes: PUBLIC_INPUTS_BYTES,
       sorobanSdk: '26.0.1',
@@ -231,8 +231,8 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
     ledgerCloseTime,
     verificationTimestamp,
     asset: {
-      demo: 'RwaToken',
-      demoContractId: config.rwaTokenId,
+      label: 'Treasury units',
+      contractId: config.rwaTokenId,
       complianceTarget: targets.usdcCode,
       complianceSac: targets.usdcSac,
     },

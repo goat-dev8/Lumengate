@@ -18,6 +18,13 @@ function AppRoutes() {
   return (
     <Routes location={location} key={location.pathname}>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/home" element={<Navigate to="/app/home" replace />} />
+      <Route path="/passport" element={<Navigate to="/app/verify" replace />} />
+      <Route path="/invest" element={<Navigate to="/app/marketplace" replace />} />
+      <Route path="/send" element={<Navigate to="/app/send" replace />} />
+      <Route path="/receipt" element={<Navigate to="/app/compliance" replace />} />
+      <Route path="/audit" element={<Navigate to="/app/auditor" replace />} />
+      <Route path="/operators" element={<Navigate to="/app/admin" replace />} />
       <Route path="/app" element={<Navigate to="/app/home" replace />} />
       <Route path="/app/home" element={<DashboardPage />} />
       <Route path="/app/dashboard" element={<Navigate to="/app/home" replace />} />

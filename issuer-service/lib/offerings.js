@@ -16,7 +16,7 @@ function envTrim(v) {
   return v ? String(v).trim().replace(/\r$/, '') : '';
 }
 
-/** Enrich offerings with live deployment IDs from env — no illustrative APY or fake issuers. */
+/** Enrich offerings with live deployment IDs from env; offering data must come from configured fixtures. */
 function listOfferings(env = process.env) {
   const raw = loadOfferingsFile();
   const rwaTokenId = envTrim(env.RWA_TOKEN_ID || env.VITE_RWA_TOKEN_ID);

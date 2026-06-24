@@ -8,10 +8,10 @@ const productLinks = [
 ];
 
 const appLinks = [
-  { to: '/app/credential', label: 'Credential' },
-  { to: '/app/prove', label: 'Prove' },
-  { to: '/app/transfer', label: 'Transfer' },
-  { to: '/app/compliance', label: 'Compliance' },
+  { to: '/app/verify', label: 'Passport' },
+  { to: '/app/marketplace', label: 'Invest' },
+  { to: '/app/send', label: 'Send' },
+  { to: '/app/compliance', label: 'Receipt' },
 ];
 
 export function MarketingFooter() {
@@ -25,7 +25,7 @@ export function MarketingFooter() {
               <span className="text-lg font-semibold text-[#012b54]">Lumengate</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#64748b]">
-              Privacy-preserving RWA compliance on Stellar testnet — ZK proofs verified on-chain via Protocol 25.
+              Private access to regulated Stellar assets, with wallet-approved settlement and auditor-ready receipts.
             </p>
           </div>
           <div>
@@ -55,7 +55,7 @@ export function MarketingFooter() {
         </div>
         <div className="lg-footer-bottom">
           <p className="text-sm text-[#64748b]">© {new Date().getFullYear()} Lumengate · Stellar testnet only</p>
-          <p className="text-xs text-[#94a3b8]">Contract IDs and URLs loaded from VITE_* environment</p>
+          <p className="text-xs text-[#94a3b8]">Settlement references are loaded from the current environment</p>
         </div>
       </div>
     </footer>

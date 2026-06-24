@@ -6,6 +6,9 @@ export type StoredPasskey = {
   keyDataHex: string;
   rpId: string;
   createdAt: number;
+  registeredSmartAccountId?: string;
+  registeredVerifierId?: string;
+  registrationTxHash?: string;
 };
 
 function rpId(): string {
@@ -41,6 +44,23 @@ export function loadStoredPasskey(): StoredPasskey | null {
 
 export function saveStoredPasskey(passkey: StoredPasskey): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(passkey));
+}
+
+export function markPasskeyRegistered(params: {
+  smartAccountId: string;
+  verifierId: string;
+  txHash: string;
+}): StoredPasskey {
+  const stored = loadStoredPasskey();
+  if (!stored) throw new Error('No passkey registered on this device');
+  const next: StoredPasskey = {
+    ...stored,
+    registeredSmartAccountId: params.smartAccountId,
+    registeredVerifierId: params.verifierId,
+    registrationTxHash: params.txHash,
+  };
+  saveStoredPasskey(next);
+  return next;
 }
 
 export function clearStoredPasskey(): void {
@@ -145,6 +165,19 @@ export async function signWithPasskey(authDigestHex: string): Promise<{
     clientDataJson: new TextDecoder().decode(assertion.response.clientDataJSON),
     signature: bufferToHex(assertion.response.signature),
   };
+}
+
+export function passkeyRegisteredFor(
+  passkey: StoredPasskey | null,
+  smartAccountId?: string,
+  verifierId?: string,
+): passkey is StoredPasskey {
+  if (!passkey || !smartAccountId || !verifierId) return false;
+  return (
+    passkey.registeredSmartAccountId === smartAccountId &&
+    passkey.registeredVerifierId === verifierId &&
+    Boolean(passkey.registrationTxHash)
+  );
 }
 
 export function passkeyEnvSummary(): { rpId: string; origin: string; supported: boolean } {

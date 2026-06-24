@@ -19,11 +19,11 @@ export function CtaPremium() {
             Ready to prove eligibility?
           </h2>
           <p className="mx-auto mt-5 max-w-xl text-lg text-white/85 leading-relaxed">
-            Connect a wallet, receive a credential, generate a proof in your browser, and transfer
+            Connect a wallet, receive a passport, confirm eligibility in your browser, and transfer
             tokenized assets with real on-chain verification.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
-            <Link to="/app/credential" className="lg-btn-white">
+            <Link to="/app/verify" className="lg-btn-white">
               Open application
               <ArrowRight className="h-4 w-4" />
             </Link>

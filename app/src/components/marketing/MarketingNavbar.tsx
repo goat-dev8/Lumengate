@@ -53,7 +53,7 @@ export function MarketingNavbar() {
               onClick={() => connect()}
             />
           )}
-          <Link to="/app/credential" className="lg-btn-nav">
+          <Link to="/app/verify" className="lg-btn-nav">
             Open app
           </Link>
         </div>
@@ -90,7 +90,7 @@ export function MarketingNavbar() {
               className="mt-3"
             />
           )}
-          <Link to="/app/credential" className="lg-btn-nav mt-3 inline-flex" onClick={() => setOpen(false)}>
+          <Link to="/app/verify" className="lg-btn-nav mt-3 inline-flex" onClick={() => setOpen(false)}>
             Open app
           </Link>
         </div>

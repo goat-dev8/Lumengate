@@ -338,7 +338,7 @@ export async function buildSwapCompliantTransaction(
     throw new Error('Recipient must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
-  const amountRaw = BigInt(Math.round(Number(amount) * 1e7));
+  const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantDexId);
@@ -381,7 +381,7 @@ export async function buildPayCompliantTransaction(
     throw new Error('Employee must be a valid Stellar G-address');
   }
   assertProofBundleForChain(proof);
-  const amountRaw = BigInt(Math.round(Number(amount) * 1e7));
+  const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
   const acct = await s.getAccount(source);
   const contract = new Contract(config.compliantPayrollId);
@@ -618,15 +618,15 @@ export function nullifierHexFromBundle(proof: ProofBundle): string {
 export function formatSorobanUserError(message: string): string {
   if (message.includes('Error(Contract, #6)')) {
     return (
-      'This proof was already used on-chain (nullifier spent). ' +
-      'Each settlement requires a fresh passport — go to Verify, request a new credential, generate a new proof, then try again.'
+      'This passport was already used for a settlement. ' +
+      'Each settlement requires a fresh passport — go to Verify, request a new passport, confirm eligibility, then try again.'
     );
   }
   if (message.includes('Error(Contract, #7)')) {
-    return 'Proof public inputs are invalid for this policy. Request a new credential and regenerate your proof on Verify.';
+    return 'This eligibility check does not match the selected offering. Request a new passport and confirm eligibility on Verify.';
   }
   if (message.includes('Error(Contract, #5)') && message.toLowerCase().includes('verify')) {
-    return 'On-chain proof verification failed. Your credential may be stale — request a new passport on Verify and regenerate proof.';
+    return 'On-chain eligibility verification failed. Your passport may be stale — request a new passport on Verify and confirm eligibility.';
   }
   if (
     message.includes('Error(Contract, #13)') &&

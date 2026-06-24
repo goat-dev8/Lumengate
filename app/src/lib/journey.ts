@@ -87,5 +87,3 @@ export function buildUserJourney(input: JourneyInput): JourneyStep[] {
   }));
 }
 
-/** @deprecated use buildUserJourney */
-export const buildDemoJourney = buildUserJourney;

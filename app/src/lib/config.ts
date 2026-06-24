@@ -223,6 +223,26 @@ export async function fetchIssuerCredential(
   });
 }
 
+export async function registerSmartAccountPasskey(
+  baseUrl: string,
+  params: {
+    smartAccountId: string;
+    verifierId: string;
+    keyDataHex: string;
+  },
+) {
+  return issuerFetch<{
+    ok: boolean;
+    txHash: string;
+    smartAccountId: string;
+    verifierId: string;
+  }>(baseUrl, '/smart-account/passkeys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+}
+
 export async function fetchIssuerMetadata(baseUrl: string) {
   return issuerFetch<{
     stellarPublicKey: string;

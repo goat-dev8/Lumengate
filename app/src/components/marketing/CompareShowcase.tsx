@@ -3,7 +3,7 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { cn } from '../../lib/cn';
 
 const BAD = ['Name and DOB stored centrally', 'PII honeypot for attackers', 'Censorship chokepoint', 'On-chain correlation'];
-const GOOD = ['Five public fields — zero PII', 'Proof verified on-chain (BN254)', 'Nullifier anti-replay', 'Revocation + freeze enforcement'];
+const GOOD = ['Only eligibility is shared', 'Personal details stay off-chain', 'Each passport works once', 'Restricted accounts are blocked'];
 
 export function CompareShowcase() {
   const { ref, visible } = useScrollReveal();
@@ -32,8 +32,8 @@ export function CompareShowcase() {
         <div className="lg-compare-icon-wrap bg-emerald-100">
           <CheckCircle2 className="h-6 w-6 text-emerald-600" />
         </div>
-        <h3 className="mt-5 text-xl font-semibold text-[#15803d]">Lumengate ZK eligibility</h3>
-        <p className="mt-2 text-sm text-[#31485f]">Prove eligibility without revealing identity — enforced on Stellar.</p>
+        <h3 className="mt-5 text-xl font-semibold text-[#15803d]">Lumengate private access</h3>
+        <p className="mt-2 text-sm text-[#31485f]">Confirm eligibility without putting identity details on the public ledger.</p>
         <ul className="mt-6 space-y-4">
           {GOOD.map((t) => (
             <li key={t} className="flex items-start gap-3 text-sm text-[#31485f]">

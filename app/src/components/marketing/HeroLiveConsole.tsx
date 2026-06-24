@@ -37,11 +37,11 @@ export function HeroLiveConsole() {
   const balanceDisplay = useCountUp(Number.isFinite(balanceNum) ? balanceNum : 0, 1600, 0, false);
 
   const pipeline = [
-    { label: 'Issuer service', ok: snapshot?.issuerOk },
-    { label: 'Merkle roots', ok: Boolean(snapshot?.roots) },
-    { label: 'Wallet linked', ok: Boolean(address) },
+    { label: 'Issuer online', ok: snapshot?.issuerOk },
+    { label: 'Eligibility records synced', ok: Boolean(snapshot?.roots) },
+    { label: 'Account linked', ok: Boolean(address) },
     {
-      label: snapshot?.frozen ? 'Account frozen' : 'Transfer eligible',
+      label: snapshot?.frozen ? 'Account restricted' : 'Settlement eligible',
       ok: address ? snapshot?.frozen === false : null,
     },
   ];
@@ -50,9 +50,9 @@ export function HeroLiveConsole() {
     <div className="lg-dashboard-section">
       <div className="lg-dashboard-section-head">
         <p className="lg-flow-band-eyebrow">Live on testnet</p>
-        <h2 className="lg-dashboard-section-title">Compliance console</h2>
+        <h2 className="lg-dashboard-section-title">Live settlement status</h2>
         <p className="lg-dashboard-section-desc">
-          Real policy IDs, balances, and reference transactions — no mock data.
+          Issuer health, account readiness, and real Stellar references from the current environment.
         </p>
       </div>
       <div className="lg-dashboard-panel">
@@ -71,18 +71,16 @@ export function HeroLiveConsole() {
         <div className="lg-dashboard-body">
           <div className="lg-dashboard-stats lg-dashboard-stats-4">
           <div className="lg-dashboard-stat">
-            <div className="text-xs text-[#64748b]">Policy ID</div>
+            <div className="text-xs text-[#64748b]">Eligibility plan</div>
             <div className="mt-1 text-2xl font-semibold text-[#012b54]">{loading ? '…' : policyId}</div>
-            <div className="mt-1 text-[11px] text-[#64748b]">From VITE_POLICY_ID</div>
+            <div className="mt-1 text-[11px] text-[#64748b]">Current access rule</div>
           </div>
           <div className="lg-dashboard-stat">
             <div className="text-xs text-[#64748b]">RWA balance</div>
             <div className="mt-1 text-2xl font-semibold text-[#012b54]">
               {loading ? '…' : address ? balanceDisplay.toLocaleString() : '—'}
             </div>
-            <div className="mt-1 text-[11px] text-[#64748b]">
-              {address ? 'RwaToken.balance (chain)' : 'Connect wallet'}
-            </div>
+            <div className="mt-1 text-[11px] text-[#64748b]">{address ? 'On Stellar' : 'Connect wallet'}</div>
           </div>
           <div className="lg-dashboard-stat">
             <div className="text-xs text-[#64748b]">Session events</div>
@@ -90,16 +88,16 @@ export function HeroLiveConsole() {
             <div className="mt-1 text-[11px] text-[#64748b]">Your wallet session</div>
           </div>
           <div className="lg-dashboard-stat lg-dashboard-stat-accent">
-            <div className="text-xs text-white/80">Reference txs</div>
+            <div className="text-xs text-white/80">Settlement refs</div>
             <div className="mt-1 text-2xl font-semibold text-white">{loading ? '…' : referenceCount}</div>
-            <div className="mt-1 text-[11px] text-white/70">On-chain + session</div>
+            <div className="mt-1 text-[11px] text-white/70">Stellar + session</div>
           </div>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded-xl bg-[#f8f9fb] p-4">
             <div className="flex items-center justify-between text-xs font-medium text-[#64748b]">
-              <span>Compliance pipeline</span>
+              <span>Readiness</span>
               <span className={snapshot?.issuerOk ? 'text-[#15803d]' : 'text-[#64748b]'}>
                 {loading
                   ? 'Syncing…'
@@ -130,15 +128,15 @@ export function HeroLiveConsole() {
             </div>
             {snapshot?.roots ? (
               <div className="mt-3 rounded-lg border border-[#eef0f3] bg-white p-2 font-mono text-[10px] text-[#64748b]">
-                root {truncateHex(snapshot.roots.root)}
+                access root {truncateHex(snapshot.roots.root)}
                 <br />
-                rev {truncateHex(snapshot.roots.revocationRoot)}
+                restriction root {truncateHex(snapshot.roots.revocationRoot)}
               </div>
             ) : null}
           </div>
 
           <div className="rounded-xl border border-[#eef0f3] bg-white p-4">
-            <div className="text-xs font-medium text-[#64748b]">Reference testnet transactions</div>
+            <div className="text-xs font-medium text-[#64748b]">Reference Stellar transactions</div>
             <ul className="mt-3 space-y-2">
               {snapshot?.referenceTxs.length ? (
                 snapshot.referenceTxs.map((tx) => (

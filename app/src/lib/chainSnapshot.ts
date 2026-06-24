@@ -22,7 +22,7 @@ export type ChainSnapshot = {
 
 export function referenceTxsFromActivity(): ReferenceTx[] {
   const kindLabels: Record<ActivityKind, string> = {
-    verify: 'BN254 verify',
+    verify: 'Eligibility confirmed',
     transfer: 'Eligible transfer',
     freeze_check: 'Freeze enforcement',
     credential: 'Credential issued',
@@ -44,15 +44,12 @@ export function referenceTxsFromActivity(): ReferenceTx[] {
 /** Baseline on-chain txs from deployment (real testnet hashes, not simulated). */
 export function referenceTxsFromDeployment(): ReferenceTx[] {
   const rows: ReferenceTx[] = [];
-  const verify =
-    import.meta.env.VITE_REFERENCE_VERIFY_TX || import.meta.env.VITE_DEMO_VERIFY_TX;
-  const transfer =
-    import.meta.env.VITE_REFERENCE_TRANSFER_TX || import.meta.env.VITE_DEMO_TRANSFER_TX;
-  const freeze =
-    import.meta.env.VITE_REFERENCE_FREEZE_TX || import.meta.env.VITE_DEMO_FREEZE_TX;
-  if (verify) rows.push({ label: 'BN254 verify', hash: String(verify) });
-  if (transfer) rows.push({ label: 'Eligible transfer', hash: String(transfer) });
-  if (freeze) rows.push({ label: 'Freeze enforcement', hash: String(freeze) });
+  const verify = import.meta.env.VITE_REFERENCE_VERIFY_TX;
+  const transfer = import.meta.env.VITE_REFERENCE_TRANSFER_TX;
+  const freeze = import.meta.env.VITE_REFERENCE_FREEZE_TX;
+  if (verify) rows.push({ label: 'Eligibility confirmed', hash: String(verify) });
+  if (transfer) rows.push({ label: 'Settlement completed', hash: String(transfer) });
+  if (freeze) rows.push({ label: 'Restriction enforced', hash: String(freeze) });
   return rows;
 }
 

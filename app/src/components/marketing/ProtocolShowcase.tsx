@@ -10,20 +10,20 @@ function Protocol25Diagram() {
           <stop offset="100%" stopColor="#007dfc" stopOpacity="0.4" />
         </linearGradient>
       </defs>
-      {/* BN254 pairing arcs */}
+      {/* Settlement readiness arcs */}
       <path d="M 40 90 Q 80 30 120 90" fill="none" stroke="#c9f31d" strokeWidth="2" opacity="0.8" />
       <path d="M 120 90 Q 160 30 200 90" fill="none" stroke="#c9f31d" strokeWidth="2" opacity="0.8" />
       <circle cx="40" cy="90" r="8" fill="#c9f31d" />
       <circle cx="120" cy="90" r="8" fill="#c9f31d" />
       <circle cx="200" cy="90" r="8" fill="#c9f31d" />
       <text x="120" y="55" textAnchor="middle" fill="#c9f31d" fontSize="11" fontWeight="600">
-        BN254 pairing
+        Eligible
       </text>
-      {/* Poseidon hash blocks */}
+      {/* Private access blocks */}
       <rect x="20" y="12" width="36" height="24" rx="6" fill="url(#p25-grad)" stroke="rgba(255,255,255,0.2)" />
       <rect x="62" y="12" width="36" height="24" rx="6" fill="url(#p25-grad)" stroke="rgba(255,255,255,0.2)" />
       <rect x="104" y="12" width="36" height="24" rx="6" fill="url(#p25-grad)" stroke="rgba(255,255,255,0.2)" />
-      <text x="140" y="28" fill="rgba(255,255,255,0.7)" fontSize="10">Poseidon2</text>
+      <text x="140" y="28" fill="rgba(255,255,255,0.7)" fontSize="10">Private</text>
       {/* Verification check */}
       <path d="M 230 50 L 245 65 L 270 35" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" />
       <text x="250" y="90" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10">Verified</text>
@@ -66,15 +66,15 @@ export function ProtocolShowcase() {
     <div ref={ref} className={cn('lg-reveal lg-protocol-grid', visible && 'lg-revealed')}>
       <div className="lg-protocol-premium lg-card-reveal">
         <div className="lg-protocol-premium-inner">
-          <span className="lg-protocol-badge lg-protocol-badge-p25">Protocol 25 · X-Ray</span>
-          <h3 className="mt-4 text-2xl font-semibold">Native ZK verification</h3>
+          <span className="lg-protocol-badge lg-protocol-badge-p25">Private access</span>
+          <h3 className="mt-4 text-2xl font-semibold">Eligibility without exposure</h3>
           <p className="mt-2 text-sm text-white/75 leading-relaxed">
-            Stellar host functions for BN254 pairing and Poseidon2 — UltraHonk proofs verified inside Soroban.
+            Lumengate checks whether a user is allowed while keeping personal details off the public ledger.
           </p>
           <div className="lg-protocol-diagram">
             <Protocol25Diagram />
           </div>
-          {['BN254 multi-pairing check', 'Poseidon2 hash', 'On-chain proof verification'].map((f) => (
+          {['Passport-based access', 'Private browser confirmation', 'Stellar-enforced settlement'].map((f) => (
             <div key={f} className="lg-protocol-feature">
               <span className="lg-protocol-feature-dot" />
               {f}
@@ -85,15 +85,15 @@ export function ProtocolShowcase() {
 
       <div className="lg-protocol-premium lg-card-reveal" style={{ transitionDelay: '0.12s' }}>
         <div className="lg-protocol-premium-inner">
-          <span className="lg-protocol-badge lg-protocol-badge-p26">Protocol 26 · Yardstick</span>
-          <h3 className="mt-4 text-2xl font-semibold">Compliance enforcement</h3>
+          <span className="lg-protocol-badge lg-protocol-badge-p26">Asset controls</span>
+          <h3 className="mt-4 text-2xl font-semibold">Restriction-aware settlement</h3>
           <p className="mt-2 text-sm text-white/75 leading-relaxed">
-            CAP-77 freeze narrative with contract-level enforcement for revoked and sanctioned holders.
+            Restricted accounts are blocked before assets move, and successful settlements produce an audit-ready record.
           </p>
           <div className="lg-protocol-diagram">
             <Protocol26Diagram />
           </div>
-          {['RwaToken.freeze', 'is_frozen checks', 'Governance-ready compliance'].map((f) => (
+          {['Restricted-account checks', 'Wallet-approved transfers', 'Auditor-ready receipts'].map((f) => (
             <div key={f} className="lg-protocol-feature">
               <span className="lg-protocol-feature-dot" />
               {f}

@@ -16,6 +16,7 @@ import { AdvancedModeToggle, useAdvancedMode } from '../components/product/Advan
 import { ProductProgress } from '../components/product/ProductProgress';
 import { HowItWorks } from '../components/product/HowItWorks';
 import { buildProductSteps, getProductReadiness } from '../lib/productState';
+import { currentSettlementOwner } from '../lib/settlementOwner';
 
 export function DashboardPage() {
   const {
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const { offerings } = useOfferings();
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+  const settlementOwner = currentSettlementOwner(config, address);
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const phase = derivePassportPhase({
     address,
@@ -45,11 +47,11 @@ export function DashboardPage() {
   const readyToInvest = phase === 'proof-generated';
 
   useEffect(() => {
-    if (!address) {
+    if (!settlementOwner) {
       setBalance(null);
       return;
     }
-    readBalance(config, address)
+    readBalance(config, settlementOwner)
       .then((b) => {
         setBalance(b);
         setBalanceError(null);
@@ -58,7 +60,7 @@ export function DashboardPage() {
         setBalance(null);
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
-  }, [address, config]);
+  }, [settlementOwner, config]);
 
   const lastSettlement = useMemo(() => {
     const tx = activity.find((e) => e.kind === 'transfer' && e.status === 'success');
@@ -270,7 +272,7 @@ export function DashboardPage() {
       {advanced ? (
         <div className="mt-8 grid gap-8 xl:grid-cols-2">
           <AssetPolicyMatrix />
-          <UsdcCompliancePanel config={config} walletAddress={address} />
+          <UsdcCompliancePanel config={config} walletAddress={settlementOwner} />
         </div>
       ) : null}
     </AppShell>

@@ -20,7 +20,7 @@ export function CompliancePage() {
     proofReceipt,
     receiptLoading,
     refreshProofReceipt,
-    demonstrateReplayBlock,
+    verifyDuplicateBlock,
     address,
     proof,
     credential,
@@ -64,7 +64,7 @@ export function CompliancePage() {
         transferResult?.amount ||
         activity.find((e) => e.kind === 'transfer' && e.detail)?.detail.match(/^(\d+)/)?.[1] ||
         '1';
-      await demonstrateReplayBlock(recipient, amount);
+      await verifyDuplicateBlock(recipient, amount);
       await refreshProofReceipt();
     } finally {
       setReplayLoading(false);
@@ -150,7 +150,7 @@ export function CompliancePage() {
               receipt={proofReceipt}
               loading={receiptLoading}
               onRefresh={() => refreshProofReceipt()}
-              onDemonstrateReplay={proofReceipt.nullifierSpent ? handleReplay : undefined}
+              onVerifyDuplicate={proofReceipt.nullifierSpent ? handleReplay : undefined}
               replayLoading={replayLoading}
             />
           ) : (
@@ -186,7 +186,7 @@ export function CompliancePage() {
                 className="mt-2 w-full max-w-md rounded-xl border border-[#e3e8ee] px-3 py-2 font-mono text-xs outline-none focus:border-[#007dfc]"
                 value={viewingKey}
                 onChange={(e) => setViewingKey(e.target.value)}
-                placeholder="Provided by your auditor — never stored in the browser"
+                aria-label="Auditor access key"
               />
             </label>
             <div className="flex flex-wrap gap-3">

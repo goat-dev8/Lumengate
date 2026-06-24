@@ -11,11 +11,11 @@ export function SettingsPage() {
   const { config, address, disconnect } = useApp();
 
   const contracts = [
-    { label: 'Credential Registry', id: config.credentialRegistryId },
-    { label: 'Policy Verifier', id: config.policyVerifierId },
-    { label: 'RWA Token', id: config.rwaTokenId },
-    { label: 'RWA Adapter', id: config.rwaAdapterId },
-    { label: 'Issuer Registry', id: config.issuerRegistryId },
+    { label: 'Passport registry', id: config.credentialRegistryId },
+    { label: 'Eligibility checker', id: config.policyVerifierId },
+    { label: 'Asset token', id: config.rwaTokenId },
+    { label: 'Asset adapter', id: config.rwaAdapterId },
+    { label: 'Issuer registry', id: config.issuerRegistryId },
   ];
 
   return (
@@ -70,7 +70,7 @@ export function SettingsPage() {
         <Card className="lg:col-span-2">
           <CardHeader
             title="Deployed contracts"
-            description="Live Soroban testnet references — used by all flows without mocks."
+            description="Live Soroban testnet references used by all settlement flows."
           />
           <div className="grid gap-3 sm:grid-cols-2">
             {contracts.map((c) => (
@@ -91,10 +91,10 @@ export function SettingsPage() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="Policies" />
+          <CardHeader title="Eligibility plans" />
           <div className="flex flex-wrap gap-2 text-sm">
-            <Badge tone="ok">Policy {config.policyId} — Eligibility</Badge>
-            <Badge tone="ok">Policy {config.policyId2} — Proof of funds</Badge>
+            <Badge tone="ok">Plan {config.policyId} — Investor access</Badge>
+            <Badge tone="ok">Plan {config.policyId2} — Balance confirmation</Badge>
           </div>
           <p className="mt-3 text-xs text-slate-muted">
             Explorer base: {config.explorerBaseUrl} · Issuer registry{' '}

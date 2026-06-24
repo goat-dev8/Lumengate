@@ -5,12 +5,12 @@ import { Badge } from '../ui/Badge';
 const PRIVATE = [
   'Name, date of birth, and jurisdiction',
   'Sanctions screening results',
-  'Wallet ↔ credential attribute linkage',
+  'Personal account details',
 ];
 
 const DISCLOSED = [
-  'Policy requirements satisfied at settlement',
-  'One-time passport use per settlement',
+  'Eligibility was satisfied at settlement',
+  'Passport was used once',
   'Settlement reference for audit',
 ];
 

@@ -4,6 +4,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
 import { readOnChainRoots } from '../lib/contracts';
+import { readSmartAccountContextRules } from '../lib/smartAccount';
 import { truncateMiddle } from '../lib/utils';
 import { RevokeCredentialPanel } from '../components/product/RevokeCredentialPanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
@@ -11,35 +12,52 @@ import { AdvancedModeToggle, useAdvancedMode } from '../components/product/Advan
 type AdminStatus = {
   roots: { root: string; revocationRoot: string; noteRoot?: string } | null;
   rootsError: string | null;
+  smartRules: number | null;
+  smartRulesError: string | null;
 };
 
 export function AdminPage() {
   const { config } = useApp();
   const advanced = useAdvancedMode();
-  const [status, setStatus] = useState<AdminStatus>({ roots: null, rootsError: null });
+  const [status, setStatus] = useState<AdminStatus>({
+    roots: null,
+    rootsError: null,
+    smartRules: null,
+    smartRulesError: null,
+  });
 
   useEffect(() => {
     readOnChainRoots(config)
-      .then((roots) => setStatus({ roots, rootsError: null }))
+      .then((roots) => setStatus((s) => ({ ...s, roots, rootsError: null })))
       .catch((err) =>
-        setStatus({
+        setStatus((s) => ({
+          ...s,
           roots: null,
           rootsError: err instanceof Error ? err.message : String(err),
-        }),
+        })),
+      );
+    readSmartAccountContextRules(config)
+      .then((smartRules) => setStatus((s) => ({ ...s, smartRules, smartRulesError: null })))
+      .catch((err) =>
+        setStatus((s) => ({
+          ...s,
+          smartRules: null,
+          smartRulesError: err instanceof Error ? err.message : String(err),
+        })),
       );
   }, [config]);
 
   const contracts = [
-    ['PolicyVerifier', config.policyVerifierId],
-    ['CredentialRegistry', config.credentialRegistryId],
-    ['IssuerRegistry', config.issuerRegistryId],
-    ['RwaAdapter', config.rwaAdapterId],
-    ['ComplianceSacAdmin', config.complianceSacAdminId],
-    ['AuditorRegistry', config.auditorRegistryId],
-    ['CompliantDEX', config.compliantDexId],
-    ['CompliantPayroll', config.compliantPayrollId],
-    ['CompliancePolicy', config.compliancePolicyId],
-    ['LumengateSmartAccount', config.lumengateSmartAccountId],
+    ['Eligibility checker', config.policyVerifierId],
+    ['Passport registry', config.credentialRegistryId],
+    ['Issuer registry', config.issuerRegistryId],
+    ['Asset adapter', config.rwaAdapterId],
+    ['USDC settlement account', config.complianceSacAdminId],
+    ['Auditor registry', config.auditorRegistryId],
+    ['Eligible swap router', config.compliantDexId],
+    ['Payroll settlement', config.compliantPayrollId],
+    ['Compliance rules', config.compliancePolicyId],
+    ['Passkey settlement account', config.lumengateSmartAccountId],
   ].filter(([, id]) => Boolean(id));
 
   return (
@@ -60,21 +78,28 @@ export function AdminPage() {
         {!advanced ? (
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
-              <CardHeader title="Add operator" badge={<Badge>Coming next</Badge>} />
+              <CardHeader
+                title="Operator access"
+                badge={<Badge tone={status.smartRules && status.smartRules > 0 ? 'ok' : 'warn'}>
+                  {status.smartRules && status.smartRules > 0 ? 'Live' : 'Check setup'}
+                </Badge>}
+              />
               <p className="text-sm text-slate-muted">
-                Invite a teammate, set a spending limit, and choose when access expires.
+                {status.smartRules && status.smartRules > 0
+                  ? `Smart-account settlement has ${status.smartRules} active context rule${status.smartRules === 1 ? '' : 's'}.`
+                  : status.smartRulesError || 'Smart-account rules are not available from RPC yet.'}
               </p>
             </Card>
             <Card>
-              <CardHeader title="Policy status" badge={<Badge tone="ok">Live</Badge>} />
+              <CardHeader title="Eligibility status" badge={<Badge tone="ok">Live</Badge>} />
               <p className="text-sm text-slate-muted">
                 Eligibility and revocation roots are monitored in the background.
               </p>
             </Card>
             <Card>
-              <CardHeader title="Emergency revoke" badge={<Badge tone="warn">Protected</Badge>} />
+              <CardHeader title="Restrict passport" badge={<Badge tone="warn">Admin only</Badge>} />
               <p className="text-sm text-slate-muted">
-                Remove access instantly if a device, operator, or credential should no longer be trusted.
+                Passport restriction is available in developer mode with the issuer service revoke key.
               </p>
             </Card>
           </div>
@@ -117,8 +142,8 @@ export function AdminPage() {
                 ))}
               </dl>
               <p className="mt-4 text-sm text-slate-muted">
-                Policy IDs: eligibility {config.policyId}, proof-of-funds {config.policyId2}. Session keys and
-                spend limits are enforced via LumengateSmartAccount + CompliancePolicy when deployed.
+                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}. Smart account
+                context rules: {status.smartRules ?? 'unavailable'}.
               </p>
             </Card>
           </>

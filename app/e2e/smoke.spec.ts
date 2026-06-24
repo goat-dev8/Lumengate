@@ -2,6 +2,13 @@ import { test, expect } from '@playwright/test';
 
 const routes = [
   { path: '/', name: 'Landing' },
+  { path: '/home', name: 'Home redirect' },
+  { path: '/passport', name: 'Passport redirect' },
+  { path: '/invest', name: 'Invest redirect' },
+  { path: '/send', name: 'Send redirect' },
+  { path: '/receipt', name: 'Receipt redirect' },
+  { path: '/audit', name: 'Audit redirect' },
+  { path: '/operators', name: 'Operators redirect' },
   { path: '/app/dashboard', name: 'Dashboard' },
   { path: '/app/verify', name: 'Verify' },
   { path: '/app/passport', name: 'Passport' },
@@ -16,7 +23,7 @@ const routes = [
 ];
 
 test.describe('Lumengate institutional shell', () => {
-  test('landing page loads without demo judge artifacts', async ({ page }) => {
+  test('landing page loads without event-only artifacts', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByText(/judge mode/i)).toHaveCount(0);

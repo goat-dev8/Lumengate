@@ -1,5 +1,6 @@
 import type { IssuerCredentialResponse } from './config';
-import type { ProofBundle } from './contracts';
+import { extractPublicInputFields, type ProofBundle } from './contracts';
+import type { ProofReceipt } from './proofReceipt';
 import type { PolicyKey } from './policies';
 import { policyByKey } from './policies';
 import { issuerStellarAddress } from './issuer';
@@ -54,6 +55,34 @@ export function buildDisclosurePack(input: {
     proofPublicInputs: input.proof.publicInputs,
     proofPublicInputsHex: input.proof.publicInputsHex,
     txHash: input.txHash,
+  };
+}
+
+export function buildDisclosurePackFromReceipt(input: {
+  credential: IssuerCredentialResponse;
+  receipt: ProofReceipt;
+  txHash?: string;
+}): DisclosurePack {
+  const publicInputs = extractPublicInputFields(input.receipt.proofPublicInputsHex);
+  return {
+    version: 1,
+    createdAt: Date.now(),
+    walletAddress: input.receipt.walletAddress,
+    walletField: input.receipt.walletField,
+    policyKey: input.receipt.policyKey,
+    policyId: input.receipt.policyId,
+    claims: input.receipt.claims,
+    issuerEthAddress: issuerStellarAddress(input.credential) ?? '',
+    issuerId: input.credential.issuerId,
+    issuedAt: input.credential.issuedAt ?? Date.now(),
+    expiresAt: credentialExpiryMs(input.credential),
+    credentialCommitment: input.credential.credential.commitment,
+    nullifier: publicInputs.nullifier,
+    merkleRoot: publicInputs.root,
+    revocationRoot: publicInputs.revocationRoot,
+    proofPublicInputs: publicInputs,
+    proofPublicInputsHex: input.receipt.proofPublicInputsHex,
+    txHash: input.txHash ?? input.receipt.transactions.transfer,
   };
 }
 

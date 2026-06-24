@@ -13,6 +13,7 @@ import { buildPassportSnapshot } from '../lib/passport';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { readBalance, readComplianceAdminUsdcBalance } from '../lib/contracts';
 import { allocationFromActivity } from '../lib/portfolio';
+import { currentSettlementOwner } from '../lib/settlementOwner';
 import { truncateMiddle } from '../lib/utils';
 
 export function PortfolioPage() {
@@ -23,10 +24,11 @@ export function PortfolioPage() {
   const [passportStatus, setPassportStatus] = useState('—');
   const [proofStatus, setProofStatus] = useState('Not generated');
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const settlementOwner = currentSettlementOwner(config, address);
 
   useEffect(() => {
-    if (!address) return;
-    readBalance(config, address)
+    if (!settlementOwner) return;
+    readBalance(config, settlementOwner)
       .then((b) => {
         setBalance(b);
         setBalanceError(null);
@@ -36,13 +38,13 @@ export function PortfolioPage() {
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, address)
+      readComplianceAdminUsdcBalance(config, settlementOwner)
         .then((snap) => setUsdcBalance(snap.formatted))
         .catch(() => setUsdcBalance(null));
     } else {
       setUsdcBalance(null);
     }
-  }, [address, config, activity]);
+  }, [settlementOwner, config, activity]);
 
   useEffect(() => {
     if (!address) {
@@ -127,9 +129,9 @@ export function PortfolioPage() {
               sub="Compliance pool balance"
             />
             <InstitutionalWidget
-              label="Wallet"
-              value={truncateMiddle(address, 6, 4)}
-              sub="Stellar testnet"
+              label="Settlement owner"
+              value={truncateMiddle(settlementOwner ?? address, 6, 4)}
+              sub={settlementOwner === address ? 'Stellar wallet' : 'Smart account'}
             />
           </div>
 

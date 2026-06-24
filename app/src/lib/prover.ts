@@ -52,12 +52,12 @@ export async function generateProof(
   onProgress?.({ stage: 'witness', message: 'Building private witness…', percent: 35 });
   const { witness } = await noir.execute(inputs as Record<string, string | number | boolean | string[]>);
 
-  onProgress?.({ stage: 'prove', message: 'Generating zero-knowledge proof…', percent: 65 });
+  onProgress?.({ stage: 'prove', message: 'Confirming eligibility privately…', percent: 65 });
   // noir.execute() already returns gzip-compressed witness (magic 0x1f8b); bb.js gunzips once.
   const { proof, publicInputs } = await backend.generateProof(witness, { keccak: true });
   const bundle = bundleFromHonkProof(proof, publicInputs);
 
-  onProgress?.({ stage: 'done', message: 'Proof ready', percent: 100 });
+  onProgress?.({ stage: 'done', message: 'Passport ready', percent: 100 });
   const durationSec = (performance.now() - started) / 1000;
 
   return {
@@ -68,10 +68,10 @@ export async function generateProof(
 
 export function publicInputsPanel(bundle: ProofBundle): Array<{ label: string; value: string }> {
   return [
-    { label: 'Merkle root', value: bundle.publicInputs.root },
-    { label: 'Revocation root', value: bundle.publicInputs.revocationRoot },
-    { label: 'Policy ID', value: bundle.publicInputs.policyId },
-    { label: 'Nullifier', value: bundle.publicInputs.nullifier },
+    { label: 'Eligibility record', value: bundle.publicInputs.root },
+    { label: 'Restriction record', value: bundle.publicInputs.revocationRoot },
+    { label: 'Eligibility plan', value: bundle.publicInputs.policyId },
+    { label: 'Settlement reference', value: bundle.publicInputs.nullifier },
   ];
 }
 

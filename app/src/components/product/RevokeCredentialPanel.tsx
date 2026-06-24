@@ -63,9 +63,9 @@ export function RevokeCredentialPanel({ issuerUrl }: Props) {
   return (
     <Card>
       <CardHeader
-        title="Revoke credential"
+        title="Revoke passport"
         badge={<Badge tone="warn">Operator</Badge>}
-        description="Immediately invalidate a credential commitment. Updates the on-chain revocation root via issuer service."
+        description="Immediately invalidate a passport. Updates the restriction record through the issuer service."
       />
       <div className="space-y-3">
         <label className="block text-sm">
@@ -75,19 +75,19 @@ export function RevokeCredentialPanel({ issuerUrl }: Props) {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-line px-3 py-2 font-mono text-xs"
-            placeholder="Bearer token from REVOKE_API_KEY"
+            aria-label="Revoke API key"
           />
         </label>
         <Button variant="secondary" type="button" onClick={saveKey}>
           Save key for session
         </Button>
         <label className="block text-sm">
-          <span className="text-slate-muted">Credential commitment</span>
+          <span className="text-slate-muted">Passport reference</span>
           <input
             value={commitment}
             onChange={(e) => setCommitment(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-line px-3 py-2 font-mono text-xs"
-            placeholder="0x…"
+            aria-label="Passport reference"
           />
         </label>
         <label className="block text-sm">

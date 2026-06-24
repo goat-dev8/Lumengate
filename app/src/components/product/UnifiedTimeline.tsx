@@ -80,7 +80,7 @@ export function UnifiedTimeline({ items, emptyMessage }: Props) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[#64748b]">
-        {emptyMessage ?? 'Complete credential → proof → transfer to populate timeline.'}
+        {emptyMessage ?? 'Complete passport → eligibility → settlement to populate timeline.'}
       </p>
     );
   }

@@ -33,6 +33,11 @@ import {
 } from '../lib/contracts';
 
 import { checkRecipientUsdcTrustline } from '../lib/horizon';
+import { loadStoredPasskey } from '../lib/passkeys';
+import {
+  authorizeSmartAccountTransaction,
+  smartAccountSettlementAddress,
+} from '../lib/smartAccount';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -79,18 +84,19 @@ export function TransferPage() {
 
   useEffect(() => {
     if (!address) return;
-    readBalance(config, address)
+    const balanceHolder = smartAccountSettlementAddress(config, loadStoredPasskey()) ?? address;
+    readBalance(config, balanceHolder)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, address)
+      readComplianceAdminUsdcBalance(config, balanceHolder)
         .then((snap) => setUsdcBalance(snap.formatted))
         .catch(() => setUsdcBalance(null));
     } else {
       setUsdcBalance(null);
     }
     if (config.eurcSacId) {
-      readEurcSacBalance(config, address)
+      readEurcSacBalance(config, balanceHolder)
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
@@ -154,20 +160,26 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     try {
+      const passkey = loadStoredPasskey();
+      const settlementFrom = smartAccountSettlementAddress(config, passkey) ?? address;
       const xdr =
         asset === 'usdc'
-          ? await buildUsdcTransferTransaction(config, address, address, recipient, amount, activeProof)
+          ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
           : asset === 'eurc'
-            ? await buildEurcTransferTransaction(config, address, address, recipient, amount, activeProof)
-            : await buildTransferTransaction(config, address, address, recipient, amount, activeProof);
+            ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof)
+            : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, activeProof);
 
-      const hash = await signAndSubmit(xdr);
+      const signedAuthXdr = passkey && settlementFrom !== address
+        ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
+        : xdr;
+
+      const hash = await signAndSubmit(signedAuthXdr);
 
       setTxHash(hash);
 
       await recordTransferTx(hash, {
 
-        from: address,
+        from: settlementFrom,
 
         to: recipient,
 
@@ -386,11 +398,7 @@ export function TransferPage() {
 
                       onChange={(e) => setTo(e.target.value)}
 
-                      placeholder={
-
-                        asset === 'usdc' ? config.marketplaceSettlementAddress : 'G...'
-
-                      }
+                      aria-label={asset === 'usdc' ? 'USDC settlement recipient' : 'Recipient Stellar address'}
 
                     />
 

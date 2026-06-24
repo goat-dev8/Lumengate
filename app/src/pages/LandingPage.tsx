@@ -19,17 +19,14 @@ import { loadDeploymentConfig } from '../lib/config';
 import { useScrollReveal } from '../hooks/useScrollReveal';
 import { cn } from '../lib/cn';
 
-const pipeline = ['Issuer', 'Credential', 'Proof', 'Verify', 'Transfer', 'Monitor'];
+const pipeline = ['Connect', 'Passport', 'Eligibility', 'Invest', 'Receipt'];
 
 export function LandingPage() {
   const { connect, connecting } = useApp();
   const config = loadDeploymentConfig();
-  const verifyTx =
-    import.meta.env.VITE_REFERENCE_VERIFY_TX || import.meta.env.VITE_DEMO_VERIFY_TX || '';
-  const transferTx =
-    import.meta.env.VITE_REFERENCE_TRANSFER_TX || import.meta.env.VITE_DEMO_TRANSFER_TX || '';
-  const freezeTx =
-    import.meta.env.VITE_REFERENCE_FREEZE_TX || import.meta.env.VITE_DEMO_FREEZE_TX || '';
+  const verifyTx = import.meta.env.VITE_REFERENCE_VERIFY_TX || '';
+  const transferTx = import.meta.env.VITE_REFERENCE_TRANSFER_TX || '';
+  const freezeTx = import.meta.env.VITE_REFERENCE_FREEZE_TX || '';
   const cross = useScrollReveal();
 
   return (
@@ -53,17 +50,17 @@ export function LandingPage() {
               <span className="text-sm font-medium text-[#012b54]">Live on Stellar testnet</span>
             </div>
             <h1 className="lg-hero-headline lg-fade-up lg-fade-up-d1">
-              Prove you&apos;re eligible.
+              Private access to regulated assets.
               <br />
-              <span className="lg-hero-mark lg-text-frame">Never reveal who you are.</span>
+              <span className="lg-hero-mark lg-text-frame">Built for real settlement.</span>
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-[#31485f] lg-fade-up lg-fade-up-d2">
-              Lumengate is the privacy-preserving compliance layer for tokenized real-world assets on Stellar —
-              zero-knowledge proofs verified on-chain, enforced at every transfer.
+              Lumengate helps eligible investors access tokenized assets on Stellar while keeping personal details
+              off the public ledger. Every settlement is wallet-approved and receipt-ready.
             </p>
             <div className="flex flex-wrap justify-center gap-3 lg:justify-start lg-fade-up lg-fade-up-d3">
-              <Link to="/app/dashboard" className="lg-btn-primary">
-                Start compliance flow
+              <Link to="/app/marketplace" className="lg-btn-primary">
+                Start investing
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <button type="button" className="lg-btn-white" onClick={() => connect()} disabled={connecting}>
@@ -108,10 +105,10 @@ export function LandingPage() {
           <div className="lg-section-top">
             <SectionBadge suffix="01" label="Architecture" />
             <h2 className="lg-section-heading">
-              Zero-knowledge compliance, <span className="font-serif italic text-[#007dfc]">end to end</span>
+              Eligibility-first settlement, <span className="font-serif italic text-[#007dfc]">end to end</span>
             </h2>
             <p className="lg-section-desc">
-              Hover the flow — from issuer signature to gated RWA transfer on Stellar.
+              From passport issuance to a wallet-approved investment and receipt.
             </p>
           </div>
           <ArchitectureFlowSvg />
@@ -123,8 +120,8 @@ export function LandingPage() {
         <div className="lg-container">
           <div className="lg-section-top">
             <SectionBadge suffix="02" label="Workflow" />
-            <h2 className="lg-section-heading">Four steps to compliant settlement</h2>
-            <p className="lg-section-desc">No paragraphs required — follow the journey.</p>
+            <h2 className="lg-section-heading">Four steps to private investing</h2>
+            <p className="lg-section-desc">Connect, verify, invest, and keep an audit-ready receipt.</p>
           </div>
           <WorkflowJourney />
         </div>
@@ -139,23 +136,23 @@ export function LandingPage() {
               <div>
                 <SectionBadge suffix="03" label="Trust model" dark />
                 <h2 className="mt-4 text-3xl font-semibold md:text-4xl">
-                  Signed on Stellar.{' '}
-                  <span className="font-serif italic text-[#c9f31d]">Enforced on-chain.</span>
+                  Wallet-approved.{' '}
+                  <span className="font-serif italic text-[#c9f31d]">Receipt-ready.</span>
                 </h2>
                 <p className="mt-4 text-white/80 leading-relaxed">
-                  Issuer credentials use Ed25519 signatures from the Lumengate issuer service — Stellar-native
-                  trust, verified off-chain at issuance and bound into ZK proofs without identity leakage.
+                  Your wallet approves each settlement. Lumengate confirms eligibility before the transfer and
+                  creates a record an auditor can verify without seeing your private identity details.
                 </p>
               </div>
               <div className="grid gap-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-                  <div className="text-xs uppercase tracking-wide text-white/60">Off-chain</div>
-                  <div className="mt-2 font-mono text-sm">issuer.sign(commitment)</div>
+                  <div className="text-xs uppercase tracking-wide text-white/60">Before settlement</div>
+                  <div className="mt-2 text-sm">Passport issued privately</div>
                 </div>
-                <div className="flex justify-center text-[#c9f31d]">↓ ZK proof ↓</div>
+                <div className="flex justify-center text-[#c9f31d]">↓ eligibility check ↓</div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-                  <div className="text-xs uppercase tracking-wide text-white/60">On-chain (Stellar)</div>
-                  <div className="mt-2 font-mono text-sm">PolicyVerifier.verify(proof)</div>
+                  <div className="text-xs uppercase tracking-wide text-white/60">On Stellar</div>
+                  <div className="mt-2 text-sm">Settlement completes only when allowed</div>
                 </div>
               </div>
             </div>
@@ -168,7 +165,7 @@ export function LandingPage() {
         <div className="lg-container">
           <div className="lg-section-top">
             <SectionBadge suffix="04" label="Comparison" />
-            <h2 className="lg-section-heading">Privacy vs traditional KYC</h2>
+            <h2 className="lg-section-heading">Private access vs traditional onboarding</h2>
           </div>
           <CompareShowcase />
         </div>
@@ -179,8 +176,8 @@ export function LandingPage() {
         <GridWallpaper />
         <div className="lg-container relative z-10">
           <div className="lg-section-top">
-            <SectionBadge suffix="05" label="Live metrics" />
-            <h2 className="lg-section-heading">Real Stellar testnet evidence</h2>
+            <SectionBadge suffix="05" label="Live records" />
+            <h2 className="lg-section-heading">Real Stellar settlement references</h2>
           </div>
           <MetricsShowcase
             verifyTx={verifyTx}
@@ -198,7 +195,7 @@ export function LandingPage() {
           <div className="lg-section-top">
             <SectionBadge suffix="06" label="Stellar native" />
             <h2 className="lg-section-heading">
-              Built on Protocol 25 &amp; <span className="font-serif italic">Protocol 26</span>
+              Built for <span className="font-serif italic">regulated assets</span>
             </h2>
           </div>
           <ProtocolShowcase />

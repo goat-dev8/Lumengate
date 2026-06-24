@@ -16,6 +16,7 @@ const { getIssuerById } = require('./lib/issuerRegistry');
 const { revokeCredential } = require('./lib/revoke');
 const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle');
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
+const { registerPasskeySigner } = require('./lib/smartAccount');
 
 const app = express();
 const HOST = process.env.HOST || '0.0.0.0';
@@ -268,6 +269,23 @@ app.post('/credential', express.json(), async (req, res) => {
     noteCommitment: noteMeta?.commitment || null,
     noteRoot: noteMeta?.noteRoot || chainRoots.noteRoot || null,
   });
+});
+
+app.post('/smart-account/passkeys', express.json(), async (req, res) => {
+  const smartAccountId =
+    String(req.body?.smartAccountId || process.env.LUMENGATE_SMART_ACCOUNT_ID || process.env.VITE_LUMENGATE_SMART_ACCOUNT_ID || '');
+  const verifierId =
+    String(req.body?.verifierId || process.env.WEBAUTHN_VERIFIER_ID || process.env.VITE_WEBAUTHN_VERIFIER_ID || '');
+  const keyDataHex = String(req.body?.keyDataHex || '');
+  try {
+    const result = await registerPasskeySigner({ smartAccountId, verifierId, keyDataHex });
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    return res.status(503).json({
+      error: 'Passkey registration failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
 });
 
 app.post('/pof/nullifier', express.json(), (req, res) => {

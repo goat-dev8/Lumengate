@@ -14,13 +14,15 @@ import { truncateMiddle } from '../lib/utils';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 
 const RESULT_LABELS: Record<string, string> = {
-  'Disclosure pack version': 'Policy passed',
+  'Disclosure pack version': 'Eligibility record valid',
   'Issuer address present': 'Issuer verified',
-  'Merkle root matches chain': 'Root verified',
-  'Revocation root matches chain': 'Root verified',
-  'Nullifier spent on-chain': 'Settlement was used once',
-  'Policy ID': 'Policy passed',
-  'Wallet binding present': 'Wallet bound',
+  'Merkle root matches chain': 'Eligibility record verified',
+  'Revocation root matches chain': 'Restriction record verified',
+  'Settlement recorded on-chain': 'Settlement was used once',
+  'Passport available for settlement': 'Passport is still unused',
+  'Policy ID': 'Eligibility rule present',
+  'Wallet binding present': 'Account linked',
+  'Nullifier lookup': 'Settlement reference lookup',
 };
 
 export function AuditorPage() {
@@ -47,7 +49,7 @@ export function AuditorPage() {
 
   const runVerification = async () => {
     if (!input.trim()) {
-      setError('Paste a disclosure pack, public inputs hex, or nullifier from a live settlement.');
+      setError('Paste an audit record from a live settlement.');
       return;
     }
     setLoading(true);
@@ -120,9 +122,9 @@ export function AuditorPage() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { title: 'Auditor sees', items: ['Policy passed', 'One-time settlement used', 'Settlement reference'] },
+            { title: 'Auditor sees', items: ['Eligibility passed', 'One-time settlement used', 'Settlement reference'] },
             { title: 'Auditor never sees', items: ['Legal name', 'Date of birth', 'Sanctions details'] },
-            { title: 'Privacy guarantee', items: ['ZK proof verified', 'Selective disclosure only', 'No identity link'] },
+            { title: 'Privacy guarantee', items: ['Private confirmation verified', 'Selective disclosure only', 'No identity link'] },
           ].map((col) => (
             <Card key={col.title}>
               <CardHeader title={col.title} />
@@ -144,16 +146,16 @@ export function AuditorPage() {
             <Card>
               <CardHeader
                 title="Standards adapter"
-                description="RwaAdapter → PolicyVerifier (SEP-57-style identity verifier)"
+                description="Asset settlement adapter linked to the eligibility checker"
                 badge={<Badge>{adapter.standard}</Badge>}
               />
               <dl className="mt-2 space-y-2 text-xs">
                 <div>
-                  <dt className="text-slate-muted">RwaAdapter</dt>
+                  <dt className="text-slate-muted">Asset adapter</dt>
                   <dd className="font-mono break-all">{config.rwaAdapterId}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-muted">PolicyVerifier</dt>
+                  <dt className="text-slate-muted">Eligibility checker</dt>
                   <dd className="font-mono break-all">{config.policyVerifierId}</dd>
                 </div>
               </dl>
@@ -182,7 +184,7 @@ export function AuditorPage() {
                 className="mt-2 w-full rounded-xl border border-slate-line px-3 py-2 font-mono text-xs outline-none focus:border-brand"
                 value={viewingKey}
                 onChange={(e) => setViewingKey(e.target.value)}
-                placeholder="Provided by issuer or compliance team"
+                aria-label="Viewing key"
               />
             </label>
             <label className="block">
@@ -191,7 +193,7 @@ export function AuditorPage() {
                 className="mt-2 w-full rounded-xl border border-slate-line px-3 py-2 font-mono text-xs outline-none focus:border-brand"
                 value={portalTxHash}
                 onChange={(e) => setPortalTxHash(e.target.value)}
-                placeholder="Transaction hash or receipt reference"
+                aria-label="Settlement reference"
               />
             </label>
           </div>
@@ -201,7 +203,7 @@ export function AuditorPage() {
               Find records
             </Button>
             {config.auditorRegistryId ? (
-              <Badge>{`AuditorRegistry ${config.auditorRegistryId.slice(0, 8)}…`}</Badge>
+              <Badge>{`Auditor access ${config.auditorRegistryId.slice(0, 8)}…`}</Badge>
             ) : null}
           </div>
           {portalError ? <p className="mt-4 text-sm text-status-err">{portalError}</p> : null}
@@ -210,7 +212,7 @@ export function AuditorPage() {
               {portalPacks.map((pack, idx) => (
                 <li key={`${pack.nullifier}-${idx}`} className="rounded-xl bg-slate-50 p-4 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone="ok">Policy {pack.policyId}</Badge>
+                    <Badge tone="ok">Eligibility {pack.policyId}</Badge>
                     {pack.txHash ? <Badge>{truncateMiddle(pack.txHash, 12, 8)}</Badge> : null}
                   </div>
                   <p className="mt-2 font-mono text-xs break-all text-slate-muted">
@@ -250,7 +252,7 @@ export function AuditorPage() {
                   clearInput();
                 }}
               >
-                {m === 'disclosure' ? 'audit record' : m}
+                {m === 'disclosure' ? 'audit record' : m === 'public-inputs' ? 'settlement data' : 'settlement reference'}
               </button>
             ))}
           </div>
@@ -268,12 +270,12 @@ export function AuditorPage() {
             className="min-h-[180px] w-full rounded-xl border border-slate-line px-4 py-3 font-mono text-xs outline-none focus:border-brand"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
+            aria-label={
               mode === 'disclosure'
-                ? 'Paste audit record JSON from Receipt export…'
+                ? 'Audit record JSON from Receipt export'
                 : mode === 'public-inputs'
-                  ? 'Paste 128-byte public inputs hex from a live attestation…'
-                  : 'Paste nullifier hex from on-chain verification…'
+                  ? 'Internal settlement data from a live record'
+                  : 'Private settlement reference from on-chain verification'
             }
           />
           <div className="mt-4 flex flex-wrap gap-3">
@@ -294,7 +296,7 @@ export function AuditorPage() {
               title="Verification result"
               badge={
                 result.ok ? (
-                  <Badge tone="ok">VALID — Live on-chain verification</Badge>
+                  <Badge tone="ok">VALID — checked live</Badge>
                 ) : (
                   <Badge tone="err">Issues found</Badge>
                 )
@@ -302,7 +304,7 @@ export function AuditorPage() {
             />
             {result.ok ? (
               <div className="mb-4 flex flex-wrap gap-2">
-                {['Policy passed', 'Issuer verified', 'Root verified', 'Nullifier valid'].map((t) => (
+                {['Eligibility passed', 'Issuer verified', 'Records synced', 'Settlement recorded'].map((t) => (
                   <Badge key={t} tone="ok">
                     {t}
                   </Badge>

@@ -7,11 +7,11 @@ type Props = {
 
 const CONTRACTS = (config: DeploymentConfig) =>
   [
-    { label: 'PolicyVerifier', id: config.policyVerifierId },
-    { label: 'CredentialRegistry', id: config.credentialRegistryId },
-    { label: 'RwaToken', id: config.rwaTokenId },
-    { label: 'RwaAdapter', id: config.rwaAdapterId },
-    { label: 'IssuerRegistry', id: config.issuerRegistryId },
+    { label: 'Eligibility checker', id: config.policyVerifierId },
+    { label: 'Eligibility registry', id: config.credentialRegistryId },
+    { label: 'Treasury asset', id: config.rwaTokenId },
+    { label: 'Asset adapter', id: config.rwaAdapterId },
+    { label: 'Issuer registry', id: config.issuerRegistryId },
   ] as const;
 
 export function LiveOnStellarStrip({ config }: Props) {
@@ -21,7 +21,7 @@ export function LiveOnStellarStrip({ config }: Props) {
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">
           Live on Stellar testnet
         </p>
-        <span className="text-xs text-white/70">External compliance policy layer</span>
+        <span className="text-xs text-white/70">Private eligibility layer</span>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {CONTRACTS(config).map((c) => (

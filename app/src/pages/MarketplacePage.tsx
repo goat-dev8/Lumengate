@@ -43,6 +43,11 @@ import {
 import type { LiveOffering } from '../lib/offerings';
 
 import { offeringMinimumBigInt } from '../lib/offerings';
+import { loadStoredPasskey } from '../lib/passkeys';
+import {
+  authorizeSmartAccountTransaction,
+  smartAccountSettlementAddress,
+} from '../lib/smartAccount';
 
 import { policyByKey } from '../lib/policies';
 
@@ -144,7 +149,8 @@ export function MarketplacePage() {
 
     }
 
-    readBalance(config, address)
+    const balanceHolder = smartAccountSettlementAddress(config, loadStoredPasskey()) ?? address;
+    readBalance(config, balanceHolder)
       .then((b) => {
         setBalance(b);
         setBalanceError(null);
@@ -154,7 +160,7 @@ export function MarketplacePage() {
         setBalanceError(err instanceof Error ? err.message : String(err));
       });
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, address)
+      readComplianceAdminUsdcBalance(config, balanceHolder)
         .then((snap) => {
           setUsdcBalance(snap.formatted);
           setUsdcBalanceRaw(snap.raw);
@@ -386,12 +392,14 @@ export function MarketplacePage() {
       const recipient = offering.settlementAddress || config.marketplaceSettlementAddress;
       const amount = offering.minimumAmount;
       const route = offering.settlementRoute ?? (offering.settlementAsset === 'usdc' ? 'sac' : 'rwa');
+      const passkey = loadStoredPasskey();
+      const settlementFrom = smartAccountSettlementAddress(config, passkey) ?? address;
       let xdr: string;
       if (route === 'dex') {
         xdr = await buildSwapCompliantTransaction(
           config,
           address,
-          address,
+          settlementFrom,
           recipient,
           amount,
           activeProof,
@@ -400,7 +408,7 @@ export function MarketplacePage() {
         xdr = await buildPayCompliantTransaction(
           config,
           address,
-          address,
+          settlementFrom,
           recipient,
           amount,
           activeProof,
@@ -409,7 +417,7 @@ export function MarketplacePage() {
         xdr = await buildUsdcTransferTransaction(
           config,
           address,
-          address,
+          settlementFrom,
           recipient,
           amount,
           activeProof,
@@ -418,20 +426,24 @@ export function MarketplacePage() {
         xdr = await buildTransferTransaction(
           config,
           address,
-          address,
+          settlementFrom,
           recipient,
           amount,
           activeProof,
         );
       }
 
-      const hash = await signAndSubmit(xdr);
+      const signedAuthXdr = passkey && settlementFrom !== address
+        ? await authorizeSmartAccountTransaction({ config, transactionXdr: xdr, passkey })
+        : xdr;
+
+      const hash = await signAndSubmit(signedAuthXdr);
 
       setTxHash(hash);
 
       await recordTransferTx(hash, {
 
-        from: address,
+        from: settlementFrom,
 
         to: recipient,
 

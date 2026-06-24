@@ -40,5 +40,3 @@ export function JourneyRail({ steps, compact }: Props) {
   );
 }
 
-/** @deprecated use JourneyRail */
-export const DemoJourneyRail = JourneyRail;

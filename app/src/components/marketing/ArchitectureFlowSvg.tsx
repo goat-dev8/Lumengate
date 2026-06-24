@@ -3,13 +3,13 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { cn } from '../../lib/cn';
 
 const NODES = [
-  { id: 'issuer', label: 'Issuer', sub: 'Ed25519 sign', x: 70, y: 200, layer: 'off' },
-  { id: 'credential', label: 'Credential', sub: 'Merkle commitment', x: 200, y: 100, layer: 'off' },
-  { id: 'wallet', label: 'Wallet', sub: 'Wallets Kit · field', x: 200, y: 300, layer: 'off' },
-  { id: 'noir', label: 'Noir', sub: 'Eligibility circuit', x: 380, y: 200, layer: 'local' },
-  { id: 'ultrahonk', label: 'UltraHonk', sub: 'Browser prover', x: 520, y: 100, layer: 'local' },
-  { id: 'verifier', label: 'Verifier', sub: 'BN254 on-chain', x: 660, y: 200, layer: 'chain' },
-  { id: 'rwa', label: 'RWA Transfer', sub: 'Gated settlement', x: 820, y: 200, layer: 'chain' },
+  { id: 'issuer', label: 'Issuer', sub: 'Checks eligibility', x: 70, y: 200, layer: 'off' },
+  { id: 'credential', label: 'Passport', sub: 'Private access record', x: 200, y: 100, layer: 'off' },
+  { id: 'wallet', label: 'Wallet', sub: 'Approves settlement', x: 200, y: 300, layer: 'off' },
+  { id: 'local', label: 'Browser', sub: 'Confirms eligibility', x: 380, y: 200, layer: 'local' },
+  { id: 'ready', label: 'Ready', sub: 'One settlement', x: 520, y: 100, layer: 'local' },
+  { id: 'check', label: 'Stellar', sub: 'Allows or blocks', x: 660, y: 200, layer: 'chain' },
+  { id: 'settlement', label: 'Settlement', sub: 'Assets move', x: 820, y: 200, layer: 'chain' },
 ];
 
 const PATHS: { from: number; to: number }[] = [
@@ -81,10 +81,10 @@ export function ArchitectureFlowSvg() {
             OFF-CHAIN
           </text>
           <text x="400" y="24" textAnchor="middle" fill="#6366f1" fontSize="10" fontWeight="600">
-            LOCAL PROVER
+            BROWSER
           </text>
           <text x="710" y="24" textAnchor="middle" fill="#007dfc" fontSize="10" fontWeight="600">
-            STELLAR ON-CHAIN
+            STELLAR
           </text>
 
           {pathStates.map(({ d, lit }, i) => (

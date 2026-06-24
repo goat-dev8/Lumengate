@@ -4,7 +4,6 @@ type Props = {
   compact?: boolean;
 };
 
-/** Honest copy: Freighter signs settlements; passkey is optional device security only. */
 export function WalletSigningNotice({ compact }: Props) {
   return (
     <div
@@ -14,11 +13,10 @@ export function WalletSigningNotice({ compact }: Props) {
     >
       <p className="flex items-start gap-2 font-medium">
         <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#007dfc]" />
-        Settlements are signed with your Stellar wallet
+        Settlements are signed before submission
       </p>
       <p className={`${compact ? 'mt-1' : 'mt-2'} text-sm text-[#475569]`}>
-        Freighter (or your connected wallet) approves each transfer. Optional passkeys only secure this browser —
-        they do not replace wallet signing yet.
+        A registered passkey authorizes smart-account settlement; your Stellar wallet still pays network fees.
       </p>
     </div>
   );
