@@ -274,10 +274,7 @@ export function TransferPage() {
 
 
 
-  const sendReady =
-    proofLifecycle.lifecycle === 'ready' &&
-    Boolean(activeProof) &&
-    proofMatchesCredential(proof, credential);
+  const sendReady = proofLifecycle.lifecycle === 'ready' && Boolean(activeProof);
 
   const handleConfirmForAsset = async () => {
     if (!credential) {

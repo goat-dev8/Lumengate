@@ -604,7 +604,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const replaceSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
     if (!address || !walletField) throw new Error('Connect wallet first');
     setSmartAccount(null);
-    persistSession({ address, walletField, smartAccount: null });
+    setProofState(null);
+    setProofDurationSec(null);
+    setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
+    persistSession({
+      address,
+      walletField,
+      smartAccount: null,
+      proof: null,
+      proofDurationSec: null,
+      proofLifecycle: 'none',
+    });
     return createSmartAccount();
   }, [address, walletField, persistSession, createSmartAccount]);
 
@@ -1047,9 +1057,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
         const bindTx = await buildBindSessionProofTransaction(config, address, settlementFrom, proof);
-        await submitWithSmartAccount(config, smartAccount, bindTx);
+        try {
+          await submitWithSmartAccount(config, smartAccount, bindTx);
+        } catch (err) {
+          const raw = err instanceof Error ? err.message : String(err);
+          throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
+        }
       }
-      return submitWithSmartAccount(config, smartAccount, tx);
+      try {
+        return await submitWithSmartAccount(config, smartAccount, tx);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
+      }
     },
     [config, address, smartAccount],
   );

@@ -15,6 +15,7 @@ import { formatStellarAmount, hasSufficientBalance, parseStellarAmount } from '.
 import { bytesToHex } from './utils';
 import type { AssetScope } from './assetScope';
 import type { SmartAccountAssembledTransaction } from './smartAccount';
+import { resolvePasskeySimulationSource } from './smartAccount';
 
 export type ProofBundle = {
   proofHex: string;
@@ -83,7 +84,7 @@ export async function buildBindSessionProofTransaction(
   }
   assertProofBundleForChain(proof);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const policy = new Contract(config.compliancePolicyId);
   const draft = new TransactionBuilder(acct, {
     fee: String(Number(BASE_FEE) * 100),
@@ -111,6 +112,11 @@ async function simulateAssembledTx(
     throw new Error(sim.error || 'Transaction simulation failed');
   }
   return { built: draft, simulationData: sim };
+}
+
+async function passkeySimulationAccount(config: DeploymentConfig, source: string) {
+  const s = server(config.rpcUrl);
+  return s.getAccount(resolvePasskeySimulationSource(source));
 }
 
 export async function readContractXlmBalance(config: DeploymentConfig, contractId: string): Promise<string> {
@@ -371,7 +377,7 @@ export async function buildUsdcTransferTransaction(
   const amountRaw = parseStellarAmount(amount);
   await assertSufficientSacBalance(config, from, amount, 'USDC');
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const contract = new Contract(config.complianceSacAdminId);
   const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
@@ -418,7 +424,7 @@ export async function buildEurcTransferTransaction(
   if (!config.eurcSacId) throw new Error('EURC SAC not configured');
   await assertSufficientSacBalance(config, from, amount, 'EURC', config.eurcSacId);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const contract = new Contract(config.complianceSacAdminId);
   const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
@@ -458,7 +464,7 @@ export async function buildSwapCompliantTransaction(
   await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const contract = new Contract(config.compliantDexId);
   const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
@@ -498,7 +504,7 @@ export async function buildPayCompliantTransaction(
   await assertPassportNullifierAvailable(config, proof);
   const amountRaw = parseStellarAmount(amount);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const contract = new Contract(config.compliantPayrollId);
   const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
@@ -537,7 +543,7 @@ export async function buildTransferTransaction(
   await assertPassportNullifierAvailable(config, proof);
 
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await passkeySimulationAccount(config, source);
   const contract = new Contract(config.rwaTokenId);
   const draft = new TransactionBuilder(acct, {
       fee: String(Number(BASE_FEE) * 100),
@@ -772,7 +778,13 @@ export function formatSorobanUserError(message: string): string {
     );
   }
   if (message.includes('Error(Contract, #1)') && message.toLowerCase().includes('notconfigured')) {
-    return 'Settlement proof is not bound to your smart account. Confirm eligibility and retry send.';
+    return 'Settlement proof is not bound to your smart account. Confirm eligibility for this asset on Send, then retry.';
+  }
+  if (message.includes('Error(Contract, #2)') && message.toLowerCase().includes('verificationfailed')) {
+    return 'Eligibility verification failed during passkey authorization. Renew your passport on Verify, confirm eligibility for this asset, then retry Send.';
+  }
+  if (message.includes('No signer found for credential ID')) {
+    return 'Passkey signer metadata is missing. Create a new passkey smart account, then retry Send.';
   }
   if (message.includes('Invalid contract ID') || message.includes('Unsupported address type')) {
     return (

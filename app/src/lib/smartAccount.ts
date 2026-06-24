@@ -13,6 +13,22 @@ import { passkeyUserName } from './passkeyUserHandle';
 
 export { passkeyUserName } from './passkeyUserHandle';
 
+/** Fee payer + simulation source used by smart-account-kit (must exist on testnet). */
+export const SMART_ACCOUNT_KIT_DEPLOYER_PUBLIC_KEY = Keypair.fromRawEd25519Seed(
+  hash(Buffer.from('openzeppelin-smart-account-kit')),
+).publicKey();
+
+/** Build WebAuthn key_data bytes: 65-byte secp256r1 pubkey + credential id. */
+export function buildPasskeyKeyData(publicKey: Buffer | Uint8Array, credentialId: Buffer | string): Buffer {
+  const credBuffer = typeof credentialId === 'string' ? base64url.toBuffer(credentialId) : credentialId;
+  return Buffer.concat([Buffer.from(publicKey), credBuffer]);
+}
+
+/** smart-account-kit re-simulates and submits from the kit deployer, not the Freighter wallet. */
+export function resolvePasskeySimulationSource(_freighterAddress?: string | null): string {
+  return SMART_ACCOUNT_KIT_DEPLOYER_PUBLIC_KEY;
+}
+
 /** Immutable policy contracts superseded by check_passport auth fix (commit 1f80276). */
 export const LEGACY_COMPLIANCE_POLICY_IDS = [
   'CDONRLSIDIT7D5DN2PRQY6SR64FRBZ7MBJP5HCODFAP5M4JZ2USM6HS4',
@@ -124,6 +140,30 @@ const SMART_ACCOUNT_DEPLOYER = Keypair.fromRawEd25519Seed(
   hash(Buffer.from('openzeppelin-smart-account-kit')),
 );
 
+async function readFailedTransactionDiagnostics(rpcUrl: string, txHash: string): Promise<string> {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: `lumengate-tx-${Date.now()}`,
+        method: 'getTransaction',
+        params: { hash: txHash },
+      }),
+    });
+    if (!res.ok) return '';
+    const json = (await res.json()) as {
+      result?: { status?: string; resultXdr?: string; resultMetaXdr?: string };
+    };
+    if (json.result?.status !== 'FAILED') return '';
+    const parts = [json.result.resultXdr, json.result.resultMetaXdr].filter(Boolean);
+    return parts.join(' ');
+  } catch {
+    return '';
+  }
+}
+
 type KitDeployInternals = {
   buildDeployTransaction: (
     credentialId: Buffer,
@@ -141,7 +181,7 @@ function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: Deploymen
   if (!config.compliancePolicyId) return;
   const deployable = kit as unknown as KitDeployInternals;
   deployable.buildDeployTransaction = async (credentialId, publicKey) => {
-    const keyData = Buffer.concat([Buffer.from(publicKey), credentialId]);
+    const keyData = buildPasskeyKeyData(publicKey, credentialId);
     const policies = new Map<string, xdr.ScVal>();
     policies.set(config.compliancePolicyId!, complianceInstallParamScVal(config));
     return SmartAccountClient.deploy(
@@ -175,10 +215,10 @@ function patchWalletContextRulesLookup(
   const wallet = kit.wallet as { get_context_rules?: (...args: unknown[]) => Promise<{ result: unknown[] }> } | undefined;
   if (!wallet?.get_context_rules || !config.webauthnVerifierId) return;
 
-  const keyData = Buffer.concat([
+  const keyData = buildPasskeyKeyData(
     Buffer.from(created.publicKey),
-    base64url.toBuffer(created.credentialId),
-  ]);
+    created.credentialId,
+  );
   const defaultRule = {
     id: 0,
     context_type: { tag: 'Default' as const },
@@ -194,14 +234,20 @@ function patchWalletContextRulesLookup(
   };
 
   (wallet as { get_context_rules: (args: { context_rule_type: { tag: string } }) => Promise<{ result: unknown[] }> })
-    .get_context_rules = async (args) => ({
-    result: args.context_rule_type.tag === 'Default' ? [defaultRule] : [],
+    .get_context_rules = async () => ({
+    result: [defaultRule],
   });
 }
 
-async function submitResultOrThrow(result: TransactionResult, fallback: string): Promise<string> {
+async function submitResultOrThrow(
+  result: TransactionResult,
+  fallback: string,
+  rpcUrl?: string,
+): Promise<string> {
   if (!result.success || !result.hash) {
-    throw new Error(result.error || fallback);
+    const detail =
+      result.hash && rpcUrl ? await readFailedTransactionDiagnostics(rpcUrl, result.hash) : '';
+    throw new Error([result.error || fallback, detail].filter(Boolean).join(' — '));
   }
   return result.hash;
 }
@@ -228,7 +274,7 @@ export async function createPersonalSmartAccount(
     },
   );
   const deploymentHash = created.submitResult
-    ? await submitResultOrThrow(created.submitResult, 'Smart account deployment failed')
+    ? await submitResultOrThrow(created.submitResult, 'Smart account deployment failed', config.rpcUrl)
     : undefined;
 
   patchWalletContextRulesLookup(kit, config, created);
@@ -259,6 +305,10 @@ export async function connectPersonalSmartAccount(
       credentialId: state.credentialId,
       publicKey: Buffer.from(state.passkeyPublicKey, 'base64'),
     });
+  } else {
+    throw new Error(
+      'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
+    );
   }
   return kit;
 }
@@ -272,7 +322,7 @@ export async function submitWithSmartAccount(
   const result = await kit.signAndSubmit(transaction as never, {
     forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
   });
-  return submitResultOrThrow(result, 'Smart account submission failed');
+  return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 
 export function isAssembledTransaction(tx: SignableTransaction): tx is SmartAccountAssembledTransaction {
