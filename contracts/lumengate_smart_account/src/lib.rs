@@ -5,8 +5,8 @@ use soroban_sdk::{
     Vec,
 };
 use stellar_accounts::smart_account::{
-    self, add_context_rule, AuthPayload, ContextRule, ContextRuleType, ExecutionEntryPoint, Signer,
-    SmartAccount, SmartAccountError,
+    self, add_context_rule, get_context_rule, AuthPayload, ContextRule, ContextRuleType,
+    ExecutionEntryPoint, Signer, SmartAccount, SmartAccountError, SmartAccountStorageKey,
 };
 
 /// Kit-compatible per-user Lumengate smart account.
@@ -31,6 +31,28 @@ impl LumengateSmartAccount {
         admin.require_auth();
         let signer = Signer::External(verifier, key_data);
         smart_account::batch_add_signer(e, 0, &soroban_sdk::vec![e, signer]);
+    }
+
+    /// Kit compatibility: `smart-account-kit` still calls the removed bulk getter.
+    pub fn get_context_rules(e: &Env, context_rule_type: ContextRuleType) -> Vec<ContextRule> {
+        let next_id: u32 = e
+            .storage()
+            .instance()
+            .get(&SmartAccountStorageKey::NextId)
+            .unwrap_or(0);
+        let mut rules = Vec::new(e);
+        for id in 0..next_id {
+            if e.storage()
+                .persistent()
+                .has(&SmartAccountStorageKey::ContextRuleData(id))
+            {
+                let rule = get_context_rule(e, id);
+                if rule.context_type == context_rule_type {
+                    rules.push_back(rule);
+                }
+            }
+        }
+        rules
     }
 
     /// Bind a fresh eligibility proof to the smart account session before settlement.
