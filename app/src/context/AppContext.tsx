@@ -25,7 +25,7 @@ import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
-  buildBindSessionProofTransaction,
+  buildBindSessionProofWalletXdr,
   formatSorobanUserError,
   readBalance,
   submitSignedTransaction,
@@ -1030,12 +1030,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (!address) throw new Error('Connect wallet first');
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
-        const bindTx = await buildBindSessionProofTransaction(config, address, settlementFrom, proof);
-        await submitWithSmartAccount(config, smartAccount, bindTx);
+        const bindXdr = await buildBindSessionProofWalletXdr(config, address, settlementFrom, proof);
+        await signAndSubmit(bindXdr);
       }
       return submitWithSmartAccount(config, smartAccount, tx);
     },
-    [config, address, smartAccount],
+    [config, address, smartAccount, signAndSubmit],
   );
 
   const fundSmartAccountUsdc = useCallback(

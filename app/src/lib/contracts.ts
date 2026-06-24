@@ -68,13 +68,17 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-/** Single-op tx: bind UltraHonk proof on CompliancePolicy before passkey settlement. */
-export async function buildBindSessionProofTransaction(
+/**
+ * Bind eligibility proof via G-wallet (Freighter) before passkey settlement.
+ * Uses operator_bind_session_proof so we avoid the enforce() deadlock on
+ * set_session_proof (passkey auth requires an already-bound session proof).
+ */
+export async function buildBindSessionProofWalletXdr(
   config: DeploymentConfig,
-  source: string,
+  operatorWallet: string,
   smartAccount: string,
   proof: ProofBundle,
-): Promise<SmartAccountAssembledTransaction> {
+): Promise<string> {
   if (!config.compliancePolicyId) {
     throw new Error('Compliance policy not configured');
   }
@@ -83,7 +87,7 @@ export async function buildBindSessionProofTransaction(
   }
   assertProofBundleForChain(proof);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(source);
+  const acct = await s.getAccount(operatorWallet);
   const policy = new Contract(config.compliancePolicyId);
   const draft = new TransactionBuilder(acct, {
     fee: String(Number(BASE_FEE) * 100),
@@ -91,7 +95,8 @@ export async function buildBindSessionProofTransaction(
   })
     .addOperation(
       policy.call(
-        'set_session_proof',
+        'operator_bind_session_proof',
+        nativeToScVal(operatorWallet, { type: 'address' }),
         nativeToScVal(smartAccount, { type: 'address' }),
         scBytesFromHex(proof.proofHex),
         scBytesFromHex(proof.publicInputsHex),
@@ -99,7 +104,11 @@ export async function buildBindSessionProofTransaction(
     )
     .setTimeout(120)
     .build();
-  return simulateAssembledTx(s, draft);
+  const sim = await s.simulateTransaction(draft);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(sim.error || 'Session proof bind simulation failed');
+  }
+  return rpc.assembleTransaction(draft, sim).build().toXDR();
 }
 
 async function simulateAssembledTx(
@@ -773,6 +782,12 @@ export function formatSorobanUserError(message: string): string {
   }
   if (message.includes('Error(Contract, #1)') && message.toLowerCase().includes('notconfigured')) {
     return 'Settlement proof is not bound to your smart account. Confirm eligibility and retry send.';
+  }
+  if (message.includes('Invalid contract ID') || message.includes('Unsupported address type')) {
+    return (
+      'Network asset configuration is invalid. Refresh the page — native XLM SAC must be ' +
+      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC on testnet.'
+    );
   }
   if (message.includes('txMalformed') || message.toLowerCase().includes('malformed')) {
     return 'Transaction format was rejected. Refresh the page and retry funding or sending.';

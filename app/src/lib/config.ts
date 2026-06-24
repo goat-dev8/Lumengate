@@ -56,6 +56,7 @@ type DeploymentsFile = {
   privacy_pool?: string;
   asp_membership?: string;
   eurc_sac?: string;
+  native_sac?: string;
 };
 
 const CANONICAL = deployments as DeploymentsFile;
@@ -158,9 +159,10 @@ export function loadDeploymentConfig(): DeploymentConfig {
     ),
     openZeppelinRelayerUrl: optionalViteEnv('VITE_OPENZEPPELIN_RELAYER_URL'),
     passkeyRpId: optionalViteEnv('VITE_PASSKEY_RP_ID'),
-    nativeSacId:
-      optionalViteEnv('VITE_NATIVE_SAC_ID') ||
-      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUV4WXJBM4WYXDC5Z36TWVQOTAAK',
+    nativeSacId: resolveContractId(
+      'VITE_NATIVE_SAC_ID',
+      CANONICAL.native_sac ?? 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    ),
     sessionKeyPolicyId: resolveOptionalContractId(
       'VITE_SESSION_KEY_POLICY_ID',
       CANONICAL.session_key_policy,
