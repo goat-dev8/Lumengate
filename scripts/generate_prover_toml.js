@@ -4,10 +4,10 @@
  */
 const { readFileSync, writeFileSync, mkdirSync } = require('fs');
 const { randomBytes } = require('crypto');
-const { execSync } = require('child_process');
 const { join } = require('path');
 const { readOnChainRoots } = require('../issuer-service/lib/onChainRoots');
 const { signCommitment, issuerMetadata } = require('../issuer-service/lib/ed25519Issuer');
+const { computeNullifier: poseidonNullifier } = require('../issuer-service/lib/poseidonFields');
 
 const ROOT = join(__dirname, '..');
 const ENV_PATH = join(ROOT, '.env');
@@ -37,25 +37,8 @@ function randomFieldSecret() {
   return BigInt(`0x${randomBytes(31).toString('hex')}`).toString();
 }
 
-function writeTestGlobals(noteSecret, policyId) {
-  const mainPath = join(ROOT, 'circuits', 'lumengate', 'src', 'main.nr');
-  const src = readFileSync(mainPath, 'utf8');
-  const updated = src
-    .replace(/global TEST_NOTE_SECRET: Field = \d+;/, `global TEST_NOTE_SECRET: Field = ${noteSecret};`)
-    .replace(/global TEST_POLICY_ID: Field = \d+;/, `global TEST_POLICY_ID: Field = ${policyId};`);
-  writeFileSync(mainPath, updated);
-}
-
 function computeNullifier(noteSecret, policyId) {
-  writeTestGlobals(noteSecret, policyId);
-  const out = execSync('nargo test nullifier_for_note --show-output', {
-    cwd: join(ROOT, 'circuits', 'lumengate'),
-    env: { ...process.env, PATH: `${process.env.HOME}/.nargo/bin:${process.env.HOME}/.local/bin:${process.env.PATH || ''}` },
-    encoding: 'utf8',
-  });
-  const m = out.match(/nullifier_note=(0x[0-9a-f]+)/i);
-  if (!m) throw new Error(`Could not compute nullifier: ${out}`);
-  return m[1];
+  return poseidonNullifier(noteSecret, policyId);
 }
 
 const POLICY_OVERRIDES = {

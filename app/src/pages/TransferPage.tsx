@@ -319,17 +319,31 @@ export function TransferPage() {
       <div className="space-y-6">
 
         <div>
-
-          <Badge tone="brand">Step 3</Badge>
-
-          <h1 className="mt-3 text-3xl font-semibold text-navy">Transfer asset</h1>
-
+          <Badge tone="brand">Send</Badge>
+          <h1 className="mt-3 text-3xl font-semibold text-navy">Settle with privacy preserved</h1>
           <p className="mt-2 max-w-2xl text-slate-muted">
-
-            Proof-gated settlement on Stellar testnet — RwaToken or USDC via ComplianceSacAdmin.
-
+            Proof-gated transfers on Stellar. Your zero-knowledge proof authorizes settlement — auditors see
+            compliance, not your identity or private attributes.
           </p>
+        </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <CardHeader title="What is protected" badge={<Badge tone="ok">Private</Badge>} />
+            <ul className="space-y-2 text-sm text-slate-muted">
+              <li>Your name, DOB, and jurisdiction stay off-chain</li>
+              <li>Sanctions screening results are never published</li>
+              <li>Wallet identity is not linked to credential attributes</li>
+            </ul>
+          </Card>
+          <Card>
+            <CardHeader title="What auditors can verify" badge={<Badge>Disclosure</Badge>} />
+            <ul className="space-y-2 text-sm text-slate-muted">
+              <li>Policy requirements were satisfied at settlement time</li>
+              <li>Nullifier was valid and not previously spent</li>
+              <li>Settlement transaction hash for audit trail</li>
+            </ul>
+          </Card>
         </div>
 
 
@@ -344,10 +358,8 @@ export function TransferPage() {
 
             action={
 
-              <Link to="/app/prove">
-
+              <Link to="/app/verify">
                 <Button>Generate proof</Button>
-
               </Link>
 
             }

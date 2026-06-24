@@ -108,7 +108,7 @@ export function DashboardFlowIllustration({ className = '' }: { className?: stri
       ))}
 
       <text x="380" y="200" textAnchor="middle" fill="#64748b" fontSize="10" fontFamily="system-ui">
-        Private compliance path — Ethereum credentials → ZK proof → Stellar settlement
+        Private compliance path — issuer attestation → ZK proof → Stellar settlement
       </text>
     </svg>
   );

@@ -27,7 +27,7 @@ function SidebarBrand() {
       </div>
       <div>
         <span className="block text-[15px] font-semibold tracking-tight text-white">Lumengate X</span>
-        <span className="block text-[11px] text-white/45">External compliance policy</span>
+        <span className="block text-[11px] text-white/45">Compliance layer for Stellar</span>
       </div>
     </Link>
   );

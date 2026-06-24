@@ -11,6 +11,7 @@ import { queryDisclosures } from '../lib/disclosureApi';
 import { verifyAuditorInput, type AuditorVerification } from '../lib/auditor';
 import { loadIdentityVerifierAdapter } from '../lib/standards';
 import { truncateMiddle } from '../lib/utils';
+import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 
 const RESULT_LABELS: Record<string, string> = {
   'Disclosure pack version': 'Policy passed',
@@ -24,6 +25,7 @@ const RESULT_LABELS: Record<string, string> = {
 
 export function AuditorPage() {
   const { config } = useApp();
+  const advanced = useAdvancedMode();
   const adapter = loadIdentityVerifierAdapter(config.rwaAdapterId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'disclosure' | 'public-inputs' | 'nullifier'>('disclosure');
@@ -105,34 +107,67 @@ export function AuditorPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <Badge tone="brand">Auditor console</Badge>
-          <h1 className="mt-3 text-3xl font-semibold text-navy">Independent compliance verification</h1>
-          <p className="mt-2 max-w-2xl text-slate-muted">
-            An auditor can verify compliance without accessing private user data — only disclosure
-            packs, public inputs, and live Soroban RPC checks.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Badge tone="brand">Independent verification</Badge>
+            <h1 className="mt-3 text-3xl font-semibold text-navy">Verify compliance — never identity</h1>
+            <p className="mt-2 max-w-2xl text-slate-muted">
+              Auditors confirm policy compliance from disclosure packs and public inputs. They never see names,
+              jurisdictions, sanctions status, or wallet-linked identity.
+            </p>
+          </div>
+          <AdvancedModeToggle />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { title: 'Auditor sees', items: ['Policy passed', 'Nullifier valid', 'Settlement tx hash'] },
+            { title: 'Auditor never sees', items: ['Legal name', 'Date of birth', 'Sanctions details'] },
+            { title: 'Privacy guarantee', items: ['ZK proof verified', 'Selective disclosure only', 'No identity link'] },
+          ].map((col) => (
+            <Card key={col.title}>
+              <CardHeader title={col.title} />
+              <ul className="space-y-2 text-sm text-slate-muted">
+                {col.items.map((item) => (
+                  <li key={item} className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-brand" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ))}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <AuditorWorkflowDiagram />
-          <Card>
-            <CardHeader
-              title="Standards adapter"
-              description="RwaAdapter → PolicyVerifier (SEP-57-style identity verifier)"
-              badge={<Badge>{adapter.standard}</Badge>}
-            />
-            <dl className="mt-2 space-y-2 text-xs">
-              <div>
-                <dt className="text-slate-muted">RwaAdapter</dt>
-                <dd className="font-mono break-all">{config.rwaAdapterId}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-muted">PolicyVerifier</dt>
-                <dd className="font-mono break-all">{config.policyVerifierId}</dd>
-              </div>
-            </dl>
-          </Card>
+          {advanced ? (
+            <Card>
+              <CardHeader
+                title="Standards adapter"
+                description="RwaAdapter → PolicyVerifier (SEP-57-style identity verifier)"
+                badge={<Badge>{adapter.standard}</Badge>}
+              />
+              <dl className="mt-2 space-y-2 text-xs">
+                <div>
+                  <dt className="text-slate-muted">RwaAdapter</dt>
+                  <dd className="font-mono break-all">{config.rwaAdapterId}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-muted">PolicyVerifier</dt>
+                  <dd className="font-mono break-all">{config.policyVerifierId}</dd>
+                </div>
+              </dl>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader title="How verification works" badge={<Badge tone="brand">Privacy-first</Badge>} />
+              <p className="text-sm text-slate-muted">
+                Paste a disclosure pack from a settlement receipt. Lumengate checks PolicyVerifier on Stellar RPC
+                — confirming compliance without exposing private attributes.
+              </p>
+            </Card>
+          )}
         </div>
 
         <Card>

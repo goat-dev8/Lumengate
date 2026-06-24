@@ -4,8 +4,8 @@
  */
 const { readFileSync, writeFileSync } = require('fs');
 const { randomBytes } = require('crypto');
-const { execSync } = require('child_process');
 const { join } = require('path');
+const { computeNullifier: poseidonNullifier } = require('../issuer-service/lib/poseidonFields');
 
 const ROOT = join(__dirname, '..');
 const CIRCUIT = join(ROOT, 'circuits', 'proof_of_funds');
@@ -14,25 +14,8 @@ function randomFieldSecret() {
   return BigInt(`0x${randomBytes(31).toString('hex')}`).toString();
 }
 
-function writeTestGlobals(noteSecret, policyId) {
-  const mainPath = join(CIRCUIT, 'src', 'main.nr');
-  const src = readFileSync(mainPath, 'utf8');
-  const updated = src
-    .replace(/global TEST_NOTE_SECRET: Field = \d+;/, `global TEST_NOTE_SECRET: Field = ${noteSecret};`)
-    .replace(/global TEST_POLICY_ID: Field = \d+;/, `global TEST_POLICY_ID: Field = ${policyId};`);
-  writeFileSync(mainPath, updated);
-}
-
 function computeNullifier(noteSecret, policyId = '2') {
-  writeTestGlobals(noteSecret, policyId);
-  const out = execSync('nargo test nullifier_for_note --show-output', {
-    cwd: CIRCUIT,
-    env: { ...process.env, PATH: `${process.env.HOME}/.nargo/bin:${process.env.HOME}/.local/bin:${process.env.PATH || ''}` },
-    encoding: 'utf8',
-  });
-  const m = out.match(/nullifier_note=(0x[0-9a-f]+)/i);
-  if (!m) throw new Error(`Could not compute nullifier: ${out}`);
-  return m[1];
+  return poseidonNullifier(noteSecret, policyId);
 }
 
 function buildPofProverInputs(_walletField, balance, threshold = 50) {

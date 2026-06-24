@@ -17,6 +17,7 @@ import { LiveOnStellarStrip } from '../components/product/LiveOnStellarStrip';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
 import { buildUserJourney } from '../lib/journey';
+import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 
 export function DashboardPage() {
   const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked } =
@@ -89,6 +90,8 @@ export function DashboardPage() {
         ? 'Your passport is active. Generate proof to invest.'
         : 'Issue your compliance passport to begin.';
 
+  const advanced = useAdvancedMode();
+
   const journey = buildUserJourney({
     address,
     credential,
@@ -101,7 +104,10 @@ export function DashboardPage() {
   return (
     <AppShell>
       <LiveOnStellarStrip config={config} />
-      <div className="mt-6">
+      <div className="mt-4 flex justify-end">
+        <AdvancedModeToggle />
+      </div>
+      <div className="mt-2">
         <JourneyRail steps={journey} />
       </div>
       <section className="lg-dash-hero">
@@ -210,7 +216,7 @@ export function DashboardPage() {
         />
       </div>
 
-      {(config.compliantDexId || config.compliantPayrollId || config.auditorRegistryId) ? (
+      {(advanced && (config.compliantDexId || config.compliantPayrollId || config.auditorRegistryId)) ? (
         <div className="mt-8 rounded-2xl border border-[#e3e8ee] bg-white p-6 shadow-sm">
           <p className="lg-section-eyebrow">V3 infrastructure</p>
           <h2 className="lg-section-title text-xl">Two dApps, one registry</h2>
