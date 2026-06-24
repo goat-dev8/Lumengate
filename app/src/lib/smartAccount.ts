@@ -20,6 +20,8 @@ export type SmartAccountState = {
   passkeyPublicKey?: string;
   createdAt: number;
   deploymentHash?: string;
+  /** Compliance policy installed in this account's default context rule. */
+  compliancePolicyId?: string;
   compliancePolicyInstalled?: boolean;
   compliancePolicyTxHash?: string;
 };
@@ -217,6 +219,7 @@ export async function createPersonalSmartAccount(
     passkeyPublicKey: Buffer.from(created.publicKey).toString('base64'),
     createdAt: Date.now(),
     deploymentHash,
+    compliancePolicyId: config.compliancePolicyId,
     compliancePolicyInstalled: true,
     compliancePolicyTxHash: deploymentHash,
   };

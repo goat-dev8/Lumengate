@@ -25,7 +25,7 @@ import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
-  buildBindSessionProofWalletXdr,
+  buildBindSessionProofTransaction,
   formatSorobanUserError,
   readBalance,
   submitSignedTransaction,
@@ -1029,13 +1029,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error('Create and fund your smart account before settlement.');
       }
       if (!address) throw new Error('Connect wallet first');
+      if (smartAccount.compliancePolicyId !== config.compliancePolicyId) {
+        throw new Error(
+          'This smart account was created with the older compliance policy. Create a fresh smart account passkey, then fund it before settlement.',
+        );
+      }
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
-        const bindXdr = await buildBindSessionProofWalletXdr(config, address, settlementFrom, proof);
-        await signAndSubmit(bindXdr);
+        const bindTx = await buildBindSessionProofTransaction(config, address, settlementFrom, proof);
+        await submitWithSmartAccount(config, smartAccount, bindTx);
       }
       return submitWithSmartAccount(config, smartAccount, tx);
     },
-    [config, address, smartAccount, signAndSubmit],
+    [config, address, smartAccount],
   );
 
   const fundSmartAccountUsdc = useCallback(

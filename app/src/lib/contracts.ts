@@ -68,17 +68,13 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-/**
- * Bind eligibility proof via G-wallet (Freighter) before passkey settlement.
- * Uses operator_bind_session_proof so we avoid the enforce() deadlock on
- * set_session_proof (passkey auth requires an already-bound session proof).
- */
-export async function buildBindSessionProofWalletXdr(
+/** Single-op tx: bind UltraHonk proof on CompliancePolicy before passkey settlement. */
+export async function buildBindSessionProofTransaction(
   config: DeploymentConfig,
-  operatorWallet: string,
+  source: string,
   smartAccount: string,
   proof: ProofBundle,
-): Promise<string> {
+): Promise<SmartAccountAssembledTransaction> {
   if (!config.compliancePolicyId) {
     throw new Error('Compliance policy not configured');
   }
@@ -87,7 +83,7 @@ export async function buildBindSessionProofWalletXdr(
   }
   assertProofBundleForChain(proof);
   const s = server(config.rpcUrl);
-  const acct = await s.getAccount(operatorWallet);
+  const acct = await s.getAccount(source);
   const policy = new Contract(config.compliancePolicyId);
   const draft = new TransactionBuilder(acct, {
     fee: String(Number(BASE_FEE) * 100),
@@ -95,8 +91,7 @@ export async function buildBindSessionProofWalletXdr(
   })
     .addOperation(
       policy.call(
-        'operator_bind_session_proof',
-        nativeToScVal(operatorWallet, { type: 'address' }),
+        'set_session_proof',
         nativeToScVal(smartAccount, { type: 'address' }),
         scBytesFromHex(proof.proofHex),
         scBytesFromHex(proof.publicInputsHex),
@@ -104,11 +99,7 @@ export async function buildBindSessionProofWalletXdr(
     )
     .setTimeout(120)
     .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'Session proof bind simulation failed');
-  }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
+  return simulateAssembledTx(s, draft);
 }
 
 async function simulateAssembledTx(

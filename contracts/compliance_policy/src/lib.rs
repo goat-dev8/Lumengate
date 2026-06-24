@@ -44,11 +44,14 @@ impl Policy for CompliancePolicy {
 
     fn enforce(
         e: &Env,
-        _context: Context,
+        context: Context,
         _authenticated_signers: Vec<Signer>,
         _context_rule: ContextRule,
         smart_account: Address,
     ) {
+        if Self::is_session_bind_context(e, &context) {
+            return;
+        }
         let cfg: CompliancePolicyParams = e
             .storage()
             .persistent()
@@ -66,7 +69,7 @@ impl Policy for CompliancePolicy {
         args.push_back(session.public_inputs.into_val(e));
         let ok: bool = e.invoke_contract(
             &cfg.adapter,
-            &Symbol::new(e, "verify_passport"),
+            &Symbol::new(e, "check_passport"),
             args,
         );
         if !ok {
@@ -77,6 +80,16 @@ impl Policy for CompliancePolicy {
 
 #[contractimpl]
 impl CompliancePolicy {
+    fn is_session_bind_context(env: &Env, context: &Context) -> bool {
+        match context {
+            Context::Contract(call) => {
+                call.contract == env.current_contract_address()
+                    && call.fn_name == Symbol::new(env, "set_session_proof")
+            }
+            _ => false,
+        }
+    }
+
     /// Bind a fresh eligibility proof to the smart account session before settlement.
     pub fn set_session_proof(
         env: Env,
