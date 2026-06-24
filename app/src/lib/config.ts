@@ -29,6 +29,7 @@ export type DeploymentConfig = {
   lumengateSmartAccountWasmHash?: string;
   webauthnVerifierId?: string;
   openZeppelinRelayerUrl?: string;
+  passkeyRpId?: string;
   nativeSacId?: string;
   sessionKeyPolicyId?: string;
   governanceTimelockId?: string;
@@ -156,6 +157,7 @@ export function loadDeploymentConfig(): DeploymentConfig {
       CANONICAL.webauthn_verifier,
     ),
     openZeppelinRelayerUrl: optionalViteEnv('VITE_OPENZEPPELIN_RELAYER_URL'),
+    passkeyRpId: optionalViteEnv('VITE_PASSKEY_RP_ID'),
     nativeSacId:
       optionalViteEnv('VITE_NATIVE_SAC_ID') ||
       'CDLZFC3SYJYDZT7K67VZ75HPJVIEUV4WXJBM4WYXDC5Z36TWVQOTAAK',

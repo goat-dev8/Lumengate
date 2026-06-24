@@ -1,4 +1,4 @@
-import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, hash, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import {
   IndexedDBStorage,
   SmartAccountKit,
@@ -30,6 +30,16 @@ export type SignableTransaction = string | SmartAccountAssembledTransaction;
 
 const storage = new IndexedDBStorage();
 
+/** smart-account-kit builds `${userName}:${timestamp}:${random}`; WebAuthn user.id must decode to ≤64 bytes. */
+export function passkeyUserName(walletAddress: string): string {
+  const suffixReserve = 33;
+  const maxLen = 64 - suffixReserve;
+  if (walletAddress.length <= maxLen) {
+    return walletAddress;
+  }
+  return hash(Buffer.from(walletAddress)).toString('hex').slice(0, maxLen);
+}
+
 export function smartAccountStatus(config: DeploymentConfig): SmartAccountStatus {
   const missing: string[] = [];
   if (!config.lumengateSmartAccountWasmHash) missing.push('VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH');
@@ -52,6 +62,7 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     relayerUrl: config.openZeppelinRelayerUrl,
     storage,
     rpName: 'Lumengate',
+    ...(config.passkeyRpId ? { rpId: config.passkeyRpId } : {}),
   });
 }
 
@@ -85,7 +96,7 @@ export async function createPersonalSmartAccount(
   const kit = createSmartAccountKit(config);
   const created: CreateWalletResult & { submitResult?: TransactionResult } = await kit.createWallet(
     'Lumengate',
-    walletAddress,
+    passkeyUserName(walletAddress),
     {
       autoSubmit: true,
       forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
