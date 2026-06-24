@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, Circle, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
@@ -28,6 +28,7 @@ import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { DashboardFlowIllustration } from '../components/fintech/DashboardFlowIllustration';
 import { buildPassportSnapshot } from '../lib/passport';
+import { recoveryLog, verifyStepFlags } from '../lib/proofRecovery';
 
 type VerifyStepId = 'wallet' | 'passkey' | 'credential' | 'proof' | 'passport';
 
@@ -68,6 +69,7 @@ export function VerifyPage() {
     setPassportActivated,
     proofLifecycle,
     syncProofLifecycle,
+    beginProofRecovery,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -79,22 +81,32 @@ export function VerifyPage() {
   const advanced = useAdvancedMode();
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
+  const inRecovery =
+    proofLifecycle.lifecycle === 'none' && Boolean(proofLifecycle.consumedTxHash || proofLifecycle.reason);
 
   const flags = useMemo(
-    () => ({
-      wallet: Boolean(address),
-      passkey: Boolean(passkey),
-      credential: Boolean(credential),
-      proof: Boolean(activeProof),
-      passport: passportActivated,
-    }),
-    [address, passkey, credential, activeProof, passportActivated],
+    () =>
+      verifyStepFlags({
+        address: Boolean(address),
+        passkey: Boolean(passkey),
+        credential: Boolean(credential),
+        activeProof: Boolean(activeProof),
+        passportActivated,
+        lifecycle: proofLifecycle.lifecycle,
+      }),
+    [address, passkey, credential, activeProof, passportActivated, proofLifecycle.lifecycle],
   );
 
   const currentStep = useMemo(() => {
     const order = STEP_META.map((s) => s.id);
     return order.find((id) => !flags[id]) ?? 'passport';
   }, [flags]);
+
+  useEffect(() => {
+    if (window.location.hash === '#recovery-credential') {
+      document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [proofLifecycle.lifecycle, credential]);
 
   const handlePasskey = async () => {
     setPasskeyLoading(true);
@@ -122,9 +134,15 @@ export function VerifyPage() {
     }
     setCredLoading(true);
     setError(null);
+    recoveryLog('credential.request', { policyKey, walletField, inRecovery, proofConsumed });
     try {
       await fetchIssuerHealth(config.issuerServiceUrl);
+      recoveryLog('credential.api.health', { ok: true });
       const cred = await requestCredential(policyKey);
+      recoveryLog('credential.api.response', {
+        nullifier: cred.proverInputs?.nullifier,
+        policyId: cred.credential.policyId,
+      });
       const onChain = await readOnChainRoots(config);
       const matches =
         onChain.root.toLowerCase() === cred.credential.root.toLowerCase() ||
@@ -132,24 +150,34 @@ export function VerifyPage() {
       if (!matches) throw new Error('Compliance registry is syncing — wait a moment and retry.');
       pushActivity({
         kind: 'credential',
-        title: 'Compliance passport issued',
-        detail: 'Eligibility attested — identity stays off-chain',
+        title: inRecovery || proofConsumed ? 'New passport issued' : 'Compliance passport issued',
+        detail: 'Fresh nullifier ready — identity stays off-chain',
         status: 'success',
       });
     } catch (err) {
-      setError(friendlyIssuerError(err instanceof Error ? err.message : String(err)));
+      const msg = friendlyIssuerError(err instanceof Error ? err.message : String(err));
+      recoveryLog('credential.api.error', { message: msg });
+      setError(msg);
     } finally {
       setCredLoading(false);
     }
   };
 
   const handleProve = async () => {
-    if (!credential) return;
+    if (!credential) {
+      setError('Request a new passport first — each settlement requires a fresh nullifier.');
+      return;
+    }
     setProveLoading(true);
     setError(null);
     setProveProgress(null);
+    recoveryLog('proof.generate.begin', { nullifier: credential.proverInputs?.nullifier });
     try {
       const { bundle, durationSec } = await generateProof(credential, setProveProgress);
+      recoveryLog('proof.generate.done', {
+        durationSec,
+        nullifier: bundle.publicInputs.nullifier,
+      });
       setProof(bundle, durationSec);
       pushActivity({
         kind: 'proof',
@@ -158,7 +186,9 @@ export function VerifyPage() {
         status: 'success',
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      recoveryLog('proof.generate.error', { message: msg });
+      setError(msg);
     } finally {
       setProveLoading(false);
     }
@@ -191,6 +221,12 @@ export function VerifyPage() {
     }
   };
 
+  const showCredentialStep =
+    (currentStep === 'credential' || flags.credential || proofConsumed || inRecovery) && Boolean(address);
+  const needsNewPassport = proofConsumed || inRecovery || currentStep === 'credential' || !credential;
+  const showProofStep =
+    Boolean(credential) && (currentStep === 'proof' || flags.proof || proofConsumed || inRecovery);
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -207,10 +243,11 @@ export function VerifyPage() {
 
         <PrivacyJourney compact />
 
-        {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
+        {(proofConsumed || proofLifecycle.lifecycle === 'invalid' || inRecovery) && (
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
+            onBeginRecovery={beginProofRecovery}
             onRefreshProof={() => syncProofLifecycle()}
           />
         )}
@@ -289,15 +326,17 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {(currentStep === 'credential' || flags.credential) && address ? (
+        {showCredentialStep ? (
+          <div id="recovery-credential">
           <Card>
             <CardHeader
               title="Step 3 — Get your compliance passport"
               badge={<Badge>{advanced ? 'Issuer attestation' : 'Off-chain'}</Badge>}
             />
             <p className="text-sm text-slate-muted">
-              The issuer attests you meet policy requirements. Your name, jurisdiction, and sanctions status stay
-              off-chain — only a cryptographic commitment is recorded.
+              {needsNewPassport && (proofConsumed || inRecovery)
+                ? 'Your previous nullifier was spent on-chain. Request a new passport — the issuer assigns a fresh nullifier for your next settlement.'
+                : 'The issuer attests you meet policy requirements. Your name, jurisdiction, and sanctions status stay off-chain — only a cryptographic commitment is recorded.'}
             </p>
             <label className="mt-4 block text-sm">
               <span className="text-slate-muted">{advanced ? 'Policy' : 'Eligibility type'}</span>
@@ -313,38 +352,35 @@ export function VerifyPage() {
                 ))}
               </select>
             </label>
-            {currentStep === 'credential' || !credential ? (
+            {needsNewPassport ? (
               <Button className="mt-4" loading={credLoading || connecting} onClick={handleCredential}>
-                Request passport
+                {proofConsumed || inRecovery ? 'Request new passport' : 'Request passport'}
               </Button>
             ) : null}
-            {credential ? (
+            {credential && flags.credential ? (
               <p className="mt-4 text-sm text-brand">
                 <ShieldCheck className="mr-1 inline h-4 w-4" />
                 Passport credential ready
               </p>
             ) : null}
           </Card>
+          </div>
         ) : null}
 
-        {(currentStep === 'proof' || flags.proof || proofConsumed) && credential ? (
+        {showProofStep ? (
+          <div id="recovery-proof">
           <Card>
             <CardHeader title="Step 4 — Generate zero-knowledge proof" badge={<Badge tone="brand">Private</Badge>} />
             <p className="text-sm text-slate-muted">
               Confirm you satisfy the policy without revealing who you are. Auditors see compliance — never your
               identity or private attributes.
             </p>
-            {proofConsumed ? (
-              <p className="mt-3 text-sm text-amber-800">
-                Your previous proof was consumed by settlement. Generate a fresh passport and proof below.
-              </p>
-            ) : null}
-            {(currentStep === 'proof' || !activeProof) && !proofConsumed ? (
+            {!activeProof ? (
               <>
                 <p className="mt-3 text-sm text-slate-muted">
                   {proveProgress?.message || 'Ready to generate proof locally in your browser…'}
                 </p>
-                <Button className="mt-4" loading={proveLoading} onClick={handleProve}>
+                <Button className="mt-4" loading={proveLoading} disabled={!credential} onClick={handleProve}>
                   <Sparkles className="h-4 w-4" />
                   Generate proof
                 </Button>
@@ -369,6 +405,7 @@ export function VerifyPage() {
               </div>
             ) : null}
           </Card>
+          </div>
         ) : null}
 
         {(currentStep === 'passport' || flags.passport) && activeProof ? (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, ExternalLink } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
 import { Button } from '../components/ui/Button';
@@ -20,8 +20,9 @@ import { buildUserJourney } from '../lib/journey';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 
 export function DashboardPage() {
-  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked, proofLifecycle } =
+  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked, proofLifecycle, beginProofRecovery } =
     useApp();
+  const navigate = useNavigate();
   const { offerings } = useOfferings();
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -123,7 +124,14 @@ export function DashboardPage() {
       </div>
       {proofSpent ? (
         <div className="mt-4">
-          <ProofLifecyclePanel state={proofLifecycle} config={config} />
+          <ProofLifecyclePanel
+            state={proofLifecycle}
+            config={config}
+            onBeginRecovery={() => {
+              beginProofRecovery();
+              navigate('/app/verify#recovery-credential');
+            }}
+          />
         </div>
       ) : null}
       <section className="lg-dash-hero">

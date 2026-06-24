@@ -49,9 +49,14 @@ export function TransferPage() {
     setPassportActivated,
     proofLifecycle,
     syncProofLifecycle,
+    beginProofRecovery,
   } = useApp();
 
   const navigate = useNavigate();
+  const handleRecovery = () => {
+    beginProofRecovery();
+    navigate('/app/verify#recovery-credential');
+  };
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
 
   const [asset, setAsset] = useState<AssetKind>('rwa');
@@ -241,6 +246,7 @@ export function TransferPage() {
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
+            onBeginRecovery={handleRecovery}
             onRefreshProof={() => syncProofLifecycle()}
           />
         ) : (

@@ -98,10 +98,10 @@ export function MarketplacePage() {
 
     recordVerifyTx,
     proofLifecycle,
+    beginProofRecovery,
   } = useApp();
 
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
-
   const navigate = useNavigate();
 
   const activeProof = proofLifecycle.lifecycle === 'ready' && proofMatchesCredential(proof, credential) ? proof : null;
@@ -310,8 +310,9 @@ export function MarketplacePage() {
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(activeProof), pid);
 
       if (spent) {
-        setError('Proof consumed by a previous settlement. Generate a fresh proof on Verify.');
-        navigate('/app/verify');
+        setError('Proof consumed by a previous settlement. Start fresh passport on Verify.');
+        beginProofRecovery();
+        navigate('/app/verify#recovery-credential');
         return;
       }
 
@@ -565,7 +566,14 @@ export function MarketplacePage() {
 
       {proofConsumed || proofLifecycle.lifecycle === 'invalid' ? (
         <div className="mb-6">
-          <ProofLifecyclePanel state={proofLifecycle} config={config} />
+          <ProofLifecyclePanel
+            state={proofLifecycle}
+            config={config}
+            onBeginRecovery={() => {
+              beginProofRecovery();
+              navigate('/app/verify#recovery-credential');
+            }}
+          />
         </div>
       ) : null}
 

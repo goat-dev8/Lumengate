@@ -45,6 +45,7 @@ import {
   syncProofLifecycleOnChain,
   type ProofLifecycleState,
 } from '../lib/proofLifecycle';
+import { recoveryLog } from '../lib/proofRecovery';
 import type { PolicyKey } from '../lib/policies';
 import { buildDisclosurePack, type DisclosurePack } from '../lib/disclosure';
 import { generatePofProof } from '../lib/pofProver';
@@ -97,6 +98,7 @@ type AppContextValue = {
   proofLifecycle: ProofLifecycleState;
   syncProofLifecycle: () => Promise<void>;
   consumedTxHash: string | null;
+  beginProofRecovery: () => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -529,6 +531,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPofProofState(null);
       setProofDurationSec(null);
       setConsumedTxHash(null);
+      setPassportActivatedState(false);
       setProofLifecycle(deriveProofLifecycle(cred, null, null));
       persistSession({
         address,
@@ -540,6 +543,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         policyKey: pk,
         selectedOfferingId,
         consumedTxHash: null,
+        passportActivated: false,
         proofLifecycle: 'none',
       });
       pushActivity({
@@ -651,11 +655,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const recordTransferTx = useCallback(
     async (hash: string, result: ProofReceiptTransferResult) => {
+      recoveryLog('transfer.consumed', { hash, from: result.from, to: result.to });
       const txs = { ...receiptTransactions, transfer: hash };
       setReceiptTransactions(txs);
       setTransferResult(result);
       setConsumedTxHash(hash);
       setProofState(null);
+      setPassportActivatedState(false);
       setProofLifecycle({
         lifecycle: 'consumed',
         consumedTxHash: hash,
@@ -666,6 +672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           address,
           walletField,
           proof: null,
+          passportActivated: false,
           receiptTransactions: txs,
           transferResult: result,
           consumedTxHash: hash,
@@ -676,6 +683,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [receiptTransactions, address, walletField, persistSession, refreshProofReceipt],
   );
+
+  const beginProofRecovery = useCallback(() => {
+    if (!address || !walletField) {
+      recoveryLog('recovery.blocked', { reason: 'wallet not connected' });
+      return;
+    }
+    const previousTx = consumedTxHash ?? proofLifecycle.consumedTxHash ?? receiptTransactions.transfer ?? null;
+    recoveryLog('recovery.begin', {
+      address,
+      previousTx,
+      hadCredential: Boolean(credential),
+      lifecycle: proofLifecycle.lifecycle,
+    });
+
+    setCredentialState(null);
+    setProofState(null);
+    setPofProofState(null);
+    setProofDurationSec(null);
+    setPassportActivatedState(false);
+    setProofReceipt(null);
+    setReplayBlocked(false);
+    setReplayMessage(null);
+    setProofLifecycle({
+      lifecycle: 'none',
+      consumedTxHash: previousTx,
+      reason: previousTx
+        ? `Previous settlement consumed your nullifier (${previousTx.slice(0, 12)}…). Request a new passport below.`
+        : 'Request a new passport with a fresh nullifier, then generate proof.',
+    });
+
+    persistSession({
+      address,
+      walletField,
+      credential: null,
+      proof: null,
+      pofProof: null,
+      proofDurationSec: null,
+      passportActivated: false,
+      consumedTxHash: previousTx,
+      proofLifecycle: 'none',
+      replayBlocked: false,
+      replayMessage: null,
+    });
+
+    pushActivity({
+      kind: 'verify',
+      title: 'Recovery started',
+      detail: 'Request a new passport — each settlement needs a fresh nullifier',
+      status: 'info',
+    });
+  }, [
+    address,
+    walletField,
+    credential,
+    consumedTxHash,
+    proofLifecycle,
+    receiptTransactions.transfer,
+    persistSession,
+    pushActivity,
+  ]);
 
   const recordVerifyTx = useCallback(
     async (hash: string) => {
@@ -783,6 +850,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     proofLifecycle,
     syncProofLifecycle,
     consumedTxHash,
+    beginProofRecovery,
     setCredential,
     setProof,
     setPofProof,
