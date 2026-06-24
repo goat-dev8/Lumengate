@@ -10,9 +10,9 @@ import { OfferingIllustration } from '../components/fintech/OfferingIllustration
 import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 import { buildPassportSnapshot } from '../lib/passport';
-import { proofMatchesCredential } from '../lib/credentialProof';
 import { readBalance } from '../lib/contracts';
 import { JourneyRail } from '../components/product/JourneyRail';
+import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { LiveOnStellarStrip } from '../components/product/LiveOnStellarStrip';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
@@ -20,14 +20,15 @@ import { buildUserJourney } from '../lib/journey';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 
 export function DashboardPage() {
-  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked } =
+  const { address, connect, connecting, credential, proof, policyKey, config, activity, walletField, proofReceipt, replayBlocked, proofLifecycle } =
     useApp();
   const { offerings } = useOfferings();
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [passportStatus, setPassportStatus] = useState('Connect wallet');
   const [readyToInvest, setReadyToInvest] = useState(false);
-  const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
+  const proofSpent = proofLifecycle.lifecycle === 'consumed';
 
   useEffect(() => {
     if (!address) {
@@ -61,11 +62,19 @@ export function DashboardPage() {
     }).then((snap) => {
       const active = snap.status === 'valid' || snap.status === 'proof-ready';
       setPassportStatus(
-        active ? 'Active' : snap.status === 'proof-spent' ? 'Proof spent' : snap.status === 'no-credential' ? 'Issue passport' : 'Review',
+        proofSpent
+          ? 'Proof consumed'
+          : active
+            ? 'Active'
+            : snap.status === 'proof-spent'
+              ? 'Proof spent'
+              : snap.status === 'no-credential'
+                ? 'Issue passport'
+                : 'Review',
       );
-      setReadyToInvest(active && Boolean(activeProof));
+      setReadyToInvest(active && Boolean(activeProof) && !proofSpent);
     });
-  }, [address, credential, activeProof, policyKey, config, walletField]);
+  }, [address, credential, activeProof, policyKey, config, walletField, proofSpent]);
 
   const lastSettlement = useMemo(() => {
     const tx = activity.find((e) => e.kind === 'transfer');
@@ -84,11 +93,13 @@ export function DashboardPage() {
 
   const headline = !address
     ? 'Connect to unlock compliant RWA access'
-    : readyToInvest
-      ? 'You are eligible. Ready to invest.'
-      : credential
-        ? 'Your passport is active. Generate proof to invest.'
-        : 'Issue your compliance passport to begin.';
+    : proofSpent
+      ? 'Your proof was consumed — generate a fresh one to settle again.'
+      : readyToInvest
+        ? 'You are eligible. Ready to invest.'
+        : credential
+          ? 'Your passport is active. Generate proof to invest.'
+          : 'Issue your compliance passport to begin.';
 
   const advanced = useAdvancedMode();
 
@@ -110,6 +121,11 @@ export function DashboardPage() {
       <div className="mt-2">
         <JourneyRail steps={journey} />
       </div>
+      {proofSpent ? (
+        <div className="mt-4">
+          <ProofLifecyclePanel state={proofLifecycle} config={config} />
+        </div>
+      ) : null}
       <section className="lg-dash-hero">
         <BrandGridBackground />
         <div className="lg-dash-hero-inner">
@@ -145,8 +161,12 @@ export function DashboardPage() {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
+              ) : proofSpent ? (
+                <Link to="/app/verify">
+                  <Button>Generate fresh proof</Button>
+                </Link>
               ) : (
-                <Link to="/app/passport">
+                <Link to="/app/verify">
                   <Button>{credential ? 'Generate proof' : 'Get passport'}</Button>
                 </Link>
               )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { ArrowRightLeft, ExternalLink } from 'lucide-react';
 
@@ -12,34 +12,20 @@ import { Button } from '../components/ui/Button';
 
 import { Badge } from '../components/ui/Badge';
 
-import { EmptyState } from '../components/ui/States';
-
 import { useApp } from '../context/AppContext';
-
-import { proofMatchesCredential } from '../lib/credentialProof';
-
+import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { ProductHero } from '../components/product/ProductHero';
+import { PrivacyJourney } from '../components/product/PrivacyJourney';
+import { isProofUsable } from '../lib/proofLifecycle';
 import {
-
   buildTransferTransaction,
-
   buildUsdcTransferTransaction,
-
   buildEurcTransferTransaction,
-
   formatSorobanUserError,
-
-  nullifierHexFromBundle,
-
   readBalance,
-
-  readNullifierSpent,
-
   readUsdcSacBalance,
-
   readEurcSacBalance,
-
   validateStellarAddress,
-
 } from '../lib/contracts';
 
 import { checkRecipientUsdcTrustline } from '../lib/horizon';
@@ -53,43 +39,30 @@ type AssetKind = 'rwa' | 'usdc' | 'eurc';
 
 
 export function TransferPage() {
-
   const {
     address,
     proof,
-    credential,
     config,
     signAndSubmit,
     pushActivity,
     recordTransferTx,
-    setProof,
     setPassportActivated,
+    proofLifecycle,
+    syncProofLifecycle,
   } = useApp();
 
   const navigate = useNavigate();
-
-  const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
 
   const [asset, setAsset] = useState<AssetKind>('rwa');
-
   const [to, setTo] = useState('');
-
   const [amount, setAmount] = useState('');
-
   const [rwaBalance, setRwaBalance] = useState<string | null>(null);
-
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
-
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
-
-  const [nullifierSpent, setNullifierSpent] = useState<boolean | null>(null);
-
   const [loading, setLoading] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
-
   const [txHash, setTxHash] = useState<string | null>(null);
-
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
 
@@ -116,40 +89,10 @@ export function TransferPage() {
     }
   }, [asset, config.marketplaceSettlementAddress, to]);
 
-  useEffect(() => {
-    if (!activeProof) {
-      setNullifierSpent(null);
-      return;
-    }
-    let cancelled = false;
-    readNullifierSpent(
-      config,
-      nullifierHexFromBundle(activeProof),
-      Number(activeProof.publicInputs.policyId),
-    )
-      .then((spent) => {
-        if (!cancelled) {
-          setNullifierSpent(spent);
-          if (spent) setProof(null, null);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setNullifierSpent(null);
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeProof, config, setProof]);
-
   const handleTransfer = async () => {
     if (!address || !activeProof || !to || !amount) return;
-
-    if (nullifierSpent) {
-      setProof(null, null);
-      setError(formatSorobanUserError('Error(Contract, #6)'));
+    if (!isProofUsable(proofLifecycle)) {
+      setError(proofLifecycle.reason ?? 'Proof is not ready for settlement.');
       return;
     }
 
@@ -194,17 +137,6 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     try {
-      const spentNow = await readNullifierSpent(
-        config,
-        nullifierHexFromBundle(activeProof),
-        Number(activeProof.publicInputs.policyId),
-      );
-      if (spentNow) {
-        setProof(null, null);
-        setNullifierSpent(true);
-        throw new Error('Error(Contract, #6)');
-      }
-
       const xdr =
         asset === 'usdc'
           ? await buildUsdcTransferTransaction(config, address, address, recipient, amount, activeProof)
@@ -242,7 +174,6 @@ export function TransferPage() {
         status: 'success',
       });
 
-      setProof(null, null);
       setPassportActivated(false);
       navigate('/app/compliance');
     } catch (err) {
@@ -250,9 +181,8 @@ export function TransferPage() {
       const friendly = formatSorobanUserError(raw);
       setError(friendly);
       if (raw.includes('Error(Contract, #6)')) {
-        setProof(null, null);
-        setNullifierSpent(true);
         setPassportActivated(false);
+        await syncProofLifecycle();
       }
 
       pushActivity({
@@ -297,58 +227,25 @@ export function TransferPage() {
     <AppShell>
 
       <div className="space-y-6">
+        <ProductHero
+          eyebrow="Send"
+          title="Settle with privacy preserved"
+          subtitle="Proof-gated transfers on Stellar. Your zero-knowledge proof authorizes one compliant settlement — auditors see compliance, not your identity or private attributes."
+        />
 
-        <div>
-          <Badge tone="brand">Send</Badge>
-          <h1 className="mt-3 text-3xl font-semibold text-navy">Settle with privacy preserved</h1>
-          <p className="mt-2 max-w-2xl text-slate-muted">
-            Proof-gated transfers on Stellar. Your zero-knowledge proof authorizes settlement — auditors see
-            compliance, not your identity or private attributes.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card>
-            <CardHeader title="What is protected" badge={<Badge tone="ok">Private</Badge>} />
-            <ul className="space-y-2 text-sm text-slate-muted">
-              <li>Your name, DOB, and jurisdiction stay off-chain</li>
-              <li>Sanctions screening results are never published</li>
-              <li>Wallet identity is not linked to credential attributes</li>
-            </ul>
-          </Card>
-          <Card>
-            <CardHeader title="What auditors can verify" badge={<Badge>Disclosure</Badge>} />
-            <ul className="space-y-2 text-sm text-slate-muted">
-              <li>Policy requirements were satisfied at settlement time</li>
-              <li>Nullifier was valid and not previously spent</li>
-              <li>Settlement transaction hash for audit trail</li>
-            </ul>
-          </Card>
-        </div>
+        <PrivacyJourney compact />
 
 
 
-        {!activeProof ? (
-
-          <EmptyState
-
-            title="Proof required"
-
-            description="Generate a fresh proof before transferring."
-
-            action={
-
-              <Link to="/app/verify">
-                <Button>Generate proof</Button>
-              </Link>
-
-            }
-
+        {!isProofUsable(proofLifecycle) ? (
+          <ProofLifecyclePanel
+            state={proofLifecycle}
+            config={config}
+            onRefreshProof={() => syncProofLifecycle()}
           />
-
         ) : (
-
           <>
+            <ProofLifecyclePanel state={proofLifecycle} config={config} compact />
 
             <Card>
               <CardHeader title="Private settlement layer" badge={<Badge tone="brand">Nethermind ASP</Badge>} />
@@ -411,36 +308,6 @@ export function TransferPage() {
               </Button>
 
             </div>
-
-
-
-            <Card>
-
-              <CardHeader
-
-                title="Replay protection"
-
-                badge={
-
-                  nullifierSpent === false ? (
-
-                    <Badge tone="ok">Nullifier unspent</Badge>
-
-                  ) : nullifierSpent ? (
-
-                    <Badge tone="err">Nullifier spent</Badge>
-
-                  ) : (
-
-                    <Badge>Checking…</Badge>
-
-                  )
-
-                }
-
-              />
-
-            </Card>
 
 
 
@@ -538,7 +405,7 @@ export function TransferPage() {
 
                 loading={loading}
 
-                disabled={!address || !to || !amount || nullifierSpent === true}
+                disabled={!address || !to || !amount || !isProofUsable(proofLifecycle)}
 
                 onClick={handleTransfer}
 

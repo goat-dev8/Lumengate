@@ -31,10 +31,10 @@ test.describe('Lumengate institutional shell', () => {
     });
   }
 
-  test('verify page shows passkey primary auth', async ({ page }) => {
+  test('verify page shows guided compliance flow', async ({ page }) => {
     await page.goto('/app/verify');
-    await expect(page.getByText(/Passkey account/i)).toBeVisible();
-    await expect(page.getByText(/Primary auth/i)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/prove compliance/i);
+    await expect(page.getByText(/Secure this device|Passkey/i)).toBeVisible();
   });
 
   test('issuer health reachable when service configured', async ({ request }) => {

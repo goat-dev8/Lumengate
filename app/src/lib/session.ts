@@ -21,6 +21,8 @@ export type WalletSession = {
   replayBlocked: boolean;
   replayMessage: string | null;
   passportActivated?: boolean;
+  proofLifecycle?: 'none' | 'ready' | 'consumed' | 'invalid';
+  consumedTxHash?: string | null;
   updatedAt: number;
 };
 

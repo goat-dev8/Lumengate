@@ -43,7 +43,7 @@ export function buildUserJourney(input: JourneyInput): JourneyStep[] {
       id: 'connect',
       label: 'Connect account',
       description: 'Link your Stellar account to begin eligibility verification.',
-      href: '/app/passport',
+      href: '/app/verify',
     },
     {
       id: 'credential',

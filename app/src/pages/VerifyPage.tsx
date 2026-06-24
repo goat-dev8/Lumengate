@@ -21,9 +21,12 @@ import {
   passkeySupported,
   type StoredPasskey,
 } from '../lib/passkeys';
-import { proofMatchesCredential } from '../lib/credentialProof';
 import { friendlyIssuerError } from '../lib/advancedMode';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
+import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { ProductHero } from '../components/product/ProductHero';
+import { PrivacyJourney } from '../components/product/PrivacyJourney';
+import { DashboardFlowIllustration } from '../components/fintech/DashboardFlowIllustration';
 import { buildPassportSnapshot } from '../lib/passport';
 
 type VerifyStepId = 'wallet' | 'passkey' | 'credential' | 'proof' | 'passport';
@@ -63,6 +66,8 @@ export function VerifyPage() {
     walletField,
     passportActivated,
     setPassportActivated,
+    proofLifecycle,
+    syncProofLifecycle,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -72,7 +77,8 @@ export function VerifyPage() {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const passkeyEnv = passkeyEnvSummary();
   const advanced = useAdvancedMode();
-  const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
+  const proofConsumed = proofLifecycle.lifecycle === 'consumed';
 
   const flags = useMemo(
     () => ({
@@ -189,16 +195,25 @@ export function VerifyPage() {
     <AppShell>
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Badge tone="brand">Verify</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-navy">Prove eligibility without revealing identity</h1>
-            <p className="mt-2 max-w-2xl text-slate-muted">
-              Lumengate is the compliance layer for private money on Stellar — not a privacy pool, not a token.
-              Verified once, reuse everywhere.
-            </p>
-          </div>
           <AdvancedModeToggle />
         </div>
+
+        <ProductHero
+          eyebrow="Verify"
+          title="Prove compliance without revealing identity"
+          subtitle="One guided flow: connect, secure your device, receive a passport, generate a zero-knowledge proof, and unlock compliant settlement on Stellar."
+          illustration={<DashboardFlowIllustration className="w-full max-w-md" />}
+        />
+
+        <PrivacyJourney compact />
+
+        {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
+          <ProofLifecyclePanel
+            state={proofLifecycle}
+            config={config}
+            onRefreshProof={() => syncProofLifecycle()}
+          />
+        )}
 
         <nav aria-label="Verification steps" className="grid gap-2 sm:grid-cols-5">
           {STEP_META.map((step) => {
@@ -312,14 +327,19 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {(currentStep === 'proof' || flags.proof) && credential ? (
+        {(currentStep === 'proof' || flags.proof || proofConsumed) && credential ? (
           <Card>
             <CardHeader title="Step 4 — Generate zero-knowledge proof" badge={<Badge tone="brand">Private</Badge>} />
             <p className="text-sm text-slate-muted">
               Confirm you satisfy the policy without revealing who you are. Auditors see compliance — never your
               identity or private attributes.
             </p>
-            {currentStep === 'proof' || !activeProof ? (
+            {proofConsumed ? (
+              <p className="mt-3 text-sm text-amber-800">
+                Your previous proof was consumed by settlement. Generate a fresh passport and proof below.
+              </p>
+            ) : null}
+            {(currentStep === 'proof' || !activeProof) && !proofConsumed ? (
               <>
                 <p className="mt-3 text-sm text-slate-muted">
                   {proveProgress?.message || 'Ready to generate proof locally in your browser…'}

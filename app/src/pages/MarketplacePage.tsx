@@ -21,6 +21,8 @@ import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 
 import { proofMatchesCredential } from '../lib/credentialProof';
+import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { isProofUsable } from '../lib/proofLifecycle';
 
 import {
 
@@ -95,14 +97,15 @@ export function MarketplacePage() {
     recordTransferTx,
 
     recordVerifyTx,
-
+    proofLifecycle,
   } = useApp();
 
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
 
   const navigate = useNavigate();
 
-  const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
+  const activeProof = proofLifecycle.lifecycle === 'ready' && proofMatchesCredential(proof, credential) ? proof : null;
+  const proofConsumed = proofLifecycle.lifecycle === 'consumed';
 
   const [balance, setBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
@@ -226,7 +229,10 @@ export function MarketplacePage() {
 
 
   const canSettle = (offering: LiveOffering): string | null => {
-
+    if (proofConsumed) return 'Proof consumed by previous settlement — generate fresh proof';
+    if (!isProofUsable(proofLifecycle)) {
+      return proofLifecycle.reason ?? 'Complete passport & proof first';
+    }
     if (!address || !activeProof) return 'Complete passport & proof first';
 
     if (policyKey !== offering.requiredPolicy) {
@@ -304,9 +310,9 @@ export function MarketplacePage() {
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(activeProof), pid);
 
       if (spent) {
-
-        throw new Error(formatSorobanUserError('Error(Contract, #7)'));
-
+        setError('Proof consumed by a previous settlement. Generate a fresh proof on Verify.');
+        navigate('/app/verify');
+        return;
       }
 
 
@@ -519,15 +525,13 @@ export function MarketplacePage() {
 
           <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
 
-            {activeProof
-
-              ? 'Your passport is verified. Select an offering to invest.'
-
-              : credential
-
-                ? 'Generate a proof to unlock settlement.'
-
-                : `${offerings.length} offerings available — issue passport first.`}
+            {proofConsumed
+              ? 'Your proof was consumed — generate a fresh proof to invest again.'
+              : activeProof
+                ? 'Your passport is verified. Select an offering to invest.'
+                : credential
+                  ? 'Generate a proof to unlock settlement.'
+                  : `${offerings.length} offerings available — issue passport first.`}
 
           </p>
 
@@ -559,7 +563,11 @@ export function MarketplacePage() {
 
       </div>
 
-
+      {proofConsumed || proofLifecycle.lifecycle === 'invalid' ? (
+        <div className="mb-6">
+          <ProofLifecyclePanel state={proofLifecycle} config={config} />
+        </div>
+      ) : null}
 
       <div className="grid gap-8 xl:grid-cols-3">
 
