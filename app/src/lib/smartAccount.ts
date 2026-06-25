@@ -1,5 +1,9 @@
 import { Address, hash, Keypair, xdr } from '@stellar/stellar-sdk';
-import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import {
+  startAuthentication,
+  startRegistration,
+  type PublicKeyCredentialCreationOptionsJSON,
+} from '@simplewebauthn/browser';
 import base64url from 'base64url';
 import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
 import {
@@ -110,7 +114,10 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
       config.passkeyRpId ??
       (typeof window !== 'undefined' ? window.location.hostname : undefined),
     webAuthn: {
-      startRegistration: async (options) => {
+      startRegistration: async (options: {
+        optionsJSON: PublicKeyCredentialCreationOptionsJSON;
+        useAutoRegister?: boolean;
+      }) => {
         clampRegistrationUserId(options.optionsJSON);
         const response = await startRegistration(options);
         const publicKey = extractRegistrationPublicKey(response.response);

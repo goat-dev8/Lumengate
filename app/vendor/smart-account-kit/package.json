@@ -1,0 +1,40 @@
+{
+  "name": "smart-account-kit",
+  "version": "0.3.0",
+  "description": "TypeScript SDK for deploying and managing OpenZeppelin Smart Account contracts on Stellar/Soroban with WebAuthn passkey authentication",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./storage": {
+      "import": "./dist/storage/index.js",
+      "types": "./dist/storage/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@stellar/stellar-sdk": ">=15.0.1",
+    "base64url": "^3.0.1",
+    "smart-account-kit-bindings": "file:../smart-account-kit-bindings"
+  },
+  "peerDependencies": {
+    "@creit-tech/stellar-wallets-kit": ">=2.1.0",
+    "@stellar/stellar-sdk": ">=15.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@creit-tech/stellar-wallets-kit": {
+      "optional": true
+    }
+  }
+}

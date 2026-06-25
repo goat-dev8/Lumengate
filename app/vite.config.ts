@@ -46,7 +46,7 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     fs: {
-      allow: ['..', '../../reference-impls'],
+      allow: ['..'],
     },
   },
   preview: {
