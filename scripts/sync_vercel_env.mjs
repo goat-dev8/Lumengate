@@ -32,6 +32,11 @@ function parseEnv(path) {
 
 const env = parseEnv(join(ROOT, '.env'));
 const wanted = Object.entries(env).filter(([key]) => key.startsWith('VITE_'));
+// Production frontend must not point at localhost issuer.
+const issuerIdx = wanted.findIndex(([key]) => key === 'VITE_ISSUER_SERVICE_URL');
+if (issuerIdx >= 0) {
+  wanted[issuerIdx][1] = 'https://lumengate-issuer.onrender.com';
+}
 const headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
 
 const listRes = await fetch(`https://api.vercel.com/v9/projects/${PROJECT_ID}/env`, { headers });
