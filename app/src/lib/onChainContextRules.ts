@@ -41,14 +41,15 @@ function contextRuleTypeToScVal(contextRuleType: { tag: string; values?: unknown
   }
   return xdr.ScVal.scvVec([
     xdr.ScVal.scvSymbol('CreateContract'),
-    xdr.ScVal.scvBytes(Buffer.from(contextRuleType.values?.[0] as Buffer)),
+    xdr.ScVal.scvBytes(coerceKeyDataBuffer(contextRuleType.values?.[0]) ?? Buffer.alloc(0)),
   ]);
 }
 
 export function contextRuleTypeKey(contextType: OnChainContextRule['context_type']): string {
   if (contextType.tag === 'Default') return 'Default';
   if (contextType.tag === 'CallContract') return `CallContract:${contextType.values?.[0]}`;
-  return `CreateContract:${Buffer.from(contextType.values?.[0] as Buffer).toString('hex')}`;
+  const wasm = coerceKeyDataBuffer(contextType.values?.[0]);
+  return wasm ? `CreateContract:${wasm.toString('hex')}` : 'CreateContract:unknown';
 }
 
 export function contextRuleTypeMatches(
@@ -58,7 +59,8 @@ export function contextRuleTypeMatches(
   return ruleType.tag === 'Default' || contextRuleTypeKey(ruleType) === contextRuleTypeKey(requiredType);
 }
 
-function normalizeKeyDataBuffer(keyDataRaw: unknown): Buffer | null {
+/** Coerce on-chain or stored key_data into a Buffer (browser-safe). */
+export function coerceKeyDataBuffer(keyDataRaw: unknown): Buffer | null {
   if (Buffer.isBuffer(keyDataRaw)) return keyDataRaw;
   if (keyDataRaw instanceof Uint8Array) return Buffer.from(keyDataRaw);
   if (Array.isArray(keyDataRaw) && keyDataRaw.every((item) => typeof item === 'number')) {
@@ -86,7 +88,7 @@ function parseSigner(raw: unknown): OnChainExternalSigner | null {
     return null;
   }
   const verifier = String(signer.values[0]);
-  const keyData = normalizeKeyDataBuffer(signer.values[1]);
+  const keyData = coerceKeyDataBuffer(signer.values[1]);
   if (!keyData) return null;
   return { tag: 'External', values: [verifier, keyData] };
 }
@@ -156,17 +158,55 @@ export function findPasskeySignerInRules(
   for (const rule of rules) {
     for (const signer of rule.signers) {
       if (signer.values[0] !== webauthnVerifierId) continue;
-      const encoded = getCredentialIdFromKeyData(signer.values[1]);
-      if (encoded === credentialId) return signer;
+      const keyData = coerceKeyDataBuffer(signer.values[1]);
+      if (!keyData) continue;
+      const encoded = getCredentialIdFromKeyData(keyData);
+      if (encoded === credentialId) {
+        return { tag: 'External', values: [signer.values[0], keyData] };
+      }
       const credentialBuffer = base64url.toBuffer(credentialId);
-      const keyData = signer.values[1];
       if (keyData.length > credentialBuffer.length) {
         const suffix = keyData.subarray(keyData.length - credentialBuffer.length);
-        if (suffix.equals(credentialBuffer)) return signer;
+        if (suffix.equals(credentialBuffer)) {
+          return { tag: 'External', values: [signer.values[0], keyData] };
+        }
       }
     }
   }
   return null;
+}
+
+/** Match smart-account-kit@0.3.0: resolve signer from the context rules being signed. */
+export function findPasskeySignerInContextRules(
+  rules: OnChainContextRule[],
+  contextRuleIds: number[],
+  webauthnVerifierId: string,
+  credentialId: string | Buffer,
+): OnChainExternalSigner | null {
+  const credentialBuffer = typeof credentialId === 'string'
+    ? base64url.toBuffer(credentialId)
+    : credentialId;
+  for (const ruleId of contextRuleIds) {
+    const rule = rules.find((entry) => entry.id === ruleId);
+    if (!rule) continue;
+    for (const signer of rule.signers) {
+      if (signer.values[0] !== webauthnVerifierId) continue;
+      const keyData = coerceKeyDataBuffer(signer.values[1]);
+      if (!keyData || keyData.length <= credentialBuffer.length) continue;
+      const suffix = keyData.subarray(keyData.length - credentialBuffer.length);
+      if (suffix.equals(credentialBuffer)) {
+        return { tag: 'External', values: [signer.values[0], keyData] };
+      }
+    }
+  }
+  return null;
+}
+
+export function externalSignerKeyDataEqual(a: unknown, b: unknown): boolean {
+  const left = coerceKeyDataBuffer(a);
+  const right = coerceKeyDataBuffer(b);
+  if (!left || !right) return false;
+  return left.equals(right);
 }
 
 async function simulateContractCall(

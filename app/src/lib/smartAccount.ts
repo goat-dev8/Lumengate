@@ -12,7 +12,11 @@ import type { DeploymentConfig } from './config';
 import {
   contextRuleTypeKey,
   contextRuleTypeMatches,
+  coerceKeyDataBuffer,
+  externalSignerKeyDataEqual,
   fetchOnChainContextRules,
+  findPasskeyKeyDataInRules,
+  findPasskeySignerInContextRules,
   findPasskeySignerInRules,
   listOnChainContextRules,
   type OnChainContextRule,
@@ -30,7 +34,13 @@ export const SMART_ACCOUNT_KIT_DEPLOYER_PUBLIC_KEY = Keypair.fromRawEd25519Seed(
 
 /** Build WebAuthn key_data bytes: 65-byte secp256r1 pubkey + credential id. */
 export function buildPasskeyKeyData(publicKey: Buffer | Uint8Array, credentialId: Buffer | string): Buffer {
+  if (!publicKey) {
+    throw new Error('Passkey public key is missing.');
+  }
   const credBuffer = typeof credentialId === 'string' ? base64url.toBuffer(credentialId) : credentialId;
+  if (!credBuffer?.length) {
+    throw new Error('Passkey credential ID is missing.');
+  }
   return Buffer.concat([Buffer.from(publicKey), credBuffer]);
 }
 
@@ -258,7 +268,8 @@ export async function hydrateSmartAccountPasskeyMetadata(
   const signer = findPasskeySignerInRules(rules, config.webauthnVerifierId, state.credentialId);
   if (!signer) return state;
 
-  const keyData = signer.values[1];
+  const keyData = coerceKeyDataBuffer(signer.values[1]);
+  if (!keyData) return state;
   return {
     ...state,
     passkeyKeyDataHex: keyData.toString('hex'),
@@ -269,27 +280,63 @@ export async function hydrateSmartAccountPasskeyMetadata(
 function buildStoredPasskeySigner(
   config: DeploymentConfig,
   state: SmartAccountState,
+  rules?: OnChainContextRule[],
 ): ContractSigner {
   if (!config.webauthnVerifierId) {
     throw new Error('WebAuthn verifier is not configured.');
   }
   return {
     tag: 'External',
-    values: [config.webauthnVerifierId, resolvePasskeyKeyData(state)],
+    values: [config.webauthnVerifierId, resolvePasskeyKeyData(state, rules, config.webauthnVerifierId)],
   };
 }
 
-/** Resolve passkey key_data: stored deploy bytes, else recomputed from metadata. */
-export function resolvePasskeyKeyData(state: SmartAccountState): Buffer {
+/** Resolve passkey key_data: stored deploy bytes, else on-chain, else recomputed from metadata. */
+export function resolvePasskeyKeyData(
+  state: SmartAccountState,
+  rules?: OnChainContextRule[],
+  webauthnVerifierId?: string,
+): Buffer {
   if (state.passkeyKeyDataHex) {
-    return Buffer.from(state.passkeyKeyDataHex, 'hex');
+    const stored = coerceKeyDataBuffer(state.passkeyKeyDataHex);
+    if (stored) return stored;
   }
-  if (!state.passkeyPublicKey) {
-    throw new Error(
-      'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
-    );
+
+  if (rules && webauthnVerifierId) {
+    const fromChain = findPasskeyKeyDataInRules(rules, webauthnVerifierId, state.credentialId);
+    if (fromChain) return fromChain;
   }
-  return buildPasskeyKeyData(Buffer.from(state.passkeyPublicKey, 'base64'), state.credentialId);
+
+  if (state.passkeyPublicKey) {
+    return buildPasskeyKeyData(Buffer.from(state.passkeyPublicKey, 'base64'), state.credentialId);
+  }
+
+  throw new Error(
+    'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
+  );
+}
+
+async function ensurePasskeyCredentialInKitStorage(
+  kit: SmartAccountKit,
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  rules: OnChainContextRule[],
+): Promise<void> {
+  const kitStorage = (kit as unknown as { storage: SmartAccountKit['storage'] }).storage;
+  const existing = await kitStorage.get(state.credentialId);
+  if (existing?.publicKey?.length) return;
+  if (!config.webauthnVerifierId) return;
+
+  const keyData = resolvePasskeyKeyData(state, rules, config.webauthnVerifierId);
+  await kitStorage.save({
+    credentialId: state.credentialId,
+    publicKey: keyData.subarray(0, 65),
+    contractId: state.smartAccountAddress,
+    nickname: 'Lumengate',
+    createdAt: state.createdAt || Date.now(),
+    isPrimary: true,
+    deploymentStatus: 'deployed',
+  });
 }
 
 /** Use on-chain context rules (fallback to stored key_data) for signer lookup during auth. */
@@ -301,22 +348,21 @@ function patchWalletContextRulesLookup(
   const wallet = kit.wallet as { get_context_rules?: (...args: unknown[]) => Promise<{ result: unknown[] }> } | undefined;
   if (!wallet?.get_context_rules || !config.webauthnVerifierId) return;
 
-  const keyData = resolvePasskeyKeyData(state);
-  (kit as unknown as { _passkeyKeyData?: Buffer })._passkeyKeyData = keyData;
-
-  const defaultRule = {
-    id: 0,
-    context_type: { tag: 'Default' as const },
-    name: 'default',
-    policies: config.compliancePolicyId ? [config.compliancePolicyId] : [],
-    signers: [
-      {
-        tag: 'External' as const,
-        values: [config.webauthnVerifierId, keyData],
-      },
-    ],
-    valid_until: undefined,
+  const resolveKeyData = async (): Promise<Buffer> => {
+    const kitAny = kit as unknown as { _passkeyKeyData?: Buffer };
+    if (kitAny._passkeyKeyData) return kitAny._passkeyKeyData;
+    const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
+      maxRuleId: 4,
+      maxConsecutiveMisses: 2,
+    });
+    const keyData = resolvePasskeyKeyData(state, rules, config.webauthnVerifierId);
+    kitAny._passkeyKeyData = keyData;
+    return keyData;
   };
+
+  void resolveKeyData().catch(() => {
+    // Hydration may still be in flight; signAuthEntry resolves key_data at signing time.
+  });
 
   (wallet as { get_context_rules: (args: { context_rule_type: { tag: string; values?: unknown[] } }) => Promise<{ result: unknown[] }> })
     .get_context_rules = async ({ context_rule_type }) => {
@@ -337,7 +383,23 @@ function patchWalletContextRulesLookup(
         })),
       };
     }
-    return { result: [defaultRule] };
+
+    const keyData = await resolveKeyData();
+    return {
+      result: [{
+        id: 0,
+        context_type: { tag: 'Default' as const },
+        name: 'default',
+        policies: config.compliancePolicyId ? [config.compliancePolicyId] : [],
+        signers: [
+          {
+            tag: 'External' as const,
+            values: [config.webauthnVerifierId!, keyData],
+          },
+        ],
+        valid_until: undefined,
+      }],
+    };
   };
 }
 
@@ -405,13 +467,20 @@ export async function connectPersonalSmartAccount(
   state: SmartAccountState,
 ): Promise<SmartAccountKit> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  const rules = await listOnChainContextRules(config, hydrated.smartAccountAddress, {
+    maxRuleId: 4,
+    maxConsecutiveMisses: 2,
+  });
   const kit = createSmartAccountKit(config);
   await kit.connectWallet({
     contractId: hydrated.smartAccountAddress,
     credentialId: hydrated.credentialId,
   });
+  await ensurePasskeyCredentialInKitStorage(kit, config, hydrated, rules).catch(() => undefined);
   patchWalletContextRulesLookup(kit, config, hydrated);
   patchPasskeyAuthPayloadV07(kit);
+  const keyData = resolvePasskeyKeyData(hydrated, rules, config.webauthnVerifierId ?? undefined);
+  (kit as unknown as { _passkeyKeyData?: Buffer })._passkeyKeyData = keyData;
   return kit;
 }
 
@@ -477,7 +546,7 @@ function contractSignersEqual(a: ContractSigner, b: ContractSigner): boolean {
   if (a.tag !== b.tag) return false;
   if (a.values[0] !== b.values[0]) return false;
   if (a.tag === 'External' && b.tag === 'External') {
-    return Buffer.from(a.values[1]).equals(Buffer.from(b.values[1]));
+    return externalSignerKeyDataEqual(a.values[1], b.values[1]);
   }
   return true;
 }
@@ -513,20 +582,21 @@ async function resolveConnectedContextRuleIds(
     config.webauthnVerifierId,
     hydrated.credentialId,
   );
-  const signer: ContractSigner = onChainSigner ?? buildStoredPasskeySigner(config, hydrated);
+  const candidateSigner: ContractSigner =
+    onChainSigner ?? buildStoredPasskeySigner(config, hydrated, rules);
 
   const ids = requiredContexts.map((contextType) => {
     const candidates = rules.filter((rule) => contextRuleTypeMatches(rule.context_type, contextType));
     if (candidates.length === 1) return candidates[0].id;
 
     const exactSignerMatches = candidates.filter((rule) => (
-      rule.signers.length === 1 && rule.signers.some((ruleSigner) => contractSignersEqual(ruleSigner, signer))
+      rule.signers.length === 1 && rule.signers.some((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
     ));
     if (exactSignerMatches.length === 1) return exactSignerMatches[0].id;
 
     const signerSubsetMatches = candidates.filter((rule) => (
       rule.policies.length === 0 &&
-      rule.signers.every((ruleSigner) => contractSignersEqual(ruleSigner, signer))
+      rule.signers.every((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
     ));
     if (signerSubsetMatches.length === 1) return signerSubsetMatches[0].id;
 
@@ -536,6 +606,11 @@ async function resolveConnectedContextRuleIds(
       `Matched ${candidates.length} rule(s)${candidateIds ? `: ${candidateIds}` : ''}.`,
     );
   });
+
+  const signer =
+    findPasskeySignerInContextRules(rules, ids, config.webauthnVerifierId, hydrated.credentialId) ??
+    onChainSigner ??
+    buildStoredPasskeySigner(config, hydrated, rules);
 
   return { ids, signer };
 }

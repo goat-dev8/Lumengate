@@ -3,6 +3,7 @@ import base64url from 'base64url';
 import { WEBAUTHN_TIMEOUT_MS } from 'smart-account-kit';
 import type { SmartAccountKit } from 'smart-account-kit';
 import type { Signer as ContractSigner } from 'smart-account-kit-bindings';
+import { coerceKeyDataBuffer, externalSignerKeyDataEqual } from './onChainContextRules';
 
 const SECP256R1_PUBLIC_KEY_SIZE = 65;
 
@@ -153,10 +154,15 @@ function signerToScVal(signer: ContractSigner): xdr.ScVal {
     ]);
   }
 
+  const keyData = coerceKeyDataBuffer(signer.values[1]);
+  if (!keyData) {
+    throw new Error('External signer is missing passkey key_data bytes');
+  }
+
   return xdr.ScVal.scvVec([
     xdr.ScVal.scvSymbol('External'),
     xdr.ScVal.scvAddress(Address.fromString(signer.values[0]).toScAddress()),
-    xdr.ScVal.scvBytes(signer.values[1]),
+    xdr.ScVal.scvBytes(keyData),
   ]);
 }
 
@@ -203,16 +209,61 @@ function signersEqual(a: ContractSigner, b: ContractSigner): boolean {
   if (a.tag !== b.tag) return false;
   if (a.values[0] !== b.values[0]) return false;
   if (a.tag === 'External' && b.tag === 'External') {
-    return Buffer.from(a.values[1]).equals(Buffer.from(b.values[1]));
+    return externalSignerKeyDataEqual(a.values[1], b.values[1]);
   }
   return true;
 }
 
-function buildExternalSigner(
-  webauthnVerifierAddress: string,
-  keyData: Buffer,
-): ContractSigner {
-  return { tag: 'External', values: [webauthnVerifierAddress, keyData] };
+async function resolveSigningExternalSigner(
+  kit: SmartAccountKit,
+  kitAny: PasskeyKitInternals,
+  options: SignAuthEntryOptions | undefined,
+  credentialIdBuffer: Buffer,
+  entry: xdr.SorobanAuthorizationEntry,
+): Promise<ContractSigner> {
+  const verifier = kitAny.webauthnVerifierAddress;
+  if (!verifier) {
+    throw new Error('WebAuthn verifier is not configured.');
+  }
+
+  const pinned = kitAny._passkeyKeyData;
+  const candidates: Array<Buffer | null | undefined> = [
+    options?.signer?.tag === 'External' ? coerceKeyDataBuffer(options.signer.values[1]) : null,
+    pinned,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate || candidate.length <= SECP256R1_PUBLIC_KEY_SIZE) continue;
+    const suffix = candidate.slice(SECP256R1_PUBLIC_KEY_SIZE);
+    if (suffix.equals(credentialIdBuffer)) {
+      return { tag: 'External', values: [verifier, candidate] };
+    }
+  }
+
+  try {
+    const keyData = await findKeyDataByCredentialId(kit, credentialIdBuffer, entry);
+    kitAny._passkeyKeyData = keyData;
+    return { tag: 'External', values: [verifier, keyData] };
+  } catch (err) {
+    if (pinned && pinned.length > SECP256R1_PUBLIC_KEY_SIZE) {
+      return { tag: 'External', values: [verifier, pinned] };
+    }
+    throw err;
+  }
+}
+
+function readWebAuthnAssertionFields(response: {
+  authenticatorData?: string;
+  clientDataJSON?: string;
+  signature?: string;
+}): { authenticatorData: string; clientDataJSON: string; signature: string } {
+  const { authenticatorData, clientDataJSON, signature } = response;
+  if (!authenticatorData || !clientDataJSON || !signature) {
+    throw new Error(
+      'Passkey assertion is missing required fields (authenticatorData, clientDataJSON, or signature). Retry the send.',
+    );
+  }
+  return { authenticatorData, clientDataJSON, signature };
 }
 
 async function findKeyDataByCredentialId(
@@ -243,12 +294,11 @@ async function findKeyDataByCredentialId(
     for (const rule of rulesResult.result) {
       for (const signer of rule.signers) {
         if (signer.tag === 'External') {
-          const keyData = signer.values[1];
-          if (keyData.length > SECP256R1_PUBLIC_KEY_SIZE) {
-            const suffix = keyData.slice(SECP256R1_PUBLIC_KEY_SIZE);
-            if (suffix.equals(credentialId)) {
-              return keyData;
-            }
+          const keyData = coerceKeyDataBuffer(signer.values[1]);
+          if (!keyData || keyData.length <= SECP256R1_PUBLIC_KEY_SIZE) continue;
+          const suffix = keyData.slice(SECP256R1_PUBLIC_KEY_SIZE);
+          if (suffix.equals(credentialId)) {
+            return keyData;
           }
         }
       }
@@ -266,8 +316,12 @@ function buildContextRuleTypes(entry: xdr.SorobanAuthorizationEntry) {
       key = 'Default';
     } else if (type.tag === 'CallContract') {
       key = `CallContract:${type.values?.[0]}`;
+    } else if (type.tag === 'CreateContract') {
+      const wasm = coerceKeyDataBuffer(type.values?.[0]);
+      if (!wasm) return;
+      key = `CreateContract:${wasm.toString('hex')}`;
     } else {
-      key = `CreateContract:${Buffer.from(type.values?.[0] as Buffer).toString('hex')}`;
+      return;
     }
     if (!seen.has(key)) {
       seen.add(key);
@@ -341,26 +395,31 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const authDigest = computeAuthDigest(signaturePayload, contextRuleIds);
 
     const credentialIdStr = options?.credentialId ?? kitAny._credentialId;
+    if (!credentialIdStr) {
+      throw new Error('A credential ID is required to sign smart account auth entries');
+    }
     const authOptions = {
       challenge: base64url(authDigest),
       rpId: kitAny.rpId,
       userVerification: 'preferred' as const,
       timeout: WEBAUTHN_TIMEOUT_MS,
-      ...(credentialIdStr && {
-        allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
-      }),
+      allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
     };
     const authResponse = await kitAny.webAuthn.startAuthentication({ optionsJSON: authOptions });
-    const rawSignature = base64url.toBuffer(authResponse.response.signature);
+    const assertion = readWebAuthnAssertionFields(authResponse.response);
+    const rawSignature = base64url.toBuffer(assertion.signature);
     const compactedSignature = compactSignature(rawSignature);
     const credentialIdBuffer = base64url.toBuffer(authResponse.id);
-    const signer = options?.signer ?? buildExternalSigner(
-      kitAny.webauthnVerifierAddress,
-      await findKeyDataByCredentialId(kit, credentialIdBuffer, normalizedEntry),
+    const signer = await resolveSigningExternalSigner(
+      kit,
+      kitAny,
+      options,
+      credentialIdBuffer,
+      normalizedEntry,
     );
     const webAuthnSignature = buildWebAuthnSignatureBytes({
-      authenticator_data: base64url.toBuffer(authResponse.response.authenticatorData),
-      client_data: base64url.toBuffer(authResponse.response.clientDataJSON),
+      authenticator_data: base64url.toBuffer(assertion.authenticatorData),
+      client_data: base64url.toBuffer(assertion.clientDataJSON),
       signature: Buffer.from(compactedSignature),
     });
 
@@ -376,7 +435,11 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     credentials.signature(writeAuthPayload(authPayload));
 
     if (credentialIdStr) {
-      await kitAny.storage.update(credentialIdStr, { lastUsedAt: Date.now() });
+      try {
+        await kitAny.storage.update(credentialIdStr, { lastUsedAt: Date.now() });
+      } catch {
+        // Credential may only exist in Lumengate session storage after reconnect.
+      }
     }
     return normalizedEntry;
   };
