@@ -12,6 +12,7 @@ import type { DeploymentConfig } from './config';
 import { fetchOnChainContextRules } from './onChainContextRules';
 import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
+import { extractRegistrationPublicKey } from './webauthnPublicKey';
 
 export { passkeyUserName } from './passkeyUserHandle';
 
@@ -114,9 +115,17 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
       config.passkeyRpId ??
       (typeof window !== 'undefined' ? window.location.hostname : undefined),
     webAuthn: {
-      startRegistration: (options) => {
+      startRegistration: async (options) => {
         clampRegistrationUserId(options.optionsJSON);
-        return startRegistration(options);
+        const response = await startRegistration(options);
+        const publicKey = extractRegistrationPublicKey(response.response);
+        return {
+          ...response,
+          response: {
+            ...response.response,
+            publicKey: base64url(Buffer.from(publicKey)),
+          },
+        };
       },
       startAuthentication,
     },
