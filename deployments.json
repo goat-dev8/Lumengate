@@ -33,7 +33,7 @@
     "rwa_adapter_consume_fix": "CBT7JYU4VPTG7CB6IDOFIZ3MXFDPVAS4C2MKZYP2POWD3LCGNHG2R5TJ",
     "compliance_sac_admin_consume_fix": "CCIG3BTHTQNP7WQGGFVDHMPPNDSEJOHJXQZIOREN3WOGPKHIQYSG4J27",
     "rwa_token_redeployed_consume_fix": "CBHDI3CVMGWSUMV5UC2DZEJVDYTJK64ND3U726B2ADKEFI7YCG34NIRI",
-    "lumengate_smart_account_wasm_upload": "464804291ba9c65279217a9416368d3cb015275de2f0325a6844402112322a1f",
+    "lumengate_smart_account_wasm_upload": "b448db3914167da71aa9e21e6de092cca6c8321e2a9daa50b7d5cd08c58f1568",
     "asset_scoped_policy_registered": "b076e96efdb6c9acff813757e42a4ad13c2f7fe7389a21b993e02197cee0550c",
     "asset_scoped_pof_registered": "5993f01d6902bc7688d0fa96281e1cd055c4c6935c4896612e7686248e2e2486",
     "rwa_adapter_set_policy_verifier": "f864fd337ee58d518bc0df5f9f646d05b828dacd7e65e91281ed42bd5894b144",
@@ -71,6 +71,6 @@
   "privacy_pool": "CC4ID36B3B2UCKZOTGX2NY3VUI36IXCGHBUUPNDZBYTS7UGNSPIZ5P2A",
   "asp_membership": "CBWS5GGCL4Q627GJ4HZ2SL5D2P2NXECFXKEPPTOSXOTR4EA7GTVZZWIH",
   "privacy_pool_verifier": "CBBGQRGK7GBQKB4FGBW2QH6GVJH7JELSEOABIFGPZWTKIDSFAYMI3FGJ",
-  "lumengate_smart_account_wasm_hash": "296b978e05048b031912ead360d7299002c1a6b0c550fbc09f65a7c2178dd0c1",
+  "lumengate_smart_account_wasm_hash": "3bd5dd3271803669f5d13b25509170eb47e9af0c76c736169248f257ee5a3d99",
   "native_sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 }

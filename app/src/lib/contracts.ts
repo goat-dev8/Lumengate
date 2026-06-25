@@ -775,6 +775,15 @@ export function formatSorobanUserError(message: string): string {
   if (message.includes('Error(Auth, InvalidAction)') || message.includes('__check_auth')) {
     hints.push('Smart account __check_auth rejected the authorization entry.');
   }
+  if (message.includes('contract re-entry is not allowed')) {
+    hints.push(
+      'Soroban blocked re-entering the compliance policy during passkey bind. ' +
+        'Create a new passkey smart account after the latest smart-account WASM is deployed.',
+    );
+  }
+  if (message.includes('Error(Context, InvalidAction)')) {
+    hints.push('Authorization context was rejected during smart account __check_auth re-simulation.');
+  }
 
   if (message.includes('Error(Contract, #6)') || message.includes('NullifierSpent')) {
     hints.push('This passport nullifier was already spent on-chain.');

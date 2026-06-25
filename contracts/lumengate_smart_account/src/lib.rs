@@ -1,13 +1,81 @@
 #![no_std]
 use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
-    contract, contractimpl, crypto::Hash, Address, Bytes, Env, IntoVal, Map, String, Symbol, Val,
-    Vec,
+    contract, contractimpl, crypto::Hash, panic_with_error, Address, Bytes, Env, IntoVal, Map,
+    String, Symbol, Val, Vec, xdr::ToXdr,
 };
+use stellar_accounts::policies::PolicyClient;
 use stellar_accounts::smart_account::{
-    self, add_context_rule, get_context_rule, AuthPayload, ContextRule, ContextRuleType,
-    ExecutionEntryPoint, Signer, SmartAccount, SmartAccountError, SmartAccountStorageKey,
+    self, add_context_rule, authenticate, get_context_rule, get_validated_context_by_id,
+    AuthPayload, ContextRule, ContextRuleType, ExecutionEntryPoint, Signer, SmartAccount,
+    SmartAccountError, SmartAccountStorageKey,
 };
+
+/// Passkey bind calls `compliance_policy.set_session_proof`, which requires smart-account auth.
+/// `do_check_auth` would re-enter the same policy contract via `PolicyClient.enforce` (Soroban
+/// forbids re-entry). Skip enforce for that bind context; passkey auth is sufficient.
+fn is_session_proof_bind_context(env: &Env, context: &Context, policy: &Address) -> bool {
+    match context {
+        Context::Contract(call) => {
+            call.contract == *policy && call.fn_name == Symbol::new(env, "set_session_proof")
+        }
+        _ => false,
+    }
+}
+
+fn lumengate_do_check_auth(
+    e: &Env,
+    signature_payload: &Hash<32>,
+    signatures: &AuthPayload,
+    auth_contexts: &Vec<Context>,
+) -> Result<(), SmartAccountError> {
+    if signatures.context_rule_ids.len() != auth_contexts.len() {
+        panic_with_error!(e, SmartAccountError::ContextRuleIdsLengthMismatch);
+    }
+
+    let validated_contexts = Vec::from_iter(
+        e,
+        auth_contexts.iter().enumerate().map(|(i, context)| {
+            let all_signers = signatures.signers.keys();
+            let context_rule_id = signatures.context_rule_ids.get_unchecked(i as u32);
+            get_validated_context_by_id(e, &context, &all_signers, context_rule_id)
+        }),
+    );
+
+    let mut allowed_signers = Map::new(e);
+    for (rule, _, _) in validated_contexts.iter() {
+        for signer in rule.signers.iter() {
+            allowed_signers.set(signer, ());
+        }
+    }
+
+    let mut preimage = signature_payload.to_bytes().to_bytes();
+    preimage.append(&signatures.context_rule_ids.clone().to_xdr(e));
+    let auth_digest = e.crypto().sha256(&preimage);
+
+    for (signer, sig_data) in signatures.signers.iter() {
+        if !allowed_signers.contains_key(signer.clone()) {
+            panic_with_error!(e, SmartAccountError::UnauthorizedSigner);
+        }
+        authenticate(e, &auth_digest, &signer, &sig_data);
+    }
+
+    for (rule, context, matched_signers) in validated_contexts.iter() {
+        for policy in rule.policies.iter() {
+            if is_session_proof_bind_context(e, &context, &policy) {
+                continue;
+            }
+            PolicyClient::new(e, &policy).enforce(
+                &context,
+                &matched_signers,
+                &rule,
+                &e.current_contract_address(),
+            );
+        }
+    }
+
+    Ok(())
+}
 
 /// Kit-compatible per-user Lumengate smart account.
 #[contract]
@@ -90,7 +158,7 @@ impl CustomAccountInterface for LumengateSmartAccount {
         signatures: AuthPayload,
         auth_contexts: Vec<Context>,
     ) -> Result<(), Self::Error> {
-        smart_account::do_check_auth(&e, &signature_payload, &signatures, &auth_contexts)
+        lumengate_do_check_auth(&e, &signature_payload, &signatures, &auth_contexts)
     }
 }
 
