@@ -2,6 +2,7 @@ import { Address, hash, xdr } from '@stellar/stellar-sdk';
 import base64url from 'base64url';
 import { WEBAUTHN_TIMEOUT_MS } from 'smart-account-kit';
 import type { SmartAccountKit } from 'smart-account-kit';
+import type { Signer as ContractSigner } from 'smart-account-kit-bindings';
 
 const SECP256R1_PUBLIC_KEY_SIZE = 65;
 
@@ -50,30 +51,85 @@ export function computeAuthDigest(signaturePayload: Buffer, contextRuleIds: numb
   return hash(Buffer.concat([signaturePayload, contextRuleIdsVal.toXDR()]));
 }
 
-function buildAuthPayloadScVal(signerMapEntry: xdr.ScMapEntry, contextRuleIds: number[]): xdr.ScVal {
+type AuthPayload = {
+  context_rule_ids: number[];
+  signers: Array<{ signer: ContractSigner; signatureBytes: Buffer }>;
+};
+
+function emptyAuthPayload(): AuthPayload {
+  return { context_rule_ids: [], signers: [] };
+}
+
+function readAuthPayload(signature: xdr.ScVal): AuthPayload {
+  if (signature.switch().name === 'scvVoid') {
+    return emptyAuthPayload();
+  }
+  if (signature.switch().name !== 'scvMap') {
+    throw new Error('Smart account auth signature is not encoded as AuthPayload');
+  }
+
+  const payload = emptyAuthPayload();
+  for (const entry of signature.map() ?? []) {
+    const key = entry.key();
+    if (key.switch().name !== 'scvSymbol') continue;
+    const field = key.sym().toString();
+    if (field === 'context_rule_ids') {
+      const value = entry.val();
+      if (value.switch().name !== 'scvVec') {
+        throw new Error('AuthPayload.context_rule_ids is not a vector');
+      }
+      payload.context_rule_ids = (value.vec() ?? []).map((item) => {
+        if (item.switch().name !== 'scvU32') {
+          throw new Error('AuthPayload.context_rule_ids contains a non-u32 value');
+        }
+        return item.u32();
+      });
+    }
+    if (field === 'signers') {
+      const value = entry.val();
+      if (value.switch().name !== 'scvMap') {
+        throw new Error('AuthPayload.signers is not a map');
+      }
+      for (const signerEntry of value.map() ?? []) {
+        const signerValue = signerEntry.val();
+        if (signerValue.switch().name !== 'scvBytes') {
+          throw new Error('AuthPayload.signers contains a non-bytes signature value');
+        }
+        payload.signers.push({
+          signer: parseSignerScVal(signerEntry.key()),
+          signatureBytes: Buffer.from(signerValue.bytes()),
+        });
+      }
+    }
+  }
+  return payload;
+}
+
+function writeAuthPayload(payload: AuthPayload): xdr.ScVal {
+  const signerEntries = payload.signers.map(({ signer, signatureBytes }) => (
+    new xdr.ScMapEntry({
+      key: signerToScVal(signer),
+      val: xdr.ScVal.scvBytes(signatureBytes),
+    })
+  ));
+  signerEntries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
+
   return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('context_rule_ids'),
-      val: xdr.ScVal.scvVec(contextRuleIds.map((id) => xdr.ScVal.scvU32(id))),
+      val: xdr.ScVal.scvVec(payload.context_rule_ids.map((id) => xdr.ScVal.scvU32(id))),
     }),
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('signers'),
-      val: xdr.ScVal.scvMap([signerMapEntry]),
+      val: xdr.ScVal.scvMap(signerEntries),
     }),
   ]);
 }
 
-function buildSignatureMapEntry(
-  webauthnVerifierAddress: string,
-  keyData: Buffer,
+function buildWebAuthnSignatureBytes(
   sigData: { authenticator_data: Buffer; client_data: Buffer; signature: Buffer },
-): xdr.ScMapEntry {
-  const keyVal = xdr.ScVal.scvVec([
-    xdr.ScVal.scvSymbol('External'),
-    xdr.ScVal.scvAddress(Address.fromString(webauthnVerifierAddress).toScAddress()),
-    xdr.ScVal.scvBytes(keyData),
-  ]);
-  const sigDataScVal = xdr.ScVal.scvMap([
+): Buffer {
+  return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('authenticator_data'),
       val: xdr.ScVal.scvBytes(sigData.authenticator_data),
@@ -86,11 +142,77 @@ function buildSignatureMapEntry(
       key: xdr.ScVal.scvSymbol('signature'),
       val: xdr.ScVal.scvBytes(sigData.signature),
     }),
+  ]).toXDR();
+}
+
+function signerToScVal(signer: ContractSigner): xdr.ScVal {
+  if (signer.tag === 'Delegated') {
+    return xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol('Delegated'),
+      xdr.ScVal.scvAddress(Address.fromString(signer.values[0]).toScAddress()),
+    ]);
+  }
+
+  return xdr.ScVal.scvVec([
+    xdr.ScVal.scvSymbol('External'),
+    xdr.ScVal.scvAddress(Address.fromString(signer.values[0]).toScAddress()),
+    xdr.ScVal.scvBytes(signer.values[1]),
   ]);
-  return new xdr.ScMapEntry({
-    key: keyVal,
-    val: xdr.ScVal.scvBytes(sigDataScVal.toXDR()),
-  });
+}
+
+function parseSignerScVal(value: xdr.ScVal): ContractSigner {
+  if (value.switch().name !== 'scvVec') {
+    throw new Error('Signer key is not encoded as a vector');
+  }
+  const items = value.vec() ?? [];
+  if (items.length < 2 || items[0].switch().name !== 'scvSymbol') {
+    throw new Error('Signer key is not a valid enum encoding');
+  }
+
+  const variant = items[0].sym().toString();
+  if (variant === 'Delegated') {
+    if (items[1].switch().name !== 'scvAddress') {
+      throw new Error('Delegated signer is missing an address');
+    }
+    return {
+      tag: 'Delegated',
+      values: [Address.fromScAddress(items[1].address()).toString()],
+    };
+  }
+  if (variant === 'External') {
+    if (items.length < 3 || items[1].switch().name !== 'scvAddress' || items[2].switch().name !== 'scvBytes') {
+      throw new Error('External signer is missing required verifier or key data');
+    }
+    return {
+      tag: 'External',
+      values: [Address.fromScAddress(items[1].address()).toString(), Buffer.from(items[2].bytes())],
+    };
+  }
+  throw new Error(`Unknown signer variant: ${variant}`);
+}
+
+function upsertAuthPayloadSigner(payload: AuthPayload, signer: ContractSigner, signatureBytes: Buffer): void {
+  const existing = payload.signers.findIndex((item) => signersEqual(item.signer, signer));
+  if (existing >= 0) {
+    payload.signers.splice(existing, 1);
+  }
+  payload.signers.push({ signer, signatureBytes });
+}
+
+function signersEqual(a: ContractSigner, b: ContractSigner): boolean {
+  if (a.tag !== b.tag) return false;
+  if (a.values[0] !== b.values[0]) return false;
+  if (a.tag === 'External' && b.tag === 'External') {
+    return Buffer.from(a.values[1]).equals(Buffer.from(b.values[1]));
+  }
+  return true;
+}
+
+function buildExternalSigner(
+  webauthnVerifierAddress: string,
+  keyData: Buffer,
+): ContractSigner {
+  return { tag: 'External', values: [webauthnVerifierAddress, keyData] };
 }
 
 async function findKeyDataByCredentialId(
@@ -169,7 +291,12 @@ function buildContextRuleTypes(entry: xdr.SorobanAuthorizationEntry) {
   return types;
 }
 
-type SignAuthEntryOptions = { credentialId?: string; expiration?: number };
+type SignAuthEntryOptions = {
+  credentialId?: string;
+  expiration?: number;
+  contextRuleIds?: number[];
+  signer?: ContractSigner;
+};
 
 type PasskeyKitInternals = {
   rpId: string;
@@ -194,6 +321,8 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const expiration = options?.expiration ?? (await kitAny.calculateExpiration());
     credentials.signatureExpirationLedger(expiration);
 
+    const authPayload = readAuthPayload(credentials.signature());
+
     const preimage = xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
       new xdr.HashIdPreimageSorobanAuthorization({
         networkId: hash(Buffer.from(kitAny.networkPassphrase)),
@@ -203,14 +332,19 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
       }),
     );
     const signaturePayload = hash(preimage.toXDR());
-    const contextRuleIds = resolveDefaultContextRuleIds(normalizedEntry.rootInvocation());
+    const contextRuleIds = options?.contextRuleIds ?? authPayload.context_rule_ids;
+    if (contextRuleIds.length === 0) {
+      throw new Error(
+        'contextRuleIds are required to sign smart account auth entries when the payload does not already include them',
+      );
+    }
     const authDigest = computeAuthDigest(signaturePayload, contextRuleIds);
 
     const credentialIdStr = options?.credentialId ?? kitAny._credentialId;
     const authOptions = {
       challenge: base64url(authDigest),
       rpId: kitAny.rpId,
-      userVerification: 'required' as const,
+      userVerification: 'preferred' as const,
       timeout: WEBAUTHN_TIMEOUT_MS,
       ...(credentialIdStr && {
         allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
@@ -220,13 +354,26 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const rawSignature = base64url.toBuffer(authResponse.response.signature);
     const compactedSignature = compactSignature(rawSignature);
     const credentialIdBuffer = base64url.toBuffer(authResponse.id);
-    const keyData = await findKeyDataByCredentialId(kit, credentialIdBuffer, normalizedEntry);
-    const scMapEntry = buildSignatureMapEntry(kitAny.webauthnVerifierAddress, keyData, {
+    const signer = options?.signer ?? buildExternalSigner(
+      kitAny.webauthnVerifierAddress,
+      await findKeyDataByCredentialId(kit, credentialIdBuffer, normalizedEntry),
+    );
+    const webAuthnSignature = buildWebAuthnSignatureBytes({
       authenticator_data: base64url.toBuffer(authResponse.response.authenticatorData),
       client_data: base64url.toBuffer(authResponse.response.clientDataJSON),
       signature: Buffer.from(compactedSignature),
     });
-    credentials.signature(buildAuthPayloadScVal(scMapEntry, contextRuleIds));
+
+    if (
+      authPayload.context_rule_ids.length > 0 &&
+      authPayload.context_rule_ids.join(',') !== contextRuleIds.join(',')
+    ) {
+      throw new Error('Existing auth payload uses different context rule IDs');
+    }
+
+    authPayload.context_rule_ids = contextRuleIds;
+    upsertAuthPayloadSigner(authPayload, signer, webAuthnSignature);
+    credentials.signature(writeAuthPayload(authPayload));
 
     if (credentialIdStr) {
       await kitAny.storage.update(credentialIdStr, { lastUsedAt: Date.now() });

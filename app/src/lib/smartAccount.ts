@@ -1,7 +1,7 @@
-import { Address, hash, Keypair, xdr } from '@stellar/stellar-sdk';
+import { Address, hash, Keypair, Operation, rpc, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import base64url from 'base64url';
-import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
+import { Client as SmartAccountClient, type Signer as ContractSigner } from 'smart-account-kit-bindings';
 import {
   IndexedDBStorage,
   SmartAccountKit,
@@ -9,7 +9,7 @@ import {
   type TransactionResult,
 } from 'smart-account-kit';
 import type { DeploymentConfig } from './config';
-import { fetchOnChainContextRules } from './onChainContextRules';
+import { fetchOnChainContextRules, type OnChainContextRule } from './onChainContextRules';
 import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 import { extractRegistrationPublicKey } from './webauthnPublicKey';
@@ -191,6 +191,21 @@ type KitDeployInternals = {
   timeoutInSeconds: number;
 };
 
+type KitSubmitInternals = {
+  rpc: rpc.Server;
+  networkPassphrase: string;
+  timeoutInSeconds: number;
+  deployerKeypair?: Keypair;
+  shouldUseFeeSponsoring: (options?: { forceMethod?: 'relayer' | 'rpc' }) => boolean;
+  hasSourceAccountAuth: (transaction: Transaction) => boolean;
+  sendAndPoll: (
+    transaction: Transaction,
+    options?: { forceMethod?: 'relayer' | 'rpc' },
+  ) => Promise<TransactionResult>;
+};
+
+type ContextRuleType = OnChainContextRule['context_type'];
+
 /** Install compliance policy in __constructor so deploy does not need a passkey-signed add_policy tx. */
 function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: DeploymentConfig): void {
   if (!config.compliancePolicyId) return;
@@ -356,15 +371,234 @@ export async function connectPersonalSmartAccount(
   return kit;
 }
 
+function extractCreateContractWasmHash(fn: xdr.SorobanAuthorizedFunction): Buffer | null {
+  const candidates: Array<unknown> = [];
+  const fnAny = fn as unknown as {
+    createContractHostFn?: () => unknown;
+    createContractWithCtorHostFn?: () => unknown;
+    createContractWithConstructorHostFn?: () => unknown;
+  };
+  if (typeof fnAny.createContractHostFn === 'function') candidates.push(fnAny.createContractHostFn());
+  if (typeof fnAny.createContractWithCtorHostFn === 'function') candidates.push(fnAny.createContractWithCtorHostFn());
+  if (typeof fnAny.createContractWithConstructorHostFn === 'function') {
+    candidates.push(fnAny.createContractWithConstructorHostFn());
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const ctx = candidate as { executable?: unknown };
+    const executable = typeof ctx.executable === 'function'
+      ? (ctx.executable as () => unknown)()
+      : ctx.executable;
+    if (!executable || typeof executable !== 'object') continue;
+    const execAny = executable as {
+      switch?: () => { name: string };
+      wasm?: (() => Buffer) | Buffer;
+    };
+    if (execAny.switch?.().name === 'contractExecutableWasm') {
+      const wasm = typeof execAny.wasm === 'function' ? execAny.wasm() : execAny.wasm;
+      if (wasm) return Buffer.from(wasm);
+    }
+  }
+  return null;
+}
+
+function buildInvocationContextTypes(entry: xdr.SorobanAuthorizationEntry): ContextRuleType[] {
+  const contexts: ContextRuleType[] = [];
+  const walk = (invocation: xdr.SorobanAuthorizedInvocation) => {
+    const fn = invocation.function();
+    const switchName = fn.switch().name;
+    if (switchName === 'sorobanAuthorizedFunctionTypeContractFn') {
+      const args = fn.contractFn();
+      contexts.push({
+        tag: 'CallContract',
+        values: [Address.fromScAddress(args.contractAddress()).toString()],
+      });
+    } else if (switchName.startsWith('sorobanAuthorizedFunctionTypeCreateContract')) {
+      const wasmHash = extractCreateContractWasmHash(fn);
+      if (!wasmHash) {
+        throw new Error('Unable to extract WASM hash from create-contract authorization entry');
+      }
+      contexts.push({ tag: 'CreateContract', values: [wasmHash] });
+    }
+    for (const sub of invocation.subInvocations()) {
+      walk(sub);
+    }
+  };
+  walk(entry.rootInvocation());
+  return contexts;
+}
+
+function contextRuleTypeKey(contextType: ContextRuleType): string {
+  if (contextType.tag === 'Default') return 'Default';
+  if (contextType.tag === 'CallContract') return `CallContract:${contextType.values?.[0]}`;
+  return `CreateContract:${Buffer.from(contextType.values?.[0] as Buffer).toString('hex')}`;
+}
+
+function contextRuleTypeMatches(ruleType: ContextRuleType, requiredType: ContextRuleType): boolean {
+  return ruleType.tag === 'Default' || contextRuleTypeKey(ruleType) === contextRuleTypeKey(requiredType);
+}
+
+function contractSignersEqual(a: ContractSigner, b: ContractSigner): boolean {
+  if (a.tag !== b.tag) return false;
+  if (a.values[0] !== b.values[0]) return false;
+  if (a.tag === 'External' && b.tag === 'External') {
+    return Buffer.from(a.values[1]).equals(Buffer.from(b.values[1]));
+  }
+  return true;
+}
+
+function uniqueRules(rules: OnChainContextRule[]): OnChainContextRule[] {
+  const seen = new Set<number>();
+  const out: OnChainContextRule[] = [];
+  for (const rule of rules) {
+    if (seen.has(rule.id)) continue;
+    seen.add(rule.id);
+    out.push(rule);
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
+
+async function resolveConnectedContextRuleIds(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  entry: xdr.SorobanAuthorizationEntry,
+): Promise<{ ids: number[]; signer: ContractSigner }> {
+  if (!config.webauthnVerifierId) {
+    throw new Error('WebAuthn verifier is not configured.');
+  }
+  const credentialId = base64url.toBuffer(state.credentialId);
+  const requiredContexts = buildInvocationContextTypes(entry);
+  const lookupContexts: ContextRuleType[] = uniqueRules([
+    ...requiredContexts.map((context_type, id) => ({
+      id,
+      context_type,
+      name: '',
+      policies: [],
+      signers: [],
+      valid_until: undefined,
+    })),
+    {
+      id: requiredContexts.length,
+      context_type: { tag: 'Default', values: undefined },
+      name: '',
+      policies: [],
+      signers: [],
+      valid_until: undefined,
+    },
+  ]).map((rule) => rule.context_type);
+
+  const rules = uniqueRules((
+    await Promise.all(lookupContexts.map((contextType) => (
+      fetchOnChainContextRules(config, state.smartAccountAddress, contextType)
+    )))
+  ).flat());
+  if (rules.length === 0) {
+    throw new Error('No context rules found for connected smart account.');
+  }
+
+  const signer = rules
+    .flatMap((rule) => rule.signers)
+    .find((candidate) => {
+      if (candidate.values[0] !== config.webauthnVerifierId) return false;
+      const keyData = candidate.values[1];
+      if (keyData.length <= credentialId.length) return false;
+      return keyData.subarray(keyData.length - credentialId.length).equals(credentialId);
+    });
+  if (!signer) {
+    throw new Error(`No WebAuthn signer found for credential ID ${state.credentialId}`);
+  }
+
+  const ids = requiredContexts.map((contextType) => {
+    const candidates = rules.filter((rule) => contextRuleTypeMatches(rule.context_type, contextType));
+    if (candidates.length === 1) return candidates[0].id;
+
+    const exactSignerMatches = candidates.filter((rule) => (
+      rule.signers.length === 1 && rule.signers.some((ruleSigner) => contractSignersEqual(ruleSigner, signer))
+    ));
+    if (exactSignerMatches.length === 1) return exactSignerMatches[0].id;
+
+    const signerSubsetMatches = candidates.filter((rule) => (
+      rule.policies.length === 0 &&
+      rule.signers.every((ruleSigner) => contractSignersEqual(ruleSigner, signer))
+    ));
+    if (signerSubsetMatches.length === 1) return signerSubsetMatches[0].id;
+
+    const candidateIds = candidates.map((candidate) => candidate.id).join(', ');
+    throw new Error(
+      `Unable to resolve a unique context rule for ${contextRuleTypeKey(contextType)}. ` +
+      `Matched ${candidates.length} rule(s)${candidateIds ? `: ${candidateIds}` : ''}.`,
+    );
+  });
+
+  return { ids, signer };
+}
+
+async function signAndSubmitWithOfficialAuthPayload(
+  kit: SmartAccountKit,
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  transaction: SmartAccountAssembledTransaction,
+): Promise<TransactionResult> {
+  const kitAny = kit as unknown as KitSubmitInternals;
+  const builtTx = transaction.built as Transaction | undefined;
+  if (!builtTx) {
+    return { success: false, hash: '', error: 'Transaction has no built transaction' };
+  }
+  const operations = builtTx.operations;
+  if (operations.length !== 1 || operations[0].type !== 'invokeHostFunction') {
+    return { success: false, hash: '', error: 'Expected exactly one invokeHostFunction operation' };
+  }
+  const authEntries = transaction.simulationData?.result?.auth as xdr.SorobanAuthorizationEntry[] | undefined;
+  if (!authEntries) {
+    return { success: false, hash: '', error: 'No simulation data or auth entries' };
+  }
+
+  const invokeOp = operations[0] as Operation.InvokeHostFunction;
+  const signedAuthEntries: xdr.SorobanAuthorizationEntry[] = [];
+  for (const entry of authEntries) {
+    if (entry.credentials().switch().name !== 'sorobanCredentialsAddress') {
+      signedAuthEntries.push(entry);
+      continue;
+    }
+    const resolved = await resolveConnectedContextRuleIds(config, state, entry);
+    signedAuthEntries.push(await kit.signAuthEntry(entry, {
+      credentialId: state.credentialId,
+      contextRuleIds: resolved.ids,
+      signer: resolved.signer,
+    } as never));
+  }
+
+  const sourceAccount = await kitAny.rpc.getAccount(SMART_ACCOUNT_DEPLOYER.publicKey());
+  const resimTx = new TransactionBuilder(sourceAccount, {
+    fee: '100',
+    networkPassphrase: kitAny.networkPassphrase,
+  })
+    .addOperation(Operation.invokeHostFunction({ func: invokeOp.func, auth: signedAuthEntries }))
+    .setTimeout(kitAny.timeoutInSeconds)
+    .build();
+
+  const resimResult = await kitAny.rpc.simulateTransaction(resimTx);
+  if (rpc.Api.isSimulationError(resimResult)) {
+    return { success: false, hash: '', error: `Re-simulation failed: ${resimResult.error}` };
+  }
+
+  const normalizedTx = TransactionBuilder.fromXDR(resimTx.toXDR(), kitAny.networkPassphrase);
+  const preparedTx = rpc.assembleTransaction(normalizedTx as Transaction, resimResult).build() as Transaction;
+  const submissionOpts = { forceMethod: config.openZeppelinRelayerUrl ? 'relayer' as const : 'rpc' as const };
+  if (!kitAny.shouldUseFeeSponsoring(submissionOpts) || kitAny.hasSourceAccountAuth(preparedTx)) {
+    preparedTx.sign(kitAny.deployerKeypair ?? SMART_ACCOUNT_DEPLOYER);
+  }
+  return kitAny.sendAndPoll(preparedTx, submissionOpts);
+}
+
 export async function submitWithSmartAccount(
   config: DeploymentConfig,
   state: SmartAccountState,
   transaction: SmartAccountAssembledTransaction,
 ): Promise<string> {
   const kit = await connectPersonalSmartAccount(config, state);
-  const result = await kit.signAndSubmit(transaction as never, {
-    forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
-  });
+  const result = await signAndSubmitWithOfficialAuthPayload(kit, config, state, transaction);
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 

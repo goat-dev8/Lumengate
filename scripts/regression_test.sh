@@ -79,13 +79,14 @@ PROOF_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
 PI_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
 
 if [[ -n "$SAC_ADMIN" ]]; then
+  REGRESSION_USDC_AMOUNT="${REGRESSION_USDC_AMOUNT:-1000000}"
   check "eligible usdc sac balance > 0" bash -c 'bal=$(stellar contract invoke --id "'"$USDC_SAC"'" --source-account deployer --network testnet -- balance --id "'"$FROM"'" 2>&1 | tail -1 | tr -d \"); [[ "$bal" -gt 0 ]]'
   ASSET_ID=2 ACTION_ID=1 WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
   bash "$ROOT/scripts/build_circuit.sh"
   USDC_PROOF_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
   USDC_PI_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
   check "usdc transfer_compliant" stellar contract invoke --id "$SAC_ADMIN" --source-account eligible --network testnet --send yes -- \
-    transfer_compliant --from "$FROM" --to "$SETTLE" --amount 1000000 --proof "$USDC_PROOF_HEX" --public_inputs "$USDC_PI_HEX"
+    transfer_compliant --from "$FROM" --to "$SETTLE" --amount "$REGRESSION_USDC_AMOUNT" --proof "$USDC_PROOF_HEX" --public_inputs "$USDC_PI_HEX"
 
   DEX=$(node -e "console.log(require('$ROOT/deployments.json').compliant_dex||'')")
   PAYROLL=$(node -e "console.log(require('$ROOT/deployments.json').compliant_payroll||'')")
@@ -96,7 +97,7 @@ if [[ -n "$SAC_ADMIN" ]]; then
     DEX_PROOF=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
     DEX_PI=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
     check "compliant dex swap_compliant" stellar contract invoke --id "$DEX" --source-account eligible --network testnet --send yes -- \
-      swap_compliant --trader "$FROM" --recipient "$SETTLE" --amount 1000000 --proof "$DEX_PROOF" --public_inputs "$DEX_PI"
+      swap_compliant --trader "$FROM" --recipient "$SETTLE" --amount "$REGRESSION_USDC_AMOUNT" --proof "$DEX_PROOF" --public_inputs "$DEX_PI"
   fi
 
   if [[ -n "$PAYROLL" ]]; then
@@ -105,7 +106,7 @@ if [[ -n "$SAC_ADMIN" ]]; then
     PAY_PROOF=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')
     PAY_PI=$(xxd -p "$ROOT/circuits/lumengate/target/public_inputs" | tr -d '\n')
     check "compliant payroll pay_compliant" stellar contract invoke --id "$PAYROLL" --source-account eligible --network testnet --send yes -- \
-      pay_compliant --payer "$FROM" --employee "$SETTLE" --amount 1000000 --proof "$PAY_PROOF" --public_inputs "$PAY_PI"
+      pay_compliant --payer "$FROM" --employee "$SETTLE" --amount "$REGRESSION_USDC_AMOUNT" --proof "$PAY_PROOF" --public_inputs "$PAY_PI"
   fi
 
   AUDITOR_REG=$(node -e "console.log(require('$ROOT/deployments.json').auditor_registry||'')")
