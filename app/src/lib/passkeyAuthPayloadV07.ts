@@ -221,23 +221,23 @@ async function resolveSigningExternalSigner(
   credentialIdBuffer: Buffer,
   entry: xdr.SorobanAuthorizationEntry,
 ): Promise<ContractSigner> {
+  if (options?.signer?.tag === 'External') {
+    const keyData = coerceKeyDataBuffer(options.signer.values[1]);
+    if (keyData && keyData.length > SECP256R1_PUBLIC_KEY_SIZE) {
+      const suffix = keyData.slice(SECP256R1_PUBLIC_KEY_SIZE);
+      if (suffix.equals(credentialIdBuffer)) {
+        kitAny._passkeyKeyData = keyData;
+        return {
+          tag: 'External',
+          values: [options.signer.values[0], keyData],
+        };
+      }
+    }
+  }
+
   const verifier = kitAny.webauthnVerifierAddress;
   if (!verifier) {
     throw new Error('WebAuthn verifier is not configured.');
-  }
-
-  const pinned = kitAny._passkeyKeyData;
-  const candidates: Array<Buffer | null | undefined> = [
-    options?.signer?.tag === 'External' ? coerceKeyDataBuffer(options.signer.values[1]) : null,
-    pinned,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate || candidate.length <= SECP256R1_PUBLIC_KEY_SIZE) continue;
-    const suffix = candidate.slice(SECP256R1_PUBLIC_KEY_SIZE);
-    if (suffix.equals(credentialIdBuffer)) {
-      return { tag: 'External', values: [verifier, candidate] };
-    }
   }
 
   try {
@@ -245,8 +245,12 @@ async function resolveSigningExternalSigner(
     kitAny._passkeyKeyData = keyData;
     return { tag: 'External', values: [verifier, keyData] };
   } catch (err) {
+    const pinned = kitAny._passkeyKeyData;
     if (pinned && pinned.length > SECP256R1_PUBLIC_KEY_SIZE) {
-      return { tag: 'External', values: [verifier, pinned] };
+      const suffix = pinned.slice(SECP256R1_PUBLIC_KEY_SIZE);
+      if (suffix.equals(credentialIdBuffer)) {
+        return { tag: 'External', values: [verifier, pinned] };
+      }
     }
     throw err;
   }
@@ -264,6 +268,19 @@ function readWebAuthnAssertionFields(response: {
     );
   }
   return { authenticatorData, clientDataJSON, signature };
+}
+
+function readExternalSignerKeyData(raw: unknown): Buffer | null {
+  if (Array.isArray(raw) && raw[0] === 'External' && raw.length >= 3) {
+    return coerceKeyDataBuffer(raw[2]);
+  }
+  if (raw && typeof raw === 'object') {
+    const signer = raw as { tag?: string; values?: unknown[] };
+    if (signer.tag === 'External' && Array.isArray(signer.values) && signer.values.length >= 2) {
+      return coerceKeyDataBuffer(signer.values[1]);
+    }
+  }
+  return null;
 }
 
 async function findKeyDataByCredentialId(
@@ -292,14 +309,13 @@ async function findKeyDataByCredentialId(
   for (const contextRuleType of contextRuleTypes) {
     const rulesResult = await wallet.get_context_rules({ context_rule_type: contextRuleType });
     for (const rule of rulesResult.result) {
-      for (const signer of rule.signers) {
-        if (signer.tag === 'External') {
-          const keyData = coerceKeyDataBuffer(signer.values[1]);
-          if (!keyData || keyData.length <= SECP256R1_PUBLIC_KEY_SIZE) continue;
-          const suffix = keyData.slice(SECP256R1_PUBLIC_KEY_SIZE);
-          if (suffix.equals(credentialId)) {
-            return keyData;
-          }
+      const signers = Array.isArray(rule.signers) ? rule.signers : [];
+      for (const signer of signers) {
+        const keyData = readExternalSignerKeyData(signer);
+        if (!keyData || keyData.length <= SECP256R1_PUBLIC_KEY_SIZE) continue;
+        const suffix = keyData.slice(SECP256R1_PUBLIC_KEY_SIZE);
+        if (suffix.equals(credentialId)) {
+          return keyData;
         }
       }
     }
@@ -401,7 +417,7 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const authOptions = {
       challenge: base64url(authDigest),
       rpId: kitAny.rpId,
-      userVerification: 'preferred' as const,
+      userVerification: 'required' as const,
       timeout: WEBAUTHN_TIMEOUT_MS,
       allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
     };

@@ -773,6 +773,23 @@ export function formatSorobanUserError(message: string): string {
       'then create a new passkey smart account and retry.'
     );
   }
+  if (message.includes('Error(Contract, #3014)') || message.includes('ContextRuleIdsLengthMismatch')) {
+    return (
+      'Passkey context rule selection does not match this transaction. Refresh the page, then retry Send. ' +
+      'If it persists, create a new passkey smart account on Verify.'
+    );
+  }
+  if (message.includes('Error(Contract, #3016)') || message.includes('UnauthorizedSigner')) {
+    return (
+      'Passkey signer does not match this smart account. Create a new passkey smart account on Verify, fund it, then retry Send.'
+    );
+  }
+  if (message.includes('Error(Contract, #3003)') || message.includes('ExternalSignatureVerificationFailed')) {
+    return (
+      'WebAuthn signature verification failed. Use the same device/passkey that created this smart account, ' +
+      'or create a new passkey smart account on Verify.'
+    );
+  }
   if (
     message.includes('Error(Auth, InvalidAction)') ||
     message.includes('__check_auth') ||

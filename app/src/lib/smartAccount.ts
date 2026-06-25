@@ -21,7 +21,7 @@ import {
   listOnChainContextRules,
   type OnChainContextRule,
 } from './onChainContextRules';
-import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
+import { patchPasskeyAuthPayloadV07, countAuthContextsInTree } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 import { extractRegistrationPublicKey } from './webauthnPublicKey';
 
@@ -258,7 +258,24 @@ export async function hydrateSmartAccountPasskeyMetadata(
   config: DeploymentConfig,
   state: SmartAccountState,
 ): Promise<SmartAccountState> {
-  if (state.passkeyKeyDataHex && state.passkeyPublicKey) return state;
+  if (state.passkeyKeyDataHex && state.passkeyPublicKey) {
+    if (!config.webauthnVerifierId) return state;
+    const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
+      maxRuleId: 4,
+      maxConsecutiveMisses: 2,
+    });
+    const fromChain = findPasskeyKeyDataInRules(rules, config.webauthnVerifierId, state.credentialId);
+    if (fromChain) {
+      const hex = fromChain.toString('hex');
+      if (hex === state.passkeyKeyDataHex) return state;
+      return {
+        ...state,
+        passkeyKeyDataHex: hex,
+        passkeyPublicKey: fromChain.subarray(0, 65).toString('base64'),
+      };
+    }
+    return state;
+  }
   if (!config.webauthnVerifierId) return state;
 
   const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
@@ -274,20 +291,6 @@ export async function hydrateSmartAccountPasskeyMetadata(
     ...state,
     passkeyKeyDataHex: keyData.toString('hex'),
     passkeyPublicKey: keyData.subarray(0, 65).toString('base64'),
-  };
-}
-
-function buildStoredPasskeySigner(
-  config: DeploymentConfig,
-  state: SmartAccountState,
-  rules?: OnChainContextRule[],
-): ContractSigner {
-  if (!config.webauthnVerifierId) {
-    throw new Error('WebAuthn verifier is not configured.');
-  }
-  return {
-    tag: 'External',
-    values: [config.webauthnVerifierId, resolvePasskeyKeyData(state, rules, config.webauthnVerifierId)],
   };
 }
 
@@ -516,7 +519,8 @@ function extractCreateContractWasmHash(fn: xdr.SorobanAuthorizedFunction): Buffe
   return null;
 }
 
-function buildInvocationContextTypes(entry: xdr.SorobanAuthorizationEntry): ContextRuleType[] {
+/** One auth context per invocation-tree node (matches soroban-env-host auth_contexts length). */
+function buildAuthContextTypesFromTree(entry: xdr.SorobanAuthorizationEntry): ContextRuleType[] {
   const contexts: ContextRuleType[] = [];
   const walk = (invocation: xdr.SorobanAuthorizedInvocation) => {
     const fn = invocation.function();
@@ -533,6 +537,8 @@ function buildInvocationContextTypes(entry: xdr.SorobanAuthorizationEntry): Cont
         throw new Error('Unable to extract WASM hash from create-contract authorization entry');
       }
       contexts.push({ tag: 'CreateContract', values: [wasmHash] });
+    } else {
+      contexts.push({ tag: 'Default' });
     }
     for (const sub of invocation.subInvocations()) {
       walk(sub);
@@ -540,6 +546,37 @@ function buildInvocationContextTypes(entry: xdr.SorobanAuthorizationEntry): Cont
   };
   walk(entry.rootInvocation());
   return contexts;
+}
+
+function resolveContextRuleIdForContext(
+  rules: OnChainContextRule[],
+  contextType: ContextRuleType,
+  candidateSigner: ContractSigner,
+): number {
+  const candidates = rules.filter((rule) => contextRuleTypeMatches(rule.context_type, contextType));
+  if (candidates.length === 1) return candidates[0].id;
+
+  const exactSignerMatches = candidates.filter((rule) => (
+    rule.signers.length === 1 && rule.signers.some((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
+  ));
+  if (exactSignerMatches.length === 1) return exactSignerMatches[0].id;
+
+  const signerSubsetMatches = candidates.filter((rule) => (
+    rule.policies.length === 0 &&
+    rule.signers.every((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
+  ));
+  if (signerSubsetMatches.length === 1) return signerSubsetMatches[0].id;
+
+  const defaultRules = rules.filter((rule) => rule.context_type.tag === 'Default');
+  if (defaultRules.length === 1) return defaultRules[0].id;
+  const ruleZero = rules.find((rule) => rule.id === 0);
+  if (ruleZero) return ruleZero.id;
+
+  const candidateIds = candidates.map((candidate) => candidate.id).join(', ');
+  throw new Error(
+    `Unable to resolve a unique context rule for ${contextRuleTypeKey(contextType)}. ` +
+    `Matched ${candidates.length} rule(s)${candidateIds ? `: ${candidateIds}` : ''}.`,
+  );
 }
 
 function contractSignersEqual(a: ContractSigner, b: ContractSigner): boolean {
@@ -571,54 +608,48 @@ async function resolveConnectedContextRuleIds(
     throw new Error('WebAuthn verifier is not configured.');
   }
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  const requiredContexts = buildInvocationContextTypes(entry);
+  const authContexts = buildAuthContextTypesFromTree(entry);
+  const expectedContexts = countAuthContextsInTree(entry.rootInvocation());
+  if (authContexts.length !== expectedContexts) {
+    throw new Error(
+      `Auth context count mismatch (${authContexts.length} parsed vs ${expectedContexts} expected). Refresh and retry.`,
+    );
+  }
   const rules = uniqueRules(await listOnChainContextRules(config, hydrated.smartAccountAddress));
   if (rules.length === 0) {
     throw new Error('No context rules found for connected smart account.');
   }
 
-  const onChainSigner = findPasskeySignerInRules(
+  const onChainKeyData = findPasskeyKeyDataInRules(
     rules,
     config.webauthnVerifierId,
     hydrated.credentialId,
   );
-  const candidateSigner: ContractSigner =
-    onChainSigner ?? buildStoredPasskeySigner(config, hydrated, rules);
-
-  const ids = requiredContexts.map((contextType) => {
-    const candidates = rules.filter((rule) => contextRuleTypeMatches(rule.context_type, contextType));
-    if (candidates.length === 1) return candidates[0].id;
-
-    const exactSignerMatches = candidates.filter((rule) => (
-      rule.signers.length === 1 && rule.signers.some((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
-    ));
-    if (exactSignerMatches.length === 1) return exactSignerMatches[0].id;
-
-    const signerSubsetMatches = candidates.filter((rule) => (
-      rule.policies.length === 0 &&
-      rule.signers.every((ruleSigner) => contractSignersEqual(ruleSigner, candidateSigner))
-    ));
-    if (signerSubsetMatches.length === 1) return signerSubsetMatches[0].id;
-
-    // Default context rules authorize any contract call on OZ smart accounts.
-    const defaultRules = rules.filter((rule) => rule.context_type.tag === 'Default');
-    if (defaultRules.length === 1) return defaultRules[0].id;
-    const ruleZero = rules.find((rule) => rule.id === 0);
-    if (ruleZero) return ruleZero.id;
-
-    const candidateIds = candidates.map((candidate) => candidate.id).join(', ');
+  if (!onChainKeyData) {
     throw new Error(
-      `Unable to resolve a unique context rule for ${contextRuleTypeKey(contextType)}. ` +
-      `Matched ${candidates.length} rule(s)${candidateIds ? `: ${candidateIds}` : ''}.`,
+      'Passkey signer not found in smart account context rules. Create a new passkey smart account on Verify, fund it, then retry.',
     );
-  });
+  }
 
-  const signer =
+  const candidateSigner: ContractSigner = {
+    tag: 'External',
+    values: [config.webauthnVerifierId, onChainKeyData],
+  };
+
+  const ids = authContexts.map((contextType) => (
+    resolveContextRuleIdForContext(rules, contextType, candidateSigner)
+  ));
+
+  const matchedSigner =
     findPasskeySignerInContextRules(rules, ids, config.webauthnVerifierId, hydrated.credentialId) ??
-    onChainSigner ??
-    buildStoredPasskeySigner(config, hydrated, rules);
+    findPasskeySignerInRules(rules, config.webauthnVerifierId, hydrated.credentialId);
+  if (!matchedSigner) {
+    throw new Error(
+      'Passkey signer not found for resolved context rules. Create a new passkey smart account and retry.',
+    );
+  }
 
-  return { ids, signer };
+  return { ids, signer: matchedSigner };
 }
 
 async function signAndSubmitWithOfficialAuthPayload(
