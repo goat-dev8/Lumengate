@@ -1,7 +1,7 @@
-import { Address, hash, Keypair, Operation, rpc, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
+import { Address, hash, Keypair, xdr } from '@stellar/stellar-sdk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import base64url from 'base64url';
-import { Client as SmartAccountClient, type Signer as ContractSigner } from 'smart-account-kit-bindings';
+import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
 import {
   IndexedDBStorage,
   SmartAccountKit,
@@ -11,15 +11,10 @@ import {
 import type { DeploymentConfig } from './config';
 import {
   coerceKeyDataBuffer,
-  fetchOnChainContextRules,
-  findPasskeyKeyDataInRules,
-  findPasskeySignerInContextRules,
   findPasskeySignerInRules,
   listOnChainContextRules,
   type OnChainContextRule,
 } from './onChainContextRules';
-import { resolveContextRuleIdsFromRules } from './contextRuleResolution';
-import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 import { extractRegistrationPublicKey } from './webauthnPublicKey';
 
@@ -66,21 +61,6 @@ export type SmartAccountState = {
   compliancePolicyInstalled?: boolean;
   compliancePolicyTxHash?: string;
 };
-
-/** True when the stored account was deployed with a superseded compliance policy. */
-export function isStaleSmartAccountPolicy(
-  state: SmartAccountState | null | undefined,
-  config: DeploymentConfig,
-): boolean {
-  if (!state || !config.compliancePolicyId) return false;
-  const installed = state.compliancePolicyId?.trim();
-  if (!installed) return true;
-  if (installed === config.compliancePolicyId) return false;
-  return (
-    LEGACY_COMPLIANCE_POLICY_IDS.includes(installed as (typeof LEGACY_COMPLIANCE_POLICY_IDS)[number]) ||
-    installed !== config.compliancePolicyId
-  );
-}
 
 export type SmartAccountStatus = {
   ready: boolean;
@@ -206,19 +186,6 @@ type KitDeployInternals = {
   timeoutInSeconds: number;
 };
 
-type KitSubmitInternals = {
-  rpc: rpc.Server;
-  networkPassphrase: string;
-  timeoutInSeconds: number;
-  deployerKeypair?: Keypair;
-  shouldUseFeeSponsoring: (options?: { forceMethod?: 'relayer' | 'rpc' }) => boolean;
-  hasSourceAccountAuth: (transaction: Transaction) => boolean;
-  sendAndPoll: (
-    transaction: Transaction,
-    options?: { forceMethod?: 'relayer' | 'rpc' },
-  ) => Promise<TransactionResult>;
-};
-
 /** Install compliance policy in __constructor so deploy does not need a passkey-signed add_policy tx. */
 function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: DeploymentConfig): void {
   if (!config.compliancePolicyId) return;
@@ -249,157 +216,102 @@ function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: Deploymen
   };
 }
 
+async function readContextRule0(
+  config: DeploymentConfig,
+  smartAccountAddress: string,
+): Promise<OnChainContextRule | null> {
+  const rules = await listOnChainContextRules(config, smartAccountAddress, {
+    maxRuleId: 1,
+    maxConsecutiveMisses: 2,
+  });
+  return rules.find((rule) => rule.id === 0) ?? rules[0] ?? null;
+}
+
+/** Compare on-chain context rule 0 to deployment config (never trust session metadata alone). */
+export async function isSmartAccountPolicyStaleOnChain(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<boolean> {
+  if (!config.compliancePolicyId || !config.webauthnVerifierId) return false;
+  const rule0 = await readContextRule0(config, state.smartAccountAddress);
+  if (!rule0?.policies?.length) return true;
+  if (rule0.policies[0] !== config.compliancePolicyId) return true;
+  const signer = findPasskeySignerInRules(rule0 ? [rule0] : [], config.webauthnVerifierId, state.credentialId);
+  if (!signer) return true;
+  const keyData = coerceKeyDataBuffer(signer.values[1]);
+  if (!keyData) return true;
+  const credBuffer = base64url.toBuffer(state.credentialId);
+  if (keyData.length <= credBuffer.length) return true;
+  const suffix = keyData.subarray(keyData.length - credBuffer.length);
+  if (!suffix.equals(credBuffer)) return true;
+  return false;
+}
+
+/** @deprecated Use isSmartAccountPolicyStaleOnChain — session metadata is not authoritative. */
+export function isStaleSmartAccountPolicy(
+  state: SmartAccountState | null | undefined,
+  config: DeploymentConfig,
+): boolean {
+  if (!state || !config.compliancePolicyId) return false;
+  const installed = state.compliancePolicyId?.trim();
+  if (!installed) return true;
+  if (installed === config.compliancePolicyId) return false;
+  return (
+    LEGACY_COMPLIANCE_POLICY_IDS.includes(installed as (typeof LEGACY_COMPLIANCE_POLICY_IDS)[number]) ||
+    installed !== config.compliancePolicyId
+  );
+}
+
 /** Fill missing passkey metadata from on-chain context rule signers. */
 export async function hydrateSmartAccountPasskeyMetadata(
   config: DeploymentConfig,
   state: SmartAccountState,
 ): Promise<SmartAccountState> {
-  if (state.passkeyKeyDataHex && state.passkeyPublicKey) {
-    if (!config.webauthnVerifierId) return state;
-    const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
-      maxRuleId: 4,
-      maxConsecutiveMisses: 2,
-    });
-    const fromChain = findPasskeyKeyDataInRules(rules, config.webauthnVerifierId, state.credentialId);
-    if (fromChain) {
-      const hex = fromChain.toString('hex');
-      if (hex === state.passkeyKeyDataHex) return state;
-      return {
-        ...state,
-        passkeyKeyDataHex: hex,
-        passkeyPublicKey: fromChain.subarray(0, 65).toString('base64'),
-      };
-    }
-    return state;
-  }
   if (!config.webauthnVerifierId) return state;
+  const rule0 = await readContextRule0(config, state.smartAccountAddress);
+  if (!rule0) return state;
 
-  const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
-    maxRuleId: 4,
-    maxConsecutiveMisses: 2,
-  });
-  const signer = findPasskeySignerInRules(rules, config.webauthnVerifierId, state.credentialId);
-  if (!signer) return state;
+  const onChainPolicy = rule0.policies[0];
+  const signer = findPasskeySignerInRules([rule0], config.webauthnVerifierId, state.credentialId);
+  const keyData = signer ? coerceKeyDataBuffer(signer.values[1]) : null;
 
-  const keyData = coerceKeyDataBuffer(signer.values[1]);
-  if (!keyData) return state;
-  return {
+  const next: SmartAccountState = {
     ...state,
+    compliancePolicyId: onChainPolicy ?? state.compliancePolicyId,
+    compliancePolicyInstalled: Boolean(onChainPolicy),
+  };
+
+  if (!keyData) return next;
+
+  return {
+    ...next,
     passkeyKeyDataHex: keyData.toString('hex'),
     passkeyPublicKey: keyData.subarray(0, 65).toString('base64'),
   };
-}
-
-/** Resolve passkey key_data: stored deploy bytes, else on-chain, else recomputed from metadata. */
-export function resolvePasskeyKeyData(
-  state: SmartAccountState,
-  rules?: OnChainContextRule[],
-  webauthnVerifierId?: string,
-): Buffer {
-  if (state.passkeyKeyDataHex) {
-    const stored = coerceKeyDataBuffer(state.passkeyKeyDataHex);
-    if (stored) return stored;
-  }
-
-  if (rules && webauthnVerifierId) {
-    const fromChain = findPasskeyKeyDataInRules(rules, webauthnVerifierId, state.credentialId);
-    if (fromChain) return fromChain;
-  }
-
-  if (state.passkeyPublicKey) {
-    return buildPasskeyKeyData(Buffer.from(state.passkeyPublicKey, 'base64'), state.credentialId);
-  }
-
-  throw new Error(
-    'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
-  );
 }
 
 async function ensurePasskeyCredentialInKitStorage(
   kit: SmartAccountKit,
   config: DeploymentConfig,
   state: SmartAccountState,
-  rules: OnChainContextRule[],
 ): Promise<void> {
   const kitStorage = (kit as unknown as { storage: SmartAccountKit['storage'] }).storage;
   const existing = await kitStorage.get(state.credentialId);
   if (existing?.publicKey?.length) return;
   if (!config.webauthnVerifierId) return;
 
-  const keyData = resolvePasskeyKeyData(state, rules, config.webauthnVerifierId);
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  if (!hydrated.passkeyPublicKey) return;
+
   await kitStorage.save({
     credentialId: state.credentialId,
-    publicKey: keyData.subarray(0, 65),
+    publicKey: Buffer.from(hydrated.passkeyPublicKey, 'base64'),
     contractId: state.smartAccountAddress,
     nickname: 'Lumengate',
     createdAt: state.createdAt || Date.now(),
     isPrimary: true,
     deploymentStatus: 'deployed',
   });
-}
-
-/** Use on-chain context rules (fallback to stored key_data) for signer lookup during auth. */
-function patchWalletContextRulesLookup(
-  kit: SmartAccountKit,
-  config: DeploymentConfig,
-  state: SmartAccountState,
-): void {
-  const wallet = kit.wallet as { get_context_rules?: (...args: unknown[]) => Promise<{ result: unknown[] }> } | undefined;
-  if (!wallet?.get_context_rules || !config.webauthnVerifierId) return;
-
-  const resolveKeyData = async (): Promise<Buffer> => {
-    const kitAny = kit as unknown as { _passkeyKeyData?: Buffer };
-    if (kitAny._passkeyKeyData) return kitAny._passkeyKeyData;
-    const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
-      maxRuleId: 4,
-      maxConsecutiveMisses: 2,
-    });
-    const keyData = resolvePasskeyKeyData(state, rules, config.webauthnVerifierId);
-    kitAny._passkeyKeyData = keyData;
-    return keyData;
-  };
-
-  void resolveKeyData().catch(() => {
-    // Hydration may still be in flight; signAuthEntry resolves key_data at signing time.
-  });
-
-  (wallet as { get_context_rules: (args: { context_rule_type: { tag: string; values?: unknown[] } }) => Promise<{ result: unknown[] }> })
-    .get_context_rules = async ({ context_rule_type }) => {
-    const onChain = await fetchOnChainContextRules(
-      config,
-      state.smartAccountAddress,
-      context_rule_type,
-    );
-    if (onChain.length > 0) {
-      return {
-        result: onChain.map((rule) => ({
-          id: rule.id,
-          context_type: rule.context_type,
-          name: rule.name,
-          policies: rule.policies,
-          signers: rule.signers,
-          valid_until: rule.valid_until,
-        })),
-      };
-    }
-
-    const keyData = await resolveKeyData();
-    return {
-      result: [{
-        id: 0,
-        context_type: { tag: 'Default' as const },
-        name: 'default',
-        policies: config.compliancePolicyId ? [config.compliancePolicyId] : [],
-        signers: [
-          {
-            tag: 'External' as const,
-            values: [config.webauthnVerifierId!, keyData],
-          },
-        ],
-        valid_until: undefined,
-      }],
-    };
-  };
 }
 
 async function submitResultOrThrow(
@@ -413,6 +325,14 @@ async function submitResultOrThrow(
     throw new Error([result.error || fallback, detail].filter(Boolean).join(' — '));
   }
   return result.hash;
+}
+
+type KitAssembledTransaction = Parameters<SmartAccountKit['signAndSubmit']>[0];
+
+function asKitAssembledTransaction(
+  transaction: SmartAccountAssembledTransaction,
+): KitAssembledTransaction {
+  return transaction as KitAssembledTransaction;
 }
 
 export async function createPersonalSmartAccount(
@@ -447,16 +367,19 @@ export async function createPersonalSmartAccount(
     passkeyPublicKey: Buffer.from(created.publicKey).toString('base64'),
     passkeyKeyDataHex: passkeyKeyData.toString('hex'),
     createdAt: Date.now(),
-  };
-  patchWalletContextRulesLookup(kit, config, createdState);
-  patchPasskeyAuthPayloadV07(kit);
-
-  return {
-    ...createdState,
-    createdAt: Date.now(),
-    deploymentHash,
     compliancePolicyId: config.compliancePolicyId,
     compliancePolicyInstalled: true,
+    compliancePolicyTxHash: deploymentHash,
+  };
+
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, createdState);
+  if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
+    throw new Error('Deployed smart account policy does not match deployment configuration.');
+  }
+
+  return {
+    ...hydrated,
+    deploymentHash,
     compliancePolicyTxHash: deploymentHash,
   };
 }
@@ -466,140 +389,13 @@ export async function connectPersonalSmartAccount(
   state: SmartAccountState,
 ): Promise<SmartAccountKit> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  const rules = await listOnChainContextRules(config, hydrated.smartAccountAddress, {
-    maxRuleId: 4,
-    maxConsecutiveMisses: 2,
-  });
   const kit = createSmartAccountKit(config);
   await kit.connectWallet({
     contractId: hydrated.smartAccountAddress,
     credentialId: hydrated.credentialId,
   });
-  await ensurePasskeyCredentialInKitStorage(kit, config, hydrated, rules).catch(() => undefined);
-  patchWalletContextRulesLookup(kit, config, hydrated);
-  patchPasskeyAuthPayloadV07(kit);
-  const keyData = resolvePasskeyKeyData(hydrated, rules, config.webauthnVerifierId ?? undefined);
-  (kit as unknown as { _passkeyKeyData?: Buffer })._passkeyKeyData = keyData;
+  await ensurePasskeyCredentialInKitStorage(kit, config, hydrated).catch(() => undefined);
   return kit;
-}
-
-function uniqueRules(rules: OnChainContextRule[]): OnChainContextRule[] {
-  const seen = new Set<number>();
-  const out: OnChainContextRule[] = [];
-  for (const rule of rules) {
-    if (seen.has(rule.id)) continue;
-    seen.add(rule.id);
-    out.push(rule);
-  }
-  return out.sort((a, b) => a.id - b.id);
-}
-
-async function resolveConnectedContextRuleIds(
-  config: DeploymentConfig,
-  state: SmartAccountState,
-  entry: xdr.SorobanAuthorizationEntry,
-): Promise<{ ids: number[]; signer: ContractSigner }> {
-  if (!config.webauthnVerifierId) {
-    throw new Error('WebAuthn verifier is not configured.');
-  }
-  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  const rules = uniqueRules(await listOnChainContextRules(config, hydrated.smartAccountAddress));
-  if (rules.length === 0) {
-    throw new Error('No context rules found for connected smart account.');
-  }
-
-  const onChainKeyData = findPasskeyKeyDataInRules(
-    rules,
-    config.webauthnVerifierId,
-    hydrated.credentialId,
-  );
-  if (!onChainKeyData) {
-    throw new Error(
-      'Passkey signer not found in smart account context rules. Create a new passkey smart account on Verify, fund it, then retry.',
-    );
-  }
-
-  const candidateSigner: ContractSigner = {
-    tag: 'External',
-    values: [config.webauthnVerifierId, onChainKeyData],
-  };
-
-  const ids = resolveContextRuleIdsFromRules(rules, entry, [candidateSigner]);
-
-  const matchedSigner =
-    findPasskeySignerInContextRules(rules, ids, config.webauthnVerifierId, hydrated.credentialId) ??
-    findPasskeySignerInRules(rules, config.webauthnVerifierId, hydrated.credentialId);
-  if (!matchedSigner) {
-    throw new Error(
-      'Passkey signer not found for resolved context rules. Create a new passkey smart account and retry.',
-    );
-  }
-
-  return { ids, signer: matchedSigner };
-}
-
-async function signAndSubmitWithOfficialAuthPayload(
-  kit: SmartAccountKit,
-  config: DeploymentConfig,
-  state: SmartAccountState,
-  transaction: SmartAccountAssembledTransaction,
-): Promise<TransactionResult> {
-  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  const kitAny = kit as unknown as KitSubmitInternals;
-  const builtTx = transaction.built as Transaction | undefined;
-  if (!builtTx) {
-    return { success: false, hash: '', error: 'Transaction has no built transaction' };
-  }
-  const operations = builtTx.operations;
-  if (operations.length !== 1 || operations[0].type !== 'invokeHostFunction') {
-    return { success: false, hash: '', error: 'Expected exactly one invokeHostFunction operation' };
-  }
-  const authEntries = transaction.simulationData?.result?.auth as xdr.SorobanAuthorizationEntry[] | undefined;
-  if (!authEntries) {
-    return { success: false, hash: '', error: 'No simulation data or auth entries' };
-  }
-
-  const invokeOp = operations[0] as Operation.InvokeHostFunction;
-  const signedAuthEntries: xdr.SorobanAuthorizationEntry[] = [];
-  for (const entry of authEntries) {
-    if (entry.credentials().switch().name !== 'sorobanCredentialsAddress') {
-      signedAuthEntries.push(entry);
-      continue;
-    }
-    const resolved = await resolveConnectedContextRuleIds(config, hydrated, entry);
-    signedAuthEntries.push(await kit.signAuthEntry(entry, {
-      credentialId: hydrated.credentialId,
-      contextRuleIds: resolved.ids,
-      signer: resolved.signer,
-    } as never));
-  }
-
-  const sourceAccount = await kitAny.rpc.getAccount(SMART_ACCOUNT_DEPLOYER.publicKey());
-  const resimTx = new TransactionBuilder(sourceAccount, {
-    fee: '100',
-    networkPassphrase: kitAny.networkPassphrase,
-  })
-    .addOperation(Operation.invokeHostFunction({ func: invokeOp.func, auth: signedAuthEntries }))
-    .setTimeout(kitAny.timeoutInSeconds)
-    .build();
-
-  const resimResult = await kitAny.rpc.simulateTransaction(resimTx);
-  if (rpc.Api.isSimulationError(resimResult)) {
-    const detail = resimResult.error ?? 'unknown simulation error';
-    return {
-      success: false,
-      hash: '',
-      error: `Re-simulation failed: ${detail}`,
-    };
-  }
-
-  const normalizedTx = TransactionBuilder.fromXDR(resimTx.toXDR(), kitAny.networkPassphrase);
-  const preparedTx = rpc.assembleTransaction(normalizedTx as Transaction, resimResult).build() as Transaction;
-  const submissionOpts = { forceMethod: config.openZeppelinRelayerUrl ? 'relayer' as const : 'rpc' as const };
-  if (!kitAny.shouldUseFeeSponsoring(submissionOpts) || kitAny.hasSourceAccountAuth(preparedTx)) {
-    preparedTx.sign(kitAny.deployerKeypair ?? SMART_ACCOUNT_DEPLOYER);
-  }
-  return kitAny.sendAndPoll(preparedTx, submissionOpts);
 }
 
 export async function submitWithSmartAccount(
@@ -607,8 +403,18 @@ export async function submitWithSmartAccount(
   state: SmartAccountState,
   transaction: SmartAccountAssembledTransaction,
 ): Promise<string> {
-  const kit = await connectPersonalSmartAccount(config, state);
-  const result = await signAndSubmitWithOfficialAuthPayload(kit, config, state, transaction);
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
+    throw new Error(
+      'This smart account uses a superseded on-chain compliance policy or passkey signer. ' +
+        'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
+    );
+  }
+  const kit = await connectPersonalSmartAccount(config, hydrated);
+  const result = await kit.signAndSubmit(asKitAssembledTransaction(transaction), {
+    credentialId: hydrated.credentialId,
+    forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
+  });
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 

@@ -25,7 +25,7 @@ import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
-  buildBindSessionProofViaWalletXdr,
+  buildBindSessionProofTransaction,
   formatSorobanUserError,
   readBalance,
   submitSignedTransaction,
@@ -67,7 +67,7 @@ import {
   hydrateSmartAccountPasskeyMetadata,
   isAssembledTransaction,
   isContractAddress,
-  isStaleSmartAccountPolicy,
+  isSmartAccountPolicyStaleOnChain,
   submitWithSmartAccount,
   type SignableTransaction,
   type SmartAccountAssembledTransaction,
@@ -183,7 +183,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [activity, setActivity] = useState<ActivityEntry[]>(() => loadActivity());
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
-  const smartAccountStale = isStaleSmartAccountPolicy(smartAccount, config);
+  const [smartAccountStale, setSmartAccountStale] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!smartAccount) {
+      setSmartAccountStale(false);
+      return;
+    }
+    void isSmartAccountPolicyStaleOnChain(config, smartAccount)
+      .then((stale) => {
+        if (!cancelled) setSmartAccountStale(stale);
+      })
+      .catch(() => {
+        if (!cancelled) setSmartAccountStale(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [smartAccount, config]);
 
   const kit = useMemo(
     () =>
@@ -1081,20 +1099,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error('Create and fund your smart account before settlement.');
       }
       if (!address) throw new Error('Connect wallet first');
-      if (isStaleSmartAccountPolicy(smartAccount, config)) {
+      if (await isSmartAccountPolicyStaleOnChain(config, smartAccount)) {
         throw new Error(
-          'This smart account uses the older compliance policy and cannot send. Tap “Create new passkey smart account” above, fund the new deposit address, then retry.',
+          'This smart account uses a superseded on-chain compliance policy or passkey signer. ' +
+            'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
         );
       }
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
         try {
-          const bindXdr = await buildBindSessionProofViaWalletXdr(
+          const bindTx = await buildBindSessionProofTransaction(
             config,
             address,
             settlementFrom,
             proof,
           );
-          await signAndSubmit(bindXdr);
+          await submitWithSmartAccount(config, smartAccount, bindTx);
         } catch (err) {
           const raw = err instanceof Error ? err.message : String(err);
           throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
@@ -1107,7 +1126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount, signAndSubmit],
+    [config, address, smartAccount],
   );
 
   const fundSmartAccountUsdc = useCallback(

@@ -69,53 +69,7 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-/**
- * Bind session proof via the connected G-wallet (Freighter) as admin.
- * Matches scripts/smart_account_bind_session.sh and LumengateSmartAccount::bind_session_proof —
- * does not require passkey auth for this step.
- */
-export async function buildBindSessionProofViaWalletXdr(
-  config: DeploymentConfig,
-  walletAddress: string,
-  smartAccount: string,
-  proof: ProofBundle,
-): Promise<string> {
-  if (!config.compliancePolicyId) {
-    throw new Error('Compliance policy not configured');
-  }
-  if (!isSmartAccountAddress(smartAccount)) {
-    throw new Error('Session proof bind requires a smart account address');
-  }
-  if (!validateStellarAddress(walletAddress)) {
-    throw new Error('Connect your Stellar wallet before binding session proof');
-  }
-  assertProofBundleForChain(proof);
-  const s = server(config.rpcUrl);
-  const sourceAccount = await s.getAccount(walletAddress);
-  const smartAccountContract = new Contract(smartAccount);
-  const draft = new TransactionBuilder(sourceAccount, {
-    fee: String(Number(BASE_FEE) * 100),
-    networkPassphrase: config.networkPassphrase,
-  })
-    .addOperation(
-      smartAccountContract.call(
-        'bind_session_proof',
-        nativeToScVal(walletAddress, { type: 'address' }),
-        nativeToScVal(config.compliancePolicyId, { type: 'address' }),
-        scBytesFromHex(proof.proofHex),
-        scBytesFromHex(proof.publicInputsHex),
-      ),
-    )
-    .setTimeout(120)
-    .build();
-  const sim = await s.simulateTransaction(draft);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'Session proof bind simulation failed');
-  }
-  return rpc.assembleTransaction(draft, sim).build().toXDR();
-}
-
-/** Passkey path: smart account must authorize compliance_policy.set_session_proof (legacy / optional). */
+/** Passkey path: smart account must authorize compliance_policy.set_session_proof. */
 export async function buildBindSessionProofTransaction(
   config: DeploymentConfig,
   source: string,
@@ -787,105 +741,83 @@ export function nullifierHexFromBundle(proof: ProofBundle): string {
   return `0x${BigInt(proof.publicInputs.nullifier).toString(16).padStart(64, '0')}`;
 }
 
-/** Map common Soroban contract traps to actionable messages. */
+/** Append hints to raw Soroban errors — never replace or hide simulation diagnostics. */
 export function formatSorobanUserError(message: string): string {
+  const hints: string[] = [];
+
+  if (message.includes('Error(Contract, #3112)')) {
+    hints.push('WebAuthn clientDataJSON could not be parsed (JsonParseError).');
+  }
+  if (message.includes('Error(Contract, #3114)')) {
+    hints.push('WebAuthn challenge does not match auth_digest (ChallengeInvalid).');
+  }
+  if (message.includes('Error(Contract, #3117)')) {
+    hints.push('Passkey user verification (UV) bit was not set (VerifiedBitNotSet).');
+  }
+  if (message.includes('Error(Contract, #3116)')) {
+    hints.push('Passkey user presence (UP) bit was not set (PresentBitNotSet).');
+  }
+  if (message.includes('Error(Contract, #3002)') || message.includes('UnvalidatedContext')) {
+    hints.push('Passkey context rule does not match this transaction (UnvalidatedContext).');
+  }
+  if (message.includes('Error(Contract, #3014)') || message.includes('ContextRuleIdsLengthMismatch')) {
+    hints.push('context_rule_ids length does not match auth contexts (ContextRuleIdsLengthMismatch).');
+  }
+  if (message.includes('Error(Contract, #3016)') || message.includes('UnauthorizedSigner')) {
+    hints.push('Signer is not authorized for the selected context rules (UnauthorizedSigner).');
+  }
+  if (message.includes('Error(Contract, #3003)') || message.includes('ExternalSignatureVerificationFailed')) {
+    hints.push('External WebAuthn signature verification failed.');
+  }
+  if (message.includes('Error(Auth, InvalidAction)') || message.includes('__check_auth')) {
+    hints.push('Smart account __check_auth rejected the authorization entry.');
+  }
+
   if (message.includes('Error(Contract, #6)') || message.includes('NullifierSpent')) {
-    return (
-      'This passport was already used for a settlement. ' +
-      'Each settlement requires a fresh passport — go to Verify, request a new passport, confirm eligibility, then try again.'
-    );
+    hints.push('This passport nullifier was already spent on-chain.');
   }
   if (message.includes('Error(Contract, #7)')) {
-    return 'This eligibility check does not match the selected offering. Request a new passport and confirm eligibility on Verify.';
+    hints.push('Eligibility scope does not match the selected offering.');
   }
   if (message.includes('Error(Contract, #5)') && message.toLowerCase().includes('verify')) {
-    return 'On-chain eligibility verification failed. Your passport may be stale — request a new passport on Verify and confirm eligibility.';
+    hints.push('On-chain eligibility verification failed during verify_passport.');
   }
   if (message.includes('Error(Contract, #2)') && message.toLowerCase().includes('verification')) {
-    return 'On-chain eligibility verification failed. Your passport may be stale — request a new passport on Verify and confirm eligibility.';
+    hints.push('On-chain eligibility verification failed.');
   }
   if (
     message.includes('Error(Contract, #13)') &&
     message.toLowerCase().includes('trustline')
   ) {
-    return (
-      'Recipient cannot receive USDC — they have no trustline for the official testnet USDC issuer. ' +
-      'Use the treasury settlement address (pre-filled on USDC transfers) or ask the recipient to add USDC in their wallet first.'
-    );
+    hints.push('Recipient has no trustline for the settlement asset.');
   }
   if (message.includes('Error(Object, InvalidInput)')) {
-    return (
-      'Passkey authorization payload is malformed (invalid map ordering). Refresh the page to load the latest app, ' +
-      'then create a new passkey smart account and retry.'
-    );
-  }
-  if (message.includes('Session proof bind simulation failed')) {
-    return 'Session proof bind could not be simulated. Fund your connected wallet with XLM for fees, then retry.';
-  }
-  if (message.includes('Connect your Stellar wallet before binding')) {
-    return 'Connect your Stellar wallet, then retry Send.';
-  }
-  if (message.includes('Error(Contract, #3002)') || message.includes('UnvalidatedContext')) {
-    return (
-      'Passkey context rule does not match this transaction. Refresh the page, then retry Send. ' +
-      'If it persists, create a new passkey smart account on Verify.'
-    );
-  }
-  if (message.includes('Error(Contract, #3014)') || message.includes('ContextRuleIdsLengthMismatch')) {
-    return (
-      'Passkey context rule selection does not match this transaction. Refresh the page, then retry Send. ' +
-      'If it persists, create a new passkey smart account on Verify.'
-    );
-  }
-  if (message.includes('Error(Contract, #3016)') || message.includes('UnauthorizedSigner')) {
-    return (
-      'Passkey signer does not match this smart account. Create a new passkey smart account on Verify, fund it, then retry Send.'
-    );
-  }
-  if (message.includes('Error(Contract, #3003)') || message.includes('ExternalSignatureVerificationFailed')) {
-    return (
-      'WebAuthn signature verification failed. Use the same device/passkey that created this smart account, ' +
-      'or create a new passkey smart account on Verify.'
-    );
-  }
-  if (
-    message.includes('Error(Auth, InvalidAction)') ||
-    message.includes('__check_auth') ||
-    message.includes('UnreachableCodeReached')
-  ) {
-    return (
-      'Passkey authorization failed. Confirm eligibility for this asset on Send, then retry. ' +
-      'If it persists, renew your passport on Verify and create a fresh smart account passkey.'
-    );
+    hints.push('AuthPayload map ordering is invalid (Object InvalidInput).');
   }
   if (message.includes('Error(Contract, #1)') && message.toLowerCase().includes('notconfigured')) {
-    return 'Settlement proof is not bound to your smart account. Confirm eligibility for this asset on Send, then retry.';
+    hints.push('Session proof is not bound on the compliance policy used by this smart account.');
   }
   if (message.includes('Error(Contract, #2)') && message.toLowerCase().includes('verificationfailed')) {
-    return 'Eligibility verification failed during passkey authorization. Renew your passport on Verify, confirm eligibility for this asset, then retry Send.';
+    hints.push('Eligibility verification failed during authorization or settlement.');
   }
   if (message.includes('No signer found for credential ID')) {
-    return 'Passkey signer metadata is missing. Create a new passkey smart account, then retry Send.';
+    hints.push('Passkey signer metadata is missing for this credential on-chain.');
   }
   if (message.includes('Invalid contract ID') || message.includes('Unsupported address type')) {
-    return (
-      'Network asset configuration is invalid. Refresh the page — native XLM SAC must be ' +
-      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC on testnet.'
-    );
+    hints.push('A configured contract ID is invalid for this network.');
   }
   if (message.includes('txMalformed') || message.toLowerCase().includes('malformed')) {
-    return 'Transaction format was rejected. Refresh the page and retry funding or sending.';
+    hints.push('Transaction envelope was rejected as malformed.');
   }
   if (
     message.includes('Error(Contract, #10)') ||
     message.toLowerCase().includes('balance is not within the allowed range')
   ) {
-    return (
-      'Insufficient balance for this transfer. Compliant USDC settlement uses your Soroban token balance, ' +
-      'which can differ from the classic wallet display. Try a smaller amount or send Treasury units instead.'
-    );
+    hints.push('Insufficient Soroban token balance for this transfer amount.');
   }
-  return message;
+
+  if (hints.length === 0) return message;
+  return `${message}\n\n${hints.join('\n')}`;
 }
 
 export function fieldToBytes32Hex(fieldDecimal: string): string {
