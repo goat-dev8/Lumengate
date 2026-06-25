@@ -1,11 +1,12 @@
 #![no_std]
-use soroban_sdk::{auth::Context, contract, contracterror, contractimpl, Address, Bytes, Env, IntoVal, Symbol, Vec};
+use soroban_sdk::{auth::Context, contract, contracterror, contractimpl, contracttype, Address, Bytes, Env, IntoVal, Symbol, Vec};
 use stellar_accounts::{
     policies::Policy,
     smart_account::{ContextRule, Signer},
 };
 
-/// OZ Policy: gates smart-account auth by calling RwaAdapter verify_passport with session proof.
+/// OZ Policy: gates smart-account auth by reading session proof from SessionStore
+/// and calling RwaAdapter check_passport.
 #[contract]
 pub struct CompliancePolicy;
 
@@ -15,6 +16,21 @@ pub struct CompliancePolicy;
 pub enum Error {
     NotConfigured = 1,
     VerificationFailed = 2,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompliancePolicyParams {
+    pub adapter: Address,
+    pub policy_id: u32,
+    pub session_store: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionProof {
+    pub proof: Bytes,
+    pub public_inputs: Bytes,
 }
 
 #[contractimpl]
@@ -36,10 +52,7 @@ impl Policy for CompliancePolicy {
     fn uninstall(e: &Env, _context_rule: ContextRule, smart_account: Address) {
         e.storage()
             .persistent()
-            .remove(&(Symbol::new(e, "cfg"), smart_account.clone()));
-        e.storage()
-            .persistent()
-            .remove(&(Symbol::new(e, "proof"), smart_account));
+            .remove(&(Symbol::new(e, "cfg"), smart_account));
     }
 
     fn enforce(
@@ -49,28 +62,32 @@ impl Policy for CompliancePolicy {
         _context_rule: ContextRule,
         smart_account: Address,
     ) {
-        if Self::is_session_bind_context(e, &context) {
-            return;
-        }
         let cfg: CompliancePolicyParams = e
             .storage()
             .persistent()
             .get(&(Symbol::new(e, "cfg"), smart_account.clone()))
             .unwrap_or_else(|| e.panic_with_error(Error::NotConfigured));
-        let session: SessionProof = e
-            .storage()
-            .persistent()
-            .get(&(Symbol::new(e, "proof"), smart_account))
-            .unwrap_or_else(|| e.panic_with_error(Error::NotConfigured));
+
+        if Self::is_session_bind_context(e, &context, &cfg.session_store) {
+            return;
+        }
 
         let mut args = Vec::new(e);
-        args.push_back(cfg.policy_id.into_val(e));
-        args.push_back(session.proof.into_val(e));
-        args.push_back(session.public_inputs.into_val(e));
+        args.push_back(smart_account.into_val(e));
+        let session: SessionProof = e.invoke_contract(
+            &cfg.session_store,
+            &Symbol::new(e, "get_proof"),
+            args,
+        );
+
+        let mut verify_args = Vec::new(e);
+        verify_args.push_back(cfg.policy_id.into_val(e));
+        verify_args.push_back(session.proof.into_val(e));
+        verify_args.push_back(session.public_inputs.into_val(e));
         let ok: bool = e.invoke_contract(
             &cfg.adapter,
             &Symbol::new(e, "check_passport"),
-            args,
+            verify_args,
         );
         if !ok {
             e.panic_with_error(Error::VerificationFailed);
@@ -80,64 +97,17 @@ impl Policy for CompliancePolicy {
 
 #[contractimpl]
 impl CompliancePolicy {
-    fn is_session_bind_context(env: &Env, context: &Context) -> bool {
+    fn is_session_bind_context(
+        _env: &Env,
+        context: &Context,
+        session_store: &Address,
+    ) -> bool {
         match context {
             Context::Contract(call) => {
-                call.contract == env.current_contract_address()
-                    && call.fn_name == Symbol::new(env, "set_session_proof")
+                call.contract == *session_store
+                    && call.fn_name == Symbol::new(_env, "set_proof")
             }
             _ => false,
         }
     }
-
-    /// Bind a fresh eligibility proof to the smart account session before settlement.
-    pub fn set_session_proof(
-        env: Env,
-        smart_account: Address,
-        proof: Bytes,
-        public_inputs: Bytes,
-    ) {
-        smart_account.require_auth();
-        env.storage().persistent().set(
-            &(Symbol::new(&env, "proof"), smart_account),
-            &SessionProof {
-                proof,
-                public_inputs,
-            },
-        );
-    }
-
-    /// Operator path: delegated smart-account admin binds proof without nested auth entries.
-    pub fn operator_bind_session_proof(
-        env: Env,
-        operator: Address,
-        smart_account: Address,
-        proof: Bytes,
-        public_inputs: Bytes,
-    ) {
-        operator.require_auth();
-        env.storage().persistent().set(
-            &(Symbol::new(&env, "proof"), smart_account),
-            &SessionProof {
-                proof,
-                public_inputs,
-            },
-        );
-    }
-}
-
-use soroban_sdk::contracttype;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompliancePolicyParams {
-    pub adapter: Address,
-    pub policy_id: u32,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SessionProof {
-    pub proof: Bytes,
-    pub public_inputs: Bytes,
 }

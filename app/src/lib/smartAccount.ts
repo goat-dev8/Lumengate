@@ -50,6 +50,7 @@ export function resolvePasskeySimulationSource(_freighterAddress?: string | null
 /** Immutable policy contracts superseded by check_passport auth fix (commit 1f80276). */
 export const LEGACY_COMPLIANCE_POLICY_IDS = [
   'CDONRLSIDIT7D5DN2PRQY6SR64FRBZ7MBJP5HCODFAP5M4JZ2USM6HS4',
+  'CBOBVPPXRKJ47LS7GGJASYL3H6CSPIOJGU3KN4HDPMJ2RSQR32UBINGZ',
 ] as const;
 
 export type SmartAccountState = {
@@ -114,6 +115,7 @@ export function smartAccountStatus(config: DeploymentConfig): SmartAccountStatus
   if (!config.lumengateSmartAccountWasmHash) missing.push('VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH');
   if (!config.webauthnVerifierId) missing.push('VITE_WEBAUTHN_VERIFIER_ID');
   if (!config.compliancePolicyId) missing.push('VITE_COMPLIANCE_POLICY_ID');
+  if (!config.sessionStoreId) missing.push('VITE_SESSION_STORE_ID');
   if (!config.rwaAdapterId) missing.push('VITE_RWA_ADAPTER_ID');
   return { ready: missing.length === 0, missing };
 }
@@ -169,6 +171,9 @@ function complianceInstallParamScVal(config: DeploymentConfig): xdr.ScVal {
   if (!config.rwaAdapterId) {
     throw new Error('RWA adapter is not configured.');
   }
+  if (!config.sessionStoreId) {
+    throw new Error('Session store is not configured.');
+  }
   const entries = [
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('adapter'),
@@ -177,6 +182,10 @@ function complianceInstallParamScVal(config: DeploymentConfig): xdr.ScVal {
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('policy_id'),
       val: xdr.ScVal.scvU32(config.policyId),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('session_store'),
+      val: Address.fromString(config.sessionStoreId).toScVal(),
     }),
   ];
   entries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
@@ -443,7 +452,7 @@ export async function submitWithSmartAccount(
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
     throw new Error(
-      'This smart account uses a superseded on-chain compliance policy or passkey signer. ' +
+      'This smart account uses a superseded on-chain compliance policy, session store, or passkey signer. ' +
         'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
     );
   }

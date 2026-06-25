@@ -29,9 +29,9 @@ async function resimError(signatureScVal) {
   const s = new rpc.Server('https://soroban-testnet.stellar.org');
   const acct = await s.getAccount('GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N');
   const smartAccount = 'CDONRLSIDIT7D5DN2PRQY6SR64FRBZ7MBJP5HCODFAP5M4JZ2USM6HS4';
-  const c = new Contract(dep.compliance_policy);
+  const c = new Contract(dep.session_store);
   const tx = new TransactionBuilder(acct, { fee: String(Number(BASE_FEE)*100), networkPassphrase: 'Test SDF Network ; September 2015' })
-    .addOperation(c.call('set_session_proof', nativeToScVal(smartAccount,{type:'address'}), xdr.ScVal.scvBytes(Buffer.alloc(14592)), xdr.ScVal.scvBytes(Buffer.alloc(192))))
+    .addOperation(c.call('set_proof', nativeToScVal(smartAccount,{type:'address'}), xdr.ScVal.scvBytes(Buffer.alloc(14592)), xdr.ScVal.scvBytes(Buffer.alloc(192))))
     .setTimeout(120).build();
   const sim = await s.simulateTransaction(tx);
   const entry = xdr.SorobanAuthorizationEntry.fromXDR(sim.result.auth[0].toXDR());

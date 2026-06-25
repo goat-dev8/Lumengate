@@ -26,6 +26,7 @@ export type DeploymentConfig = {
   compliantDexId?: string;
   compliantPayrollId?: string;
   compliancePolicyId?: string;
+  sessionStoreId?: string;
   lumengateSmartAccountWasmHash?: string;
   webauthnVerifierId?: string;
   openZeppelinRelayerUrl?: string;
@@ -49,6 +50,7 @@ type DeploymentsFile = {
   compliant_dex?: string;
   compliant_payroll?: string;
   compliance_policy?: string;
+  session_store?: string;
   lumengate_smart_account_wasm_hash?: string;
   webauthn_verifier?: string;
   session_key_policy?: string;
@@ -149,6 +151,10 @@ export function loadDeploymentConfig(): DeploymentConfig {
     compliancePolicyId: resolveOptionalContractId(
       'VITE_COMPLIANCE_POLICY_ID',
       CANONICAL.compliance_policy,
+    ),
+    sessionStoreId: resolveOptionalContractId(
+      'VITE_SESSION_STORE_ID',
+      CANONICAL.session_store,
     ),
     lumengateSmartAccountWasmHash:
       optionalViteEnv('VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH') ||

@@ -1101,11 +1101,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!address) throw new Error('Connect wallet first');
       if (await isSmartAccountPolicyStaleOnChain(config, smartAccount)) {
         throw new Error(
-          'This smart account uses a superseded on-chain compliance policy or passkey signer. ' +
+          'This smart account uses a superseded on-chain compliance policy, session store, or passkey signer. ' +
             'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
         );
       }
-      if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
+      if (config.sessionStoreId && isContractAddress(settlementFrom)) {
         try {
           const bindTx = await buildBindSessionProofTransaction(
             config,

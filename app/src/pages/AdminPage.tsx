@@ -43,6 +43,7 @@ export function AdminPage() {
     ['Eligible swap router', config.compliantDexId],
     ['Payroll settlement', config.compliantPayrollId],
     ['Compliance rules', config.compliancePolicyId],
+    ['Session store', config.sessionStoreId],
   ].filter(([, id]) => Boolean(id));
 
   return (

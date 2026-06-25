@@ -50,6 +50,10 @@ echo "=== Deploy CompliantPayroll ==="
 PAYROLL=$(deploy "$WASM/compliant_payroll.wasm" --admin "$ADMIN" --adapter "$ADAPTER" --sac "$USDC_SAC" --policy_id "$POLICY_ID")
 echo "CompliantPayroll: $PAYROLL"
 
+echo "=== Deploy SessionStore ==="
+SESSION_STORE=$(deploy "$WASM/session_store.wasm")
+echo "SessionStore: $SESSION_STORE"
+
 echo "=== Deploy CompliancePolicy ==="
 COMPLIANCE_POLICY=$(deploy "$WASM/compliance_policy.wasm")
 echo "CompliancePolicy: $COMPLIANCE_POLICY"
@@ -72,6 +76,7 @@ d.auditor_registry='$AUDITOR';
 d.compliant_dex='$DEX';
 d.compliant_payroll='$PAYROLL';
 d.compliance_policy='$COMPLIANCE_POLICY';
+d.session_store='$SESSION_STORE';
 d.lumengate_smart_account_wasm_hash='$SMART_WASM_HASH';
 delete d.lumengate_smart_account;
 d.eurc_sac='$EURC_SAC';
@@ -85,6 +90,8 @@ for kv in \
   "COMPLIANT_DEX_ID=$DEX" \
   "COMPLIANT_PAYROLL_ID=$PAYROLL" \
   "COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY" \
+  "SESSION_STORE_ID=$SESSION_STORE" \
+  "VITE_SESSION_STORE_ID=$SESSION_STORE" \
   "LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH" \
   "VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH" \
   "VITE_EURC_SAC_ID=$EURC_SAC" \
@@ -102,7 +109,7 @@ sed -i '/^LUMENGATE_SMART_ACCOUNT_ID=/d;/^VITE_LUMENGATE_SMART_ACCOUNT_ID=/d' "$
 for f in development production local; do
   ENV_FILE="$ROOT/app/.env.$f"
   [[ -f "$ENV_FILE" ]] || continue
-  for key in VITE_EURC_SAC_ID VITE_EURC_ISSUER VITE_AUDITOR_REGISTRY_ID VITE_COMPLIANT_DEX_ID VITE_COMPLIANT_PAYROLL_ID VITE_COMPLIANCE_POLICY_ID VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH; do
+  for key in VITE_EURC_SAC_ID VITE_EURC_ISSUER VITE_AUDITOR_REGISTRY_ID VITE_COMPLIANT_DEX_ID VITE_COMPLIANT_PAYROLL_ID VITE_COMPLIANCE_POLICY_ID VITE_SESSION_STORE_ID VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH; do
     sed -i "/^${key}=/d" "$ENV_FILE"
   done
   cat >> "$ENV_FILE" <<EOF
@@ -112,8 +119,9 @@ VITE_AUDITOR_REGISTRY_ID=$AUDITOR
 VITE_COMPLIANT_DEX_ID=$DEX
 VITE_COMPLIANT_PAYROLL_ID=$PAYROLL
 VITE_COMPLIANCE_POLICY_ID=$COMPLIANCE_POLICY
+VITE_SESSION_STORE_ID=$SESSION_STORE
 VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH=$SMART_WASM_HASH
 EOF
 done
 
-echo "DONE — Auditor=$AUDITOR DEX=$DEX Payroll=$PAYROLL Policy=$COMPLIANCE_POLICY SmartAccountWasmHash=$SMART_WASM_HASH EURC_SAC=$EURC_SAC"
+echo "DONE — Auditor=$AUDITOR DEX=$DEX Payroll=$PAYROLL SessionStore=$SESSION_STORE Policy=$COMPLIANCE_POLICY SmartAccountWasmHash=$SMART_WASM_HASH EURC_SAC=$EURC_SAC"

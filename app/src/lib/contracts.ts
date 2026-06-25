@@ -69,15 +69,15 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-/** Passkey path: smart account must authorize compliance_policy.set_session_proof. */
+/** Passkey path: smart account must authorize session_store.set_proof (separate from compliance policy). */
 export async function buildBindSessionProofTransaction(
   config: DeploymentConfig,
   source: string,
   smartAccount: string,
   proof: ProofBundle,
 ): Promise<SmartAccountAssembledTransaction> {
-  if (!config.compliancePolicyId) {
-    throw new Error('Compliance policy not configured');
+  if (!config.sessionStoreId) {
+    throw new Error('Session store not configured');
   }
   if (!isSmartAccountAddress(smartAccount)) {
     throw new Error('Session proof bind requires a smart account address');
@@ -85,14 +85,14 @@ export async function buildBindSessionProofTransaction(
   assertProofBundleForChain(proof);
   const s = server(config.rpcUrl);
   const acct = await passkeySimulationAccount(config, source);
-  const policy = new Contract(config.compliancePolicyId);
+  const store = new Contract(config.sessionStoreId);
   const draft = new TransactionBuilder(acct, {
     fee: String(Number(BASE_FEE) * 100),
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(
-      policy.call(
-        'set_session_proof',
+      store.call(
+        'set_proof',
         nativeToScVal(smartAccount, { type: 'address' }),
         scBytesFromHex(proof.proofHex),
         scBytesFromHex(proof.publicInputsHex),
