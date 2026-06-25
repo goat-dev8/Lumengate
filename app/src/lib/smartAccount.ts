@@ -9,6 +9,7 @@ import {
   type TransactionResult,
 } from 'smart-account-kit';
 import type { DeploymentConfig } from './config';
+import { fetchOnChainContextRules } from './onChainContextRules';
 import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 
@@ -40,6 +41,8 @@ export type SmartAccountState = {
   credentialId: string;
   /** Base64-encoded secp256r1 public key for passkey signing lookups. */
   passkeyPublicKey?: string;
+  /** Exact on-chain External signer key_data (pubkey + credential id). */
+  passkeyKeyDataHex?: string;
   createdAt: number;
   deploymentHash?: string;
   /** Compliance policy installed in this account's default context rule. */
@@ -107,7 +110,9 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     relayerUrl: config.openZeppelinRelayerUrl,
     storage,
     rpName: 'Lumengate',
-    ...(config.passkeyRpId ? { rpId: config.passkeyRpId } : {}),
+    rpId:
+      config.passkeyRpId ??
+      (typeof window !== 'undefined' ? window.location.hostname : undefined),
     webAuthn: {
       startRegistration: (options) => {
         clampRegistrationUserId(options.optionsJSON);
@@ -207,19 +212,31 @@ function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: Deploymen
   };
 }
 
-/** smart-account-kit-bindings decode stale ContextRule specs; avoid on-chain get_context_rules during signing. */
+/** Resolve passkey key_data: stored deploy bytes, else recomputed from metadata. */
+export function resolvePasskeyKeyData(state: SmartAccountState): Buffer {
+  if (state.passkeyKeyDataHex) {
+    return Buffer.from(state.passkeyKeyDataHex, 'hex');
+  }
+  if (!state.passkeyPublicKey) {
+    throw new Error(
+      'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
+    );
+  }
+  return buildPasskeyKeyData(Buffer.from(state.passkeyPublicKey, 'base64'), state.credentialId);
+}
+
+/** Use on-chain context rules (fallback to stored key_data) for signer lookup during auth. */
 function patchWalletContextRulesLookup(
   kit: SmartAccountKit,
   config: DeploymentConfig,
-  created: Pick<CreateWalletResult, 'credentialId' | 'publicKey'>,
+  state: SmartAccountState,
 ): void {
   const wallet = kit.wallet as { get_context_rules?: (...args: unknown[]) => Promise<{ result: unknown[] }> } | undefined;
   if (!wallet?.get_context_rules || !config.webauthnVerifierId) return;
 
-  const keyData = buildPasskeyKeyData(
-    Buffer.from(created.publicKey),
-    created.credentialId,
-  );
+  const keyData = resolvePasskeyKeyData(state);
+  (kit as unknown as { _passkeyKeyData?: Buffer })._passkeyKeyData = keyData;
+
   const defaultRule = {
     id: 0,
     context_type: { tag: 'Default' as const },
@@ -234,10 +251,27 @@ function patchWalletContextRulesLookup(
     valid_until: undefined,
   };
 
-  (wallet as { get_context_rules: (args: { context_rule_type: { tag: string } }) => Promise<{ result: unknown[] }> })
-    .get_context_rules = async () => ({
-    result: [defaultRule],
-  });
+  (wallet as { get_context_rules: (args: { context_rule_type: { tag: string; values?: unknown[] } }) => Promise<{ result: unknown[] }> })
+    .get_context_rules = async ({ context_rule_type }) => {
+    const onChain = await fetchOnChainContextRules(
+      config,
+      state.smartAccountAddress,
+      context_rule_type,
+    );
+    if (onChain.length > 0) {
+      return {
+        result: onChain.map((rule) => ({
+          id: rule.id,
+          context_type: rule.context_type,
+          name: rule.name,
+          policies: rule.policies,
+          signers: rule.signers,
+          valid_until: rule.valid_until,
+        })),
+      };
+    }
+    return { result: [defaultRule] };
+  };
 }
 
 async function submitResultOrThrow(
@@ -278,13 +312,19 @@ export async function createPersonalSmartAccount(
     ? await submitResultOrThrow(created.submitResult, 'Smart account deployment failed', config.rpcUrl)
     : undefined;
 
-  patchWalletContextRulesLookup(kit, config, created);
-  patchPasskeyAuthPayloadV07(kit);
-
-  return {
+  const passkeyKeyData = buildPasskeyKeyData(created.publicKey, created.credentialId);
+  const createdState: SmartAccountState = {
     smartAccountAddress: created.contractId,
     credentialId: created.credentialId,
     passkeyPublicKey: Buffer.from(created.publicKey).toString('base64'),
+    passkeyKeyDataHex: passkeyKeyData.toString('hex'),
+    createdAt: Date.now(),
+  };
+  patchWalletContextRulesLookup(kit, config, createdState);
+  patchPasskeyAuthPayloadV07(kit);
+
+  return {
+    ...createdState,
     createdAt: Date.now(),
     deploymentHash,
     compliancePolicyId: config.compliancePolicyId,
@@ -302,16 +342,7 @@ export async function connectPersonalSmartAccount(
     contractId: state.smartAccountAddress,
     credentialId: state.credentialId,
   });
-  if (state.passkeyPublicKey) {
-    patchWalletContextRulesLookup(kit, config, {
-      credentialId: state.credentialId,
-      publicKey: Buffer.from(state.passkeyPublicKey, 'base64'),
-    });
-  } else {
-    throw new Error(
-      'Passkey metadata missing for this smart account. Create a new passkey smart account, then retry.',
-    );
-  }
+  patchWalletContextRulesLookup(kit, config, state);
   patchPasskeyAuthPayloadV07(kit);
   return kit;
 }

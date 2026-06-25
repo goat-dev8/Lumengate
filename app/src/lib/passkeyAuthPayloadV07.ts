@@ -98,6 +98,15 @@ async function findKeyDataByCredentialId(
   credentialId: Buffer,
   entry: xdr.SorobanAuthorizationEntry,
 ): Promise<Buffer> {
+  const kitAny = kit as unknown as PasskeyKitInternals;
+  const pinned = kitAny._passkeyKeyData;
+  if (pinned && pinned.length > SECP256R1_PUBLIC_KEY_SIZE) {
+    const suffix = pinned.slice(SECP256R1_PUBLIC_KEY_SIZE);
+    if (suffix.equals(credentialId)) {
+      return pinned;
+    }
+  }
+
   const wallet = kit.wallet as unknown as {
     get_context_rules?: (args: { context_rule_type: { tag: string; values?: unknown[] } }) => Promise<{
       result: Array<{ signers: Array<{ tag: string; values: [string, Buffer] }> }>;
@@ -169,6 +178,8 @@ type PasskeyKitInternals = {
   webauthnVerifierAddress: string;
   calculateExpiration: () => Promise<number>;
   _credentialId?: string;
+  /** Exact on-chain key_data bytes for the active passkey signer. */
+  _passkeyKeyData?: Buffer;
   storage: SmartAccountKit['storage'];
 };
 
@@ -199,7 +210,7 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const authOptions = {
       challenge: base64url(authDigest),
       rpId: kitAny.rpId,
-      userVerification: 'preferred' as const,
+      userVerification: 'required' as const,
       timeout: WEBAUTHN_TIMEOUT_MS,
       ...(credentialIdStr && {
         allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
