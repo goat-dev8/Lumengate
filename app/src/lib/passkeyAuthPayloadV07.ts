@@ -417,7 +417,7 @@ export function patchPasskeyAuthPayloadV07(kit: SmartAccountKit): void {
     const authOptions = {
       challenge: base64url(authDigest),
       rpId: kitAny.rpId,
-      userVerification: 'required' as const,
+      userVerification: 'preferred' as const,
       timeout: WEBAUTHN_TIMEOUT_MS,
       allowCredentials: [{ id: credentialIdStr, type: 'public-key' as const }],
     };

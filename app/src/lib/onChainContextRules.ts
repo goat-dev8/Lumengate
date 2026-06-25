@@ -272,6 +272,109 @@ async function simulateContractCall(
   return sim.result.retval;
 }
 
+function decodeRequiredMapEntries(val: xdr.ScVal): Map<string, xdr.ScVal> {
+  if (val.switch().name !== 'scvMap') {
+    throw new Error(`Expected context rule result to be a map, got ${val.switch().name}`);
+  }
+  const entries = new Map<string, xdr.ScVal>();
+  for (const entry of val.map() ?? []) {
+    if (entry.key().switch().name !== 'scvSymbol') continue;
+    entries.set(entry.key().sym().toString(), entry.val());
+  }
+  return entries;
+}
+
+function expectScVec(val: xdr.ScVal, label: string): xdr.ScVal[] {
+  if (val.switch().name !== 'scvVec') {
+    throw new Error(`Expected ${label} to be a vec, got ${val.switch().name}`);
+  }
+  return val.vec() ?? [];
+}
+
+function expectScU32(val: xdr.ScVal, label: string): number {
+  if (val.switch().name !== 'scvU32') {
+    throw new Error(`Expected ${label} to be a u32, got ${val.switch().name}`);
+  }
+  return val.u32();
+}
+
+function expectScString(val: xdr.ScVal, label: string): string {
+  if (val.switch().name !== 'scvString') {
+    throw new Error(`Expected ${label} to be a string, got ${val.switch().name}`);
+  }
+  return val.str().toString();
+}
+
+function expectScAddress(val: xdr.ScVal, label: string): string {
+  if (val.switch().name !== 'scvAddress') {
+    throw new Error(`Expected ${label} to be an address, got ${val.switch().name}`);
+  }
+  return Address.fromScAddress(val.address()).toString();
+}
+
+function expectScBytes(val: xdr.ScVal, label: string): Buffer {
+  if (val.switch().name !== 'scvBytes') {
+    throw new Error(`Expected ${label} to be bytes, got ${val.switch().name}`);
+  }
+  return Buffer.from(val.bytes());
+}
+
+function expectScSymbol(val: xdr.ScVal, label: string): string {
+  if (val.switch().name !== 'scvSymbol') {
+    throw new Error(`Expected ${label} to be a symbol, got ${val.switch().name}`);
+  }
+  return val.sym().toString();
+}
+
+function decodeContextRuleType(val: xdr.ScVal): OnChainContextRule['context_type'] {
+  const parts = expectScVec(val, 'context_type');
+  const tag = expectScSymbol(parts[0], 'context_type tag');
+  if (tag === 'Default') return { tag: 'Default' };
+  if (tag === 'CallContract') {
+    return { tag: 'CallContract', values: [expectScAddress(parts[1], 'call contract address')] };
+  }
+  if (tag === 'CreateContract') {
+    return { tag: 'CreateContract', values: [expectScBytes(parts[1], 'create contract wasm hash')] };
+  }
+  throw new Error(`Unknown context rule type tag: ${tag}`);
+}
+
+function decodeSigner(val: xdr.ScVal): OnChainExternalSigner {
+  const parts = expectScVec(val, 'signer');
+  const tag = expectScSymbol(parts[0], 'signer tag');
+  if (tag !== 'External' || parts.length < 3) {
+    throw new Error(`External signer expected 3 items, got ${parts.length} for tag ${tag}`);
+  }
+  return {
+    tag: 'External',
+    values: [expectScAddress(parts[1], 'external signer verifier'), expectScBytes(parts[2], 'external signer key data')],
+  };
+}
+
+/** Decode get_context_rule retval without scValToNative enum/array ambiguity. */
+export function decodeContextRuleResultXdr(resultXdr: string): OnChainContextRule {
+  const scVal = xdr.ScVal.fromXDR(resultXdr, 'base64');
+  const entries = decodeRequiredMapEntries(scVal);
+  const policiesVal = entries.get('policies');
+  const signersVal = entries.get('signers');
+  const validUntilVal = entries.get('valid_until');
+  if (!entries.has('context_type') || !entries.has('id') || !entries.has('name') || !policiesVal || !signersVal) {
+    throw new Error('Context rule result is missing one or more required fields');
+  }
+  return {
+    context_type: decodeContextRuleType(entries.get('context_type') as xdr.ScVal),
+    id: expectScU32(entries.get('id') as xdr.ScVal, 'context rule id'),
+    name: expectScString(entries.get('name') as xdr.ScVal, 'context rule name'),
+    policies: expectScVec(policiesVal, 'policies').map((policy, index) =>
+      expectScAddress(policy, `policy[${index}]`),
+    ),
+    signers: expectScVec(signersVal, 'signers').map((signer) => decodeSigner(signer)),
+    valid_until: validUntilVal && validUntilVal.switch().name === 'scvU32'
+      ? validUntilVal.u32()
+      : undefined,
+  };
+}
+
 /** Read one context rule via official get_context_rule(id). */
 export async function readContextRuleById(
   config: DeploymentConfig,
@@ -285,7 +388,11 @@ export async function readContextRuleById(
     [xdr.ScVal.scvU32(contextRuleId)],
   );
   if (!retval) return null;
-  return parseContextRule(scValToNative(retval));
+  try {
+    return decodeContextRuleResultXdr(retval.toXDR('base64'));
+  } catch {
+    return parseContextRule(scValToNative(retval));
+  }
 }
 
 /** Probe get_context_rule(0..n) — matches smart-account-kit@0.3.0 listContextRules. */

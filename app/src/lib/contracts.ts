@@ -773,6 +773,12 @@ export function formatSorobanUserError(message: string): string {
       'then create a new passkey smart account and retry.'
     );
   }
+  if (message.includes('Error(Contract, #3002)') || message.includes('UnvalidatedContext')) {
+    return (
+      'Passkey context rule does not match this transaction. Refresh the page, then retry Send. ' +
+      'If it persists, create a new passkey smart account on Verify.'
+    );
+  }
   if (message.includes('Error(Contract, #3014)') || message.includes('ContextRuleIdsLengthMismatch')) {
     return (
       'Passkey context rule selection does not match this transaction. Refresh the page, then retry Send. ' +
