@@ -69,7 +69,53 @@ function isSmartAccountAddress(address: string): boolean {
   return address.startsWith('C') && StrKey.isValidContract(address);
 }
 
-/** Single-op tx: bind UltraHonk proof on CompliancePolicy before passkey settlement. */
+/**
+ * Bind session proof via the connected G-wallet (Freighter) as admin.
+ * Matches scripts/smart_account_bind_session.sh and LumengateSmartAccount::bind_session_proof —
+ * does not require passkey auth for this step.
+ */
+export async function buildBindSessionProofViaWalletXdr(
+  config: DeploymentConfig,
+  walletAddress: string,
+  smartAccount: string,
+  proof: ProofBundle,
+): Promise<string> {
+  if (!config.compliancePolicyId) {
+    throw new Error('Compliance policy not configured');
+  }
+  if (!isSmartAccountAddress(smartAccount)) {
+    throw new Error('Session proof bind requires a smart account address');
+  }
+  if (!validateStellarAddress(walletAddress)) {
+    throw new Error('Connect your Stellar wallet before binding session proof');
+  }
+  assertProofBundleForChain(proof);
+  const s = server(config.rpcUrl);
+  const sourceAccount = await s.getAccount(walletAddress);
+  const smartAccountContract = new Contract(smartAccount);
+  const draft = new TransactionBuilder(sourceAccount, {
+    fee: String(Number(BASE_FEE) * 100),
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      smartAccountContract.call(
+        'bind_session_proof',
+        nativeToScVal(walletAddress, { type: 'address' }),
+        nativeToScVal(config.compliancePolicyId, { type: 'address' }),
+        scBytesFromHex(proof.proofHex),
+        scBytesFromHex(proof.publicInputsHex),
+      ),
+    )
+    .setTimeout(120)
+    .build();
+  const sim = await s.simulateTransaction(draft);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(sim.error || 'Session proof bind simulation failed');
+  }
+  return rpc.assembleTransaction(draft, sim).build().toXDR();
+}
+
+/** Passkey path: smart account must authorize compliance_policy.set_session_proof (legacy / optional). */
 export async function buildBindSessionProofTransaction(
   config: DeploymentConfig,
   source: string,
@@ -772,6 +818,12 @@ export function formatSorobanUserError(message: string): string {
       'Passkey authorization payload is malformed (invalid map ordering). Refresh the page to load the latest app, ' +
       'then create a new passkey smart account and retry.'
     );
+  }
+  if (message.includes('Session proof bind simulation failed')) {
+    return 'Session proof bind could not be simulated. Fund your connected wallet with XLM for fees, then retry.';
+  }
+  if (message.includes('Connect your Stellar wallet before binding')) {
+    return 'Connect your Stellar wallet, then retry Send.';
   }
   if (message.includes('Error(Contract, #3002)') || message.includes('UnvalidatedContext')) {
     return (

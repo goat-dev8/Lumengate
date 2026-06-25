@@ -25,7 +25,7 @@ import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, warmProver } from '../lib/prover';
 import {
   buildTransferTransaction,
-  buildBindSessionProofTransaction,
+  buildBindSessionProofViaWalletXdr,
   formatSorobanUserError,
   readBalance,
   submitSignedTransaction,
@@ -1087,9 +1087,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
       if (config.compliancePolicyId && isContractAddress(settlementFrom)) {
-        const bindTx = await buildBindSessionProofTransaction(config, address, settlementFrom, proof);
         try {
-          await submitWithSmartAccount(config, smartAccount, bindTx);
+          const bindXdr = await buildBindSessionProofViaWalletXdr(
+            config,
+            address,
+            settlementFrom,
+            proof,
+          );
+          await signAndSubmit(bindXdr);
         } catch (err) {
           const raw = err instanceof Error ? err.message : String(err);
           throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
@@ -1102,7 +1107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount],
+    [config, address, smartAccount, signAndSubmit],
   );
 
   const fundSmartAccountUsdc = useCallback(
