@@ -64,6 +64,7 @@ import {
 } from '../lib/assetScope';
 import {
   createPersonalSmartAccount,
+  hydrateSmartAccountPasskeyMetadata,
   isAssembledTransaction,
   isContractAddress,
   isStaleSmartAccountPolicy,
@@ -301,6 +302,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     warmProver().catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!smartAccount || !address || !walletField) return;
+    let cancelled = false;
+    hydrateSmartAccountPasskeyMetadata(config, smartAccount)
+      .then((hydrated) => {
+        if (cancelled) return;
+        if (
+          hydrated.passkeyKeyDataHex === smartAccount.passkeyKeyDataHex &&
+          hydrated.passkeyPublicKey === smartAccount.passkeyPublicKey
+        ) {
+          return;
+        }
+        setSmartAccount(hydrated);
+        persistSession({ address, walletField, smartAccount: hydrated });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    smartAccount?.smartAccountAddress,
+    smartAccount?.credentialId,
+    smartAccount?.passkeyKeyDataHex,
+    smartAccount?.passkeyPublicKey,
+    address,
+    walletField,
+    config,
+    persistSession,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

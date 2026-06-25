@@ -9,7 +9,14 @@ import {
   type TransactionResult,
 } from 'smart-account-kit';
 import type { DeploymentConfig } from './config';
-import { fetchOnChainContextRules, type OnChainContextRule } from './onChainContextRules';
+import {
+  contextRuleTypeKey,
+  contextRuleTypeMatches,
+  fetchOnChainContextRules,
+  findPasskeySignerInRules,
+  listOnChainContextRules,
+  type OnChainContextRule,
+} from './onChainContextRules';
 import { patchPasskeyAuthPayloadV07 } from './passkeyAuthPayloadV07';
 import { passkeyUserName } from './passkeyUserHandle';
 import { extractRegistrationPublicKey } from './webauthnPublicKey';
@@ -236,6 +243,42 @@ function patchDeployWithCompliancePolicy(kit: SmartAccountKit, config: Deploymen
   };
 }
 
+/** Fill missing passkey metadata from on-chain context rule signers. */
+export async function hydrateSmartAccountPasskeyMetadata(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<SmartAccountState> {
+  if (state.passkeyKeyDataHex && state.passkeyPublicKey) return state;
+  if (!config.webauthnVerifierId) return state;
+
+  const rules = await listOnChainContextRules(config, state.smartAccountAddress, {
+    maxRuleId: 4,
+    maxConsecutiveMisses: 2,
+  });
+  const signer = findPasskeySignerInRules(rules, config.webauthnVerifierId, state.credentialId);
+  if (!signer) return state;
+
+  const keyData = signer.values[1];
+  return {
+    ...state,
+    passkeyKeyDataHex: keyData.toString('hex'),
+    passkeyPublicKey: keyData.subarray(0, 65).toString('base64'),
+  };
+}
+
+function buildStoredPasskeySigner(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): ContractSigner {
+  if (!config.webauthnVerifierId) {
+    throw new Error('WebAuthn verifier is not configured.');
+  }
+  return {
+    tag: 'External',
+    values: [config.webauthnVerifierId, resolvePasskeyKeyData(state)],
+  };
+}
+
 /** Resolve passkey key_data: stored deploy bytes, else recomputed from metadata. */
 export function resolvePasskeyKeyData(state: SmartAccountState): Buffer {
   if (state.passkeyKeyDataHex) {
@@ -361,12 +404,13 @@ export async function connectPersonalSmartAccount(
   config: DeploymentConfig,
   state: SmartAccountState,
 ): Promise<SmartAccountKit> {
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   const kit = createSmartAccountKit(config);
   await kit.connectWallet({
-    contractId: state.smartAccountAddress,
-    credentialId: state.credentialId,
+    contractId: hydrated.smartAccountAddress,
+    credentialId: hydrated.credentialId,
   });
-  patchWalletContextRulesLookup(kit, config, state);
+  patchWalletContextRulesLookup(kit, config, hydrated);
   patchPasskeyAuthPayloadV07(kit);
   return kit;
 }
@@ -429,16 +473,6 @@ function buildInvocationContextTypes(entry: xdr.SorobanAuthorizationEntry): Cont
   return contexts;
 }
 
-function contextRuleTypeKey(contextType: ContextRuleType): string {
-  if (contextType.tag === 'Default') return 'Default';
-  if (contextType.tag === 'CallContract') return `CallContract:${contextType.values?.[0]}`;
-  return `CreateContract:${Buffer.from(contextType.values?.[0] as Buffer).toString('hex')}`;
-}
-
-function contextRuleTypeMatches(ruleType: ContextRuleType, requiredType: ContextRuleType): boolean {
-  return ruleType.tag === 'Default' || contextRuleTypeKey(ruleType) === contextRuleTypeKey(requiredType);
-}
-
 function contractSignersEqual(a: ContractSigner, b: ContractSigner): boolean {
   if (a.tag !== b.tag) return false;
   if (a.values[0] !== b.values[0]) return false;
@@ -467,47 +501,19 @@ async function resolveConnectedContextRuleIds(
   if (!config.webauthnVerifierId) {
     throw new Error('WebAuthn verifier is not configured.');
   }
-  const credentialId = base64url.toBuffer(state.credentialId);
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   const requiredContexts = buildInvocationContextTypes(entry);
-  const lookupContexts: ContextRuleType[] = uniqueRules([
-    ...requiredContexts.map((context_type, id) => ({
-      id,
-      context_type,
-      name: '',
-      policies: [],
-      signers: [],
-      valid_until: undefined,
-    })),
-    {
-      id: requiredContexts.length,
-      context_type: { tag: 'Default', values: undefined },
-      name: '',
-      policies: [],
-      signers: [],
-      valid_until: undefined,
-    },
-  ]).map((rule) => rule.context_type);
-
-  const rules = uniqueRules((
-    await Promise.all(lookupContexts.map((contextType) => (
-      fetchOnChainContextRules(config, state.smartAccountAddress, contextType)
-    )))
-  ).flat());
+  const rules = uniqueRules(await listOnChainContextRules(config, hydrated.smartAccountAddress));
   if (rules.length === 0) {
     throw new Error('No context rules found for connected smart account.');
   }
 
-  const signer = rules
-    .flatMap((rule) => rule.signers)
-    .find((candidate) => {
-      if (candidate.values[0] !== config.webauthnVerifierId) return false;
-      const keyData = candidate.values[1];
-      if (keyData.length <= credentialId.length) return false;
-      return keyData.subarray(keyData.length - credentialId.length).equals(credentialId);
-    });
-  if (!signer) {
-    throw new Error(`No WebAuthn signer found for credential ID ${state.credentialId}`);
-  }
+  const onChainSigner = findPasskeySignerInRules(
+    rules,
+    config.webauthnVerifierId,
+    hydrated.credentialId,
+  );
+  const signer: ContractSigner = onChainSigner ?? buildStoredPasskeySigner(config, hydrated);
 
   const ids = requiredContexts.map((contextType) => {
     const candidates = rules.filter((rule) => contextRuleTypeMatches(rule.context_type, contextType));
@@ -540,6 +546,7 @@ async function signAndSubmitWithOfficialAuthPayload(
   state: SmartAccountState,
   transaction: SmartAccountAssembledTransaction,
 ): Promise<TransactionResult> {
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   const kitAny = kit as unknown as KitSubmitInternals;
   const builtTx = transaction.built as Transaction | undefined;
   if (!builtTx) {
@@ -561,9 +568,9 @@ async function signAndSubmitWithOfficialAuthPayload(
       signedAuthEntries.push(entry);
       continue;
     }
-    const resolved = await resolveConnectedContextRuleIds(config, state, entry);
+    const resolved = await resolveConnectedContextRuleIds(config, hydrated, entry);
     signedAuthEntries.push(await kit.signAuthEntry(entry, {
-      credentialId: state.credentialId,
+      credentialId: hydrated.credentialId,
       contextRuleIds: resolved.ids,
       signer: resolved.signer,
     } as never));
