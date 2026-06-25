@@ -767,6 +767,12 @@ export function formatSorobanUserError(message: string): string {
       'Use the treasury settlement address (pre-filled on USDC transfers) or ask the recipient to add USDC in their wallet first.'
     );
   }
+  if (message.includes('Error(Object, InvalidInput)')) {
+    return (
+      'Passkey authorization payload is malformed (invalid map ordering). Refresh the page to load the latest app, ' +
+      'then create a new passkey smart account and retry.'
+    );
+  }
   if (
     message.includes('Error(Auth, InvalidAction)') ||
     message.includes('__check_auth') ||

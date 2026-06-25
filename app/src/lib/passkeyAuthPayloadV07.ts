@@ -28,14 +28,7 @@ function compactSignature(derSignature: Buffer): Uint8Array {
 export function countAuthContextsInTree(invocation: xdr.SorobanAuthorizedInvocation): number {
   let count = 0;
   const walk = (inv: xdr.SorobanAuthorizedInvocation) => {
-    const fn = inv.function();
-    const switchName = fn.switch().name;
-    if (
-      switchName === 'sorobanAuthorizedFunctionTypeContractFn' ||
-      switchName.startsWith('sorobanAuthorizedFunctionTypeCreateContract')
-    ) {
-      count += 1;
-    }
+    count += 1;
     for (const sub of inv.subInvocations()) {
       walk(sub);
     }
@@ -80,7 +73,7 @@ function buildSignatureMapEntry(
     xdr.ScVal.scvAddress(Address.fromString(webauthnVerifierAddress).toScAddress()),
     xdr.ScVal.scvBytes(keyData),
   ]);
-  const sigDataEntries = [
+  const sigDataScVal = xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
       key: xdr.ScVal.scvSymbol('authenticator_data'),
       val: xdr.ScVal.scvBytes(sigData.authenticator_data),
@@ -93,9 +86,7 @@ function buildSignatureMapEntry(
       key: xdr.ScVal.scvSymbol('signature'),
       val: xdr.ScVal.scvBytes(sigData.signature),
     }),
-  ];
-  sigDataEntries.sort((a, b) => a.key().toXDR('hex').localeCompare(b.key().toXDR('hex')));
-  const sigDataScVal = xdr.ScVal.scvMap(sigDataEntries);
+  ]);
   return new xdr.ScMapEntry({
     key: keyVal,
     val: xdr.ScVal.scvBytes(sigDataScVal.toXDR()),
