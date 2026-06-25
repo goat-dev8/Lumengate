@@ -54,8 +54,8 @@ node_modules/
 **/node_modules/
 dist/
 **/dist/
-!app/vendor/**/dist/**
-!app/vendor/**/dist/**/*
+!app/vendor/
+!app/vendor/**/*
 .deploy/
 .contract_id
 *.wasm
