@@ -752,7 +752,10 @@ export function formatSorobanUserError(message: string): string {
     hints.push('WebAuthn challenge does not match auth_digest (ChallengeInvalid).');
   }
   if (message.includes('Error(Contract, #3117)')) {
-    hints.push('Passkey user verification (UV) bit was not set (VerifiedBitNotSet).');
+    hints.push(
+      'Passkey user verification (UV) bit was not set (VerifiedBitNotSet). ' +
+        'Complete the biometric or device PIN prompt when signing — do not dismiss it.',
+    );
   }
   if (message.includes('Error(Contract, #3116)')) {
     hints.push('Passkey user presence (UP) bit was not set (PresentBitNotSet).');

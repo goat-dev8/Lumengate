@@ -3,6 +3,7 @@ import {
   startAuthentication,
   startRegistration,
   type PublicKeyCredentialCreationOptionsJSON,
+  type PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
 import base64url from 'base64url';
 import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
@@ -88,6 +89,26 @@ function clampRegistrationUserId(optionsJSON: { user?: { id?: string } }): void 
   optionsJSON.user!.id = base64url(bytes.subarray(0, 64));
 }
 
+/** stellar-accounts 0.7.2 WebAuthn verifier requires the UV bit in authenticator_data (#3117). */
+function requireUserVerificationOnAuth(
+  optionsJSON: PublicKeyCredentialRequestOptionsJSON,
+): PublicKeyCredentialRequestOptionsJSON {
+  return { ...optionsJSON, userVerification: 'required' };
+}
+
+function requireUserVerificationOnRegister(
+  optionsJSON: PublicKeyCredentialCreationOptionsJSON,
+): PublicKeyCredentialCreationOptionsJSON {
+  return {
+    ...optionsJSON,
+    authenticatorSelection: {
+      ...optionsJSON.authenticatorSelection,
+      residentKey: optionsJSON.authenticatorSelection?.residentKey ?? 'required',
+      userVerification: 'required',
+    },
+  };
+}
+
 export function smartAccountStatus(config: DeploymentConfig): SmartAccountStatus {
   const missing: string[] = [];
   if (!config.lumengateSmartAccountWasmHash) missing.push('VITE_LUMENGATE_SMART_ACCOUNT_WASM_HASH');
@@ -118,8 +139,9 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
         optionsJSON: PublicKeyCredentialCreationOptionsJSON;
         useAutoRegister?: boolean;
       }) => {
-        clampRegistrationUserId(options.optionsJSON);
-        const response = await startRegistration(options);
+        const optionsJSON = requireUserVerificationOnRegister(options.optionsJSON);
+        clampRegistrationUserId(optionsJSON);
+        const response = await startRegistration({ ...options, optionsJSON });
         const publicKey = extractRegistrationPublicKey(response.response);
         return {
           ...response,
@@ -129,7 +151,15 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
           },
         };
       },
-      startAuthentication,
+      startAuthentication: async (options: {
+        optionsJSON: PublicKeyCredentialRequestOptionsJSON;
+        useBrowserAutofill?: boolean;
+        verifyBrowserAutofillInput?: boolean;
+      }) =>
+        startAuthentication({
+          ...options,
+          optionsJSON: requireUserVerificationOnAuth(options.optionsJSON),
+        }),
     },
   });
 }
