@@ -28,6 +28,30 @@ export type OnChainContextRule = {
   valid_until?: number;
 };
 
+/** scValToNative encodes Soroban enums as arrays, e.g. ["Default"] or ["CallContract", "C..."]. */
+export function normalizeContextType(raw: unknown): OnChainContextRule['context_type'] {
+  if (Array.isArray(raw) && raw.length > 0) {
+    const tag = String(raw[0]);
+    if (tag === 'Default') return { tag: 'Default' };
+    if (tag === 'CallContract') return { tag: 'CallContract', values: [String(raw[1] ?? '')] };
+    if (tag === 'CreateContract') {
+      const wasm = coerceKeyDataBuffer(raw[1]);
+      return wasm ? { tag: 'CreateContract', values: [wasm] } : { tag: 'CreateContract', values: [Buffer.alloc(0)] };
+    }
+  }
+  if (raw && typeof raw === 'object' && 'tag' in raw) {
+    const typed = raw as { tag?: unknown; values?: unknown[] };
+    const tag = String(typed.tag ?? 'Default');
+    if (tag === 'Default') return { tag: 'Default' };
+    if (tag === 'CallContract') return { tag: 'CallContract', values: [String(typed.values?.[0] ?? '')] };
+    if (tag === 'CreateContract') {
+      const wasm = coerceKeyDataBuffer(typed.values?.[0]);
+      return wasm ? { tag: 'CreateContract', values: [wasm] } : { tag: 'CreateContract', values: [Buffer.alloc(0)] };
+    }
+  }
+  return { tag: 'Default' };
+}
+
 function contextRuleTypeToScVal(contextRuleType: { tag: string; values?: unknown[] }): xdr.ScVal {
   if (contextRuleType.tag === 'Default') {
     return xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('Default')]);
@@ -82,6 +106,13 @@ export function coerceKeyDataBuffer(keyDataRaw: unknown): Buffer | null {
 }
 
 function parseSigner(raw: unknown): OnChainExternalSigner | null {
+  if (Array.isArray(raw)) {
+    if (raw[0] !== 'External' || raw.length < 3) return null;
+    const verifier = String(raw[1]);
+    const keyData = coerceKeyDataBuffer(raw[2]);
+    if (!keyData) return null;
+    return { tag: 'External', values: [verifier, keyData] };
+  }
   if (!raw || typeof raw !== 'object') return null;
   const signer = raw as { tag?: string; values?: unknown[] };
   if (signer.tag !== 'External' || !Array.isArray(signer.values) || signer.values.length < 2) {
@@ -104,7 +135,7 @@ function parseContextRules(raw: unknown): OnChainContextRule[] {
       : [];
     rules.push({
       id: Number(rule.id ?? 0),
-      context_type: (rule.context_type as OnChainContextRule['context_type']) ?? { tag: 'Default' },
+      context_type: normalizeContextType(rule.context_type),
       name: String(rule.name ?? ''),
       policies: Array.isArray(rule.policies) ? rule.policies.map(String) : [],
       signers,

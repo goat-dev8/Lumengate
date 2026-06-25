@@ -600,6 +600,12 @@ async function resolveConnectedContextRuleIds(
     ));
     if (signerSubsetMatches.length === 1) return signerSubsetMatches[0].id;
 
+    // Default context rules authorize any contract call on OZ smart accounts.
+    const defaultRules = rules.filter((rule) => rule.context_type.tag === 'Default');
+    if (defaultRules.length === 1) return defaultRules[0].id;
+    const ruleZero = rules.find((rule) => rule.id === 0);
+    if (ruleZero) return ruleZero.id;
+
     const candidateIds = candidates.map((candidate) => candidate.id).join(', ');
     throw new Error(
       `Unable to resolve a unique context rule for ${contextRuleTypeKey(contextType)}. ` +
