@@ -112,3 +112,32 @@ export function passkeySessionToWalletSession(
     updatedAt: passkey.updatedAt,
   };
 }
+
+/** Preserve passkey smart account state when disconnecting a funding wallet. */
+export function migrateWalletSessionToPasskey(session: WalletSession): PasskeySession | null {
+  if (!session.smartAccount || !session.walletField) return null;
+  const existing = loadPasskeySession();
+  const next: PasskeySession = {
+    smartAccountAddress: session.smartAccount.smartAccountAddress,
+    walletField: session.walletField,
+    smartAccount: session.smartAccount,
+    credential: session.credential ?? existing?.credential ?? null,
+    proof: session.proof ?? existing?.proof ?? null,
+    pofProof: session.pofProof ?? existing?.pofProof ?? null,
+    proofDurationSec: session.proofDurationSec ?? existing?.proofDurationSec ?? null,
+    policyKey: session.policyKey ?? existing?.policyKey ?? 'general-eligibility',
+    selectedOfferingId: session.selectedOfferingId ?? existing?.selectedOfferingId ?? null,
+    receiptTransactions: session.receiptTransactions ?? existing?.receiptTransactions ?? {},
+    transferResult: session.transferResult ?? existing?.transferResult ?? null,
+    replayBlocked: session.replayBlocked ?? existing?.replayBlocked ?? false,
+    replayMessage: session.replayMessage ?? existing?.replayMessage ?? null,
+    proofReceipt: session.proofReceipt ?? existing?.proofReceipt ?? null,
+    passportActivated: session.passportActivated ?? existing?.passportActivated ?? false,
+    proofLifecycle: session.proofLifecycle ?? existing?.proofLifecycle,
+    consumedTxHash: session.consumedTxHash ?? existing?.consumedTxHash ?? null,
+    fundingWalletAddress: session.address,
+    updatedAt: Date.now(),
+  };
+  savePasskeySession(next);
+  return next;
+}

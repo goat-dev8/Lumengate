@@ -1,4 +1,3 @@
-const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
 const {
   fieldToBytes32Hex,
@@ -7,6 +6,7 @@ const {
   toBigInt,
 } = require('./poseidonFields');
 const { policyByKey } = require('./policies');
+const { syncCredentialRootOnChain: syncCredentialRootViaSdk, normalizeHex32 } = require('./sorobanAdmin');
 
 function fieldFromHash(parts) {
   const h = createHash('sha256')
@@ -14,10 +14,6 @@ function fieldFromHash(parts) {
     .digest('hex')
     .slice(0, 62);
   return BigInt(`0x${h}`).toString();
-}
-
-function normalizeHex32(hex) {
-  return String(hex || '').replace(/^0x/i, '').toLowerCase().padStart(64, '0');
 }
 
 function singleLeafRoot(commitment) {
@@ -62,41 +58,8 @@ function buildCredentialMaterial(walletField, env = process.env, policyKey = 'ge
   };
 }
 
-function syncCredentialRootOnChain(rootHex, env = process.env) {
-  const registryId = env.CREDENTIAL_REGISTRY_ID || env.VITE_CREDENTIAL_REGISTRY_ID;
-  const secret = env.CONTRACT_ADMIN_SECRET_KEY;
-  const admin = env.CONTRACT_ADMIN_PUBLIC_KEY;
-  if (!registryId || !secret || !admin) return null;
-
-  execFileSync('stellar', ['network', 'use', env.STELLAR_NETWORK_NAME || 'testnet'], { env: process.env });
-  execFileSync('stellar', ['keys', 'add', 'admin', '--secret-key', '--overwrite'], {
-    input: secret,
-    env: process.env,
-  });
-  const root = normalizeHex32(rootHex);
-  execFileSync(
-    'stellar',
-    [
-      'contract',
-      'invoke',
-      '--id',
-      registryId,
-      '--source-account',
-      'admin',
-      '--network',
-      env.STELLAR_NETWORK_NAME || 'testnet',
-      '--send',
-      'yes',
-      '--',
-      'set_root',
-      '--caller',
-      admin,
-      '--root',
-      root,
-    ],
-    { encoding: 'utf8', env: process.env },
-  );
-  return root;
+async function syncCredentialRootOnChain(rootHex, env = process.env) {
+  return syncCredentialRootViaSdk(rootHex, env);
 }
 
 module.exports = {

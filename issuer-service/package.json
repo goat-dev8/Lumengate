@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --check server.js && node --check lib/smartAccount.js"
+    "test": "node --check server.js && node --check lib/smartAccount.js && node --check lib/sorobanAdmin.js"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.3.0",

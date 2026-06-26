@@ -234,7 +234,7 @@ app.post('/credential', express.json(), async (req, res) => {
   const material = buildCredentialMaterial(walletField, process.env, policyKey);
   if (normalizeHex32(chainRoots.root) !== normalizeHex32(material.root)) {
     try {
-      syncCredentialRootOnChain(material.root, process.env);
+      await syncCredentialRootOnChain(material.root, process.env);
       chainRoots = await readOnChainRoots(process.env);
     } catch (err) {
       return res.status(503).json({
@@ -257,7 +257,7 @@ app.post('/credential', express.json(), async (req, res) => {
   let noteMeta = null;
   try {
     noteMeta = appendNoteCommitment(built.noteSecret, built.noteBlinding);
-    syncNoteRootOnChain(noteMeta.noteRoot, process.env);
+    await syncNoteRootOnChain(noteMeta.noteRoot, process.env);
   } catch (err) {
     console.warn('Note root sync skipped:', err instanceof Error ? err.message : String(err));
   }

@@ -239,7 +239,7 @@ export function VerifyPage() {
         />
 
         <div className="mt-10 space-y-6">
-        <OnboardingPathPicker compact />
+        {!smartAccount || !settlementAddress ? <OnboardingPathPicker compact /> : null}
 
         {advanced ? (
           <div className="flex flex-wrap items-start justify-between gap-4">

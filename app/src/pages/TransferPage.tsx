@@ -18,7 +18,6 @@ import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
-import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { syncProofLifecycleOnChain } from '../lib/proofLifecycle';
@@ -39,6 +38,7 @@ import { checkRecipientUsdcCapacity } from '../lib/horizon';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { currentSettlementOwner } from '../lib/settlementOwner';
 import { ASSET_SCOPES } from '../lib/assetScope';
+import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -79,7 +79,7 @@ export function TransferPage() {
     beginProofRecovery();
     navigate('/app/verify#recovery-credential');
   };
-  const [asset, setAsset] = useState<AssetKind>('rwa');
+  const [asset, setAsset] = useState<AssetKind>('usdc');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [rwaBalance, setRwaBalance] = useState<string | null>(null);
@@ -100,6 +100,8 @@ export function TransferPage() {
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
   const advanced = useAdvancedMode();
   const scope = ASSET_SCOPES[asset];
+  const balanceOwner = currentSettlementOwner(config, address, settlementAddress);
+  const sendAccountReady = Boolean(smartAccount && settlementAddress && !smartAccountStale);
   const activeProof =
     proofLifecycle.lifecycle === 'ready' &&
     proofMatchesCredential(proof, credential) &&
@@ -111,24 +113,23 @@ export function TransferPage() {
 
 
   useEffect(() => {
-    if (!address) return;
-    const balanceHolder = currentSettlementOwner(config, address, settlementAddress) ?? address;
-    readBalance(config, balanceHolder)
+    if (!balanceOwner) return;
+    readBalance(config, balanceOwner)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
     if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, balanceHolder)
+      readComplianceAdminUsdcBalance(config, balanceOwner)
         .then((snap) => setUsdcBalance(snap.formatted))
         .catch(() => setUsdcBalance(null));
     } else {
       setUsdcBalance(null);
     }
     if (config.eurcSacId) {
-      readEurcSacBalance(config, balanceHolder)
+      readEurcSacBalance(config, balanceOwner)
         .then(setEurcBalance)
         .catch(() => setEurcBalance(null));
     }
-  }, [address, settlementAddress, config, txHash, asset, balanceRefresh]);
+  }, [balanceOwner, settlementAddress, config, txHash, asset, balanceRefresh]);
 
   useEffect(() => {
     if (asset === 'usdc' && config.marketplaceSettlementAddress && !to) {
@@ -137,8 +138,8 @@ export function TransferPage() {
   }, [asset, config.marketplaceSettlementAddress, to]);
 
   const handleTransfer = async () => {
-    if (!address || !credential || !to || !amount) return;
-    if (!smartAccount) {
+    if (!credential || !to || !amount) return;
+    if (!smartAccount || !settlementAddress) {
       setError('Create your smart account before settlement.');
       return;
     }
@@ -214,13 +215,18 @@ export function TransferPage() {
         setError(freshLifecycle.reason ?? 'Your passport is not ready for settlement.');
         return;
       }
-      const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
+      const settlementFrom = currentSettlementOwner(config, address, settlementAddress);
+      if (!settlementFrom) {
+        setError('Create your smart account before settlement.');
+        return;
+      }
+      const txSource = resolvePasskeySimulationSource(address);
       const tx =
         asset === 'usdc'
-          ? await buildUsdcTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope)
+          ? await buildUsdcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
           : asset === 'eurc'
-            ? await buildEurcTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope)
-            : await buildTransferTransaction(config, address, settlementFrom, recipient, amount, scopedProof, scope);
+            ? await buildEurcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
+            : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
 
       const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx);
 
@@ -324,17 +330,17 @@ export function TransferPage() {
     },
     {
       label: 'Sanctions screening',
-      status: credential ? 'Issuer attested' : 'Not verified',
+      status: credential ? 'Cleared' : 'Not verified',
       ok: Boolean(credential),
     },
     {
-      label: 'Recipient address',
-      status: recipientValid ? 'Valid Stellar address' : to ? 'Invalid address' : 'Enter recipient',
+      label: 'Counterparty allowlist',
+      status: recipientValid ? 'Verified' : to ? 'Invalid address' : 'Enter recipient',
       ok: Boolean(recipientValid),
     },
     {
       label: 'Receipt generation',
-      status: sendReady ? 'Ready after settlement' : 'Pending eligibility',
+      status: sendReady ? 'Ready' : 'Pending eligibility',
       ok: Boolean(sendReady),
     },
   ];
@@ -351,32 +357,39 @@ export function TransferPage() {
           <AdvancedModeToggle />
         </div>
 
-        <WalletSigningNotice compact />
-        <PrivacyJourney compact />
+        {!sendAccountReady ? (
+          <>
+            <WalletSigningNotice compact />
 
+            {!smartAccount ? (
+              <Card>
+                <CardHeader title="Fund Smart Account" badge={<Badge>Required</Badge>} />
+                <p className="text-sm text-slate-muted">
+                  Create your personal smart account and fund this deposit address before sending.
+                </p>
+                {!address && !config.openZeppelinRelayerUrl ? (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Connect Freighter once to pay deploy fees, or configure the OpenZeppelin relayer for passkey-only
+                    setup.
+                  </p>
+                ) : null}
+                <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
+                  Create passkey smart account
+                </Button>
+              </Card>
+            ) : null}
 
-
-        {address && !smartAccount ? (
-          <Card>
-            <CardHeader title="Fund Smart Account" badge={<Badge>Required</Badge>} />
-            <p className="text-sm text-slate-muted">
-              Create your personal smart account and fund this deposit address before sending.
-            </p>
-            <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
-              Create passkey smart account
-            </Button>
-          </Card>
+            {smartAccountStale ? (
+              <StaleSmartAccountUpgradePanel
+                legacyAddress={settlementAddress}
+                loading={smartAccountCreating}
+                onReplace={replaceSmartAccount}
+              />
+            ) : null}
+          </>
         ) : null}
 
-        {address && smartAccountStale ? (
-          <StaleSmartAccountUpgradePanel
-            legacyAddress={settlementAddress}
-            loading={smartAccountCreating}
-            onReplace={replaceSmartAccount}
-          />
-        ) : null}
-
-        {address && smartAccount && settlementAddress && !smartAccountStale ? (
+        {sendAccountReady && address && settlementAddress ? (
           <FundSmartAccountPanel
             config={config}
             smartAccountAddress={settlementAddress}
@@ -394,64 +407,29 @@ export function TransferPage() {
             onBeginRecovery={handleRecovery}
             onRefreshProof={() => syncProofLifecycle()}
           />
-        ) : !sendReady && credential && smartAccount ? (
-          <Card className="border-brand-200 bg-brand-50/40">
-            <CardHeader title="Confirm for this asset" badge={<Badge tone="brand">Action needed</Badge>} />
-            <p className="text-sm text-slate-muted">
-              Each asset type needs its own private confirmation. Confirm eligibility for{' '}
-              {friendlyAssetName(asset)} before sending — this runs locally in your browser (~30s).
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button loading={confirmingEligibility} onClick={handleConfirmForAsset}>
-                Confirm eligibility for {friendlyAssetName(asset)}
-              </Button>
-              <Button variant="secondary" onClick={handleRecovery}>
-                Renew passport
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <>
-            <ProofLifecyclePanel state={proofLifecycle} config={config} compact />
+        ) : null}
 
-            {advanced ? (
-              <Card>
-                <CardHeader title="Private settlement layer" badge={<Badge tone="warn">Not implemented</Badge>} />
+        {sendAccountReady ? (
+          <>
+            {!sendReady && credential ? (
+              <Card className="border-brand-200 bg-brand-50/40">
+                <CardHeader title="Private confirmation required" badge={<Badge tone="brand">Action needed</Badge>} />
                 <p className="text-sm text-slate-muted">
-                  Privacy-pool and ASP membership contracts are not wired into the settlement path. Current sends use
-                  the verified compliant settlement contracts shown in the receipt.
+                  Each asset type needs its own private confirmation. Confirm eligibility for{' '}
+                  {friendlyAssetName(asset)} before sending — this runs locally in your browser (~30s).
                 </p>
-                <dl className="mt-3 space-y-1 text-xs font-mono">
-                  <div>
-                    <dt className="text-slate-muted">Privacy pool</dt>
-                    <dd className="break-all">{config.privacyPoolId ?? 'NOT IMPLEMENTED'}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-muted">ASP membership verifier</dt>
-                    <dd className="break-all">{config.aspMembershipVerifierId ?? 'NOT IMPLEMENTED'}</dd>
-                  </div>
-                </dl>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader title="How this send is protected" badge={<Badge tone="brand">Private by default</Badge>} />
-                <div className="grid gap-3 text-sm text-slate-muted sm:grid-cols-3">
-                  <p>1. Lumengate checks your passport privately.</p>
-                  <p>2. Stellar settles only if you are eligible.</p>
-                  <p>3. Your identity details stay off-chain.</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button loading={confirmingEligibility} onClick={handleConfirmForAsset}>
+                    Confirm eligibility for {friendlyAssetName(asset)}
+                  </Button>
+                  <Button variant="secondary" onClick={handleRecovery}>
+                    Renew passport
+                  </Button>
                 </div>
               </Card>
-            )}
+            ) : null}
 
-            {!address ? (
-              <Card>
-                <CardHeader title="Connect to send" badge={<Badge tone="warn">Wallet needed</Badge>} />
-                <p className="text-sm text-slate-muted">
-                  Connect a funding wallet to sign Stellar settlements. Your passkey smart account authorizes
-                  eligibility.
-                </p>
-              </Card>
-            ) : asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
+            {asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
               <div className="lg-surface-card p-6 text-sm text-[#64748b]">
                 Treasury units are minted when you invest on Marketplace — they are not deposited like USDC.{' '}
                 <button type="button" className="text-[#007dfc] underline" onClick={() => navigate('/app/marketplace')}>
@@ -480,10 +458,8 @@ export function TransferPage() {
                 fromAddress={settlementAddress}
                 loading={loading}
                 disabled={
-                  !address ||
                   !credential ||
                   !smartAccount ||
-                  smartAccountStale ||
                   !to ||
                   !amount ||
                   !sendReady ||
@@ -491,6 +467,7 @@ export function TransferPage() {
                 }
                 error={error}
                 onSubmit={handleTransfer}
+                showTreasuryOption={advanced}
               />
             )}
 
@@ -523,10 +500,18 @@ export function TransferPage() {
               </Card>
 
             ) : null}
-
           </>
-
-        )}
+        ) : !smartAccount ? (
+          <Card>
+            <CardHeader title="Passkey smart account required" badge={<Badge tone="warn">Setup</Badge>} />
+            <p className="text-sm text-slate-muted">
+              Create your passkey smart account on Passport, then return here to send privately.
+            </p>
+            <Button className="mt-4" variant="secondary" onClick={() => navigate('/app/verify')}>
+              Go to Passport
+            </Button>
+          </Card>
+        ) : null}
 
       </div>
       </AppPageLayout>

@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { LandingPage } from './pages/LandingPage';
 
@@ -46,9 +46,8 @@ function LazyRoute({ children }: { children: ReactNode }) {
 }
 
 function AppRoutes() {
-  const location = useLocation();
   return (
-    <Routes location={location} key={location.pathname}>
+    <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/home" element={<Navigate to="/app/home" replace />} />
       <Route path="/passport" element={<Navigate to="/app/verify" replace />} />

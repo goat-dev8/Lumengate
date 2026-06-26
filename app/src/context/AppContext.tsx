@@ -44,6 +44,7 @@ import {
   clearPasskeySession,
   linkPasskeySessionToWallet,
   loadPasskeySession,
+  migrateWalletSessionToPasskey,
   savePasskeySession,
   type PasskeySession,
 } from '../lib/passkeySession';
@@ -75,6 +76,7 @@ import {
   isAssembledTransaction,
   isContractAddress,
   isSmartAccountPolicyStaleOnChain,
+  resolvePasskeySimulationSource,
   submitWithSmartAccount,
   type SignableTransaction,
   type SmartAccountAssembledTransaction,
@@ -372,8 +374,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyPasskeySession = useCallback(
     (saved: PasskeySession) => {
       setWalletField(saved.walletField);
+      setAddress(saved.fundingWalletAddress ?? null);
       applySession({
-        address: saved.fundingWalletAddress ?? saved.smartAccountAddress,
+        address: saved.fundingWalletAddress ?? '',
         walletField: saved.walletField,
         smartAccount: saved.smartAccount,
         credential: saved.credential,
@@ -744,12 +747,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     kit.disconnect().catch(() => undefined);
-    const passkeySaved = loadPasskeySession();
-    if (address) clearWalletSession(address);
+    const walletAddr = address;
+    const walletSession = walletAddr ? loadWalletSession(walletAddr) : null;
+    if (walletAddr) clearWalletSession(walletAddr);
     clearLastWalletConnection();
     setAddress(null);
     setWalletModuleId(null);
     setWalletModuleName(null);
+
+    let passkeySaved = loadPasskeySession();
+    if (!passkeySaved && walletSession?.smartAccount && walletSession.walletField) {
+      passkeySaved = migrateWalletSessionToPasskey(walletSession);
+    }
 
     if (passkeySaved) {
       applyPasskeySession({ ...passkeySaved, fundingWalletAddress: null });
@@ -786,6 +795,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           address,
           walletField: issuerField,
           smartAccount: created,
+        });
+        persistPasskeySession({
+          smartAccountAddress: created.smartAccountAddress,
+          walletField: issuerField,
+          smartAccount: created,
+          fundingWalletAddress: address,
         });
       } else {
         persistPasskeySession({
@@ -908,7 +923,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passportActivated: false,
           proofLifecycle: 'none',
         });
-      } else if (smartAccount) {
+      }
+      if (smartAccount) {
         persistPasskeySession({
           smartAccountAddress: smartAccount.smartAccountAddress,
           walletField: issuerField,
@@ -922,6 +938,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           consumedTxHash: null,
           passportActivated: false,
           proofLifecycle: 'none',
+          fundingWalletAddress: address,
         });
       }
       const synced = await syncProofLifecycleOnChain(config, cred, null, null);
@@ -1290,18 +1307,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!smartAccount) {
         throw new Error('Create and fund your smart account before settlement.');
       }
-      if (!address) throw new Error('Connect wallet first');
       if (await isSmartAccountPolicyStaleOnChain(config, smartAccount)) {
         throw new Error(
           'This smart account uses a superseded on-chain compliance policy, session store, or passkey signer. ' +
             'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
         );
       }
+      const bindSource = resolvePasskeySimulationSource(address);
       if (config.sessionStoreId && isContractAddress(settlementFrom)) {
         try {
           const bindTx = await buildBindSessionProofTransaction(
             config,
-            address,
+            bindSource,
             settlementFrom,
             proof,
           );
@@ -1310,6 +1327,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const txs = { ...prev, sessionBind: bindHash };
             if (address && walletField) {
               persistSession({ address, walletField, receiptTransactions: txs });
+            } else if (smartAccount && walletField) {
+              persistPasskeySession({
+                smartAccountAddress: smartAccount.smartAccountAddress,
+                walletField,
+                smartAccount,
+                receiptTransactions: txs,
+              });
             }
             return txs;
           });
@@ -1325,7 +1349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount, walletField, persistSession],
+    [config, address, smartAccount, walletField, persistSession, persistPasskeySession],
   );
 
   const fundSmartAccountUsdc = useCallback(
