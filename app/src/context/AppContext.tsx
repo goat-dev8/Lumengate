@@ -22,7 +22,7 @@ import {
 import type { ProofBundle } from '../lib/contracts';
 import { appendActivity, loadActivity, type ActivityEntry } from '../lib/activity';
 import { walletFieldFromAddress } from '../lib/utils';
-import { generateProof, warmProver } from '../lib/prover';
+import { generateProof, getProverEnvironmentStatus } from '../lib/prover';
 import {
   buildTransferTransaction,
   buildBindSessionProofTransaction,
@@ -452,17 +452,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    setProverReady(false);
+    setProverReady(true);
     setProverWarmupError(null);
-    setProverWarmupMessage('Loading private prover…');
-    warmProver((p) => {
-      if (!cancelled) setProverWarmupMessage(p.message);
-    })
-      .then(() => {
+    setProverWarmupMessage(null);
+    getProverEnvironmentStatus()
+      .then((status) => {
         if (!cancelled) {
-          setProverReady(true);
+          setProverReady(status.ready);
           setProverWarmupMessage(null);
-          setProverWarmupError(null);
+          setProverWarmupError(
+            status.ready
+              ? null
+              : 'Private proofs require cross-origin isolation (COOP/COEP) and SharedArrayBuffer support.',
+          );
         }
       })
       .catch((err) => {

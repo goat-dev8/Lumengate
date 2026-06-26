@@ -41,7 +41,6 @@ async function ensurePofProver() {
     const circuit = await res.json();
     const noir = new Noir(circuit);
     const backend = new UltraHonkBackend(circuit.bytecode, { threads: 1 });
-    await backend.getVerificationKey({ keccak: true });
     return { noir, backend };
   })();
   return pofInit;

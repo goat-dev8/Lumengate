@@ -18,14 +18,15 @@ const CRS_G2_KEY = 'g2Data';
 const CRS_NUM_POINTS = 65537;
 const CRS_G1_MIN_BYTES = CRS_NUM_POINTS * 64;
 
-const PROVER_INIT_TIMEOUT_MS = 120_000;
-const PROVE_TIMEOUT_MS = 180_000;
+const WITNESS_TIMEOUT_MS = 120_000;
+const PROVE_TIMEOUT_MS = 600_000;
 
 let runtimeInitPromise: Promise<void> | null = null;
 let initPromise: Promise<void> | null = null;
-let backendReadyPromise: Promise<void> | null = null;
 let noir: Noir | null = null;
 let backend: UltraHonkBackend | null = null;
+let circuitBytecode: string | null = null;
+let UltraHonkBackendCtor: typeof import('@aztec/bb.js').UltraHonkBackend | null = null;
 
 export type ProverEnvironmentStatus = {
   crossOriginIsolated: boolean;
@@ -38,10 +39,11 @@ export async function getProverEnvironmentStatus(): Promise<ProverEnvironmentSta
     typeof window !== 'undefined' && typeof self.crossOriginIsolated !== 'undefined'
       ? self.crossOriginIsolated
       : true;
+  const sharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
   return {
     crossOriginIsolated,
-    sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
-    ready: crossOriginIsolated,
+    sharedArrayBuffer,
+    ready: crossOriginIsolated && sharedArrayBuffer,
   };
 }
 
@@ -65,14 +67,12 @@ async function ensureProverReady(): Promise<void> {
       import('@noir-lang/noir_js'),
       import('@aztec/bb.js'),
     ]);
+    UltraHonkBackendCtor = UltraHonkBackend;
     const res = await fetch('/circuit/lumengate.json');
     if (!res.ok) throw new Error(`Circuit artifact missing (${res.status})`);
     const circuit = await res.json();
+    circuitBytecode = circuit.bytecode;
     noir = new Noir(circuit);
-    backend = new UltraHonkBackend(circuit.bytecode, {
-      threads: 1,
-      logger: import.meta.env.DEV ? (msg: string) => console.debug('[bb.js]', msg) : undefined,
-    });
   })();
   return initPromise;
 }
@@ -100,6 +100,19 @@ async function idbSet(key: string, value: Uint8Array): Promise<void> {
   });
 }
 
+function createBackend(): UltraHonkBackend {
+  if (!circuitBytecode) throw new Error('Circuit bytecode not loaded');
+  if (!UltraHonkBackendCtor) throw new Error('Prover backend library not loaded');
+  return new UltraHonkBackendCtor(circuitBytecode, {
+    threads: 1,
+    memory: {
+      initial: 1024,
+      maximum: 65536,
+    },
+    logger: import.meta.env.DEV ? (msg: string) => console.debug('[bb.js]', msg) : undefined,
+  });
+}
+
 /** Seed bb.js CRS cache from same-origin static files (avoids slow/hung CDN fetch in worker). */
 export async function preloadCrsFromOrigin(): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
@@ -124,37 +137,12 @@ export async function preloadCrsFromOrigin(): Promise<void> {
   await idbSet(CRS_G2_KEY, g2Data);
 }
 
-async function warmBackend(onProgress?: (p: ProveProgress) => void): Promise<void> {
-  if (backendReadyPromise) return backendReadyPromise;
-  backendReadyPromise = (async () => {
-    await ensureProverReady();
-    if (!backend) throw new Error('Prover backend not initialized');
-
-    onProgress?.({
-      stage: 'init',
-      message: 'Starting private prover worker (first visit may take ~1 minute)…',
-      percent: 18,
-    });
-
-    await withTimeout(
-      backend.getVerificationKey({ keccak: true }),
-      PROVER_INIT_TIMEOUT_MS,
-      'Private prover worker failed to start. Hard-refresh the page. Disable extensions that block Web Workers, WASM, or IndexedDB.',
-    );
-  })().catch((err) => {
-    backendReadyPromise = null;
-    throw err;
-  });
-  return backendReadyPromise;
-}
-
 export async function warmProver(onProgress?: (p: ProveProgress) => void): Promise<void> {
   assertProverEnvironment();
   onProgress?.({ stage: 'init', message: 'Loading zero-knowledge circuit…', percent: 8 });
   await ensureProverReady();
-  onProgress?.({ stage: 'init', message: 'Loading proving keys…', percent: 14 });
+  onProgress?.({ stage: 'init', message: 'Loading proving keys into private browser storage…', percent: 14 });
   await preloadCrsFromOrigin();
-  await warmBackend(onProgress);
   onProgress?.({ stage: 'init', message: 'Private prover ready', percent: 25 });
 }
 
@@ -213,7 +201,7 @@ export async function generateProof(
   onProgress?.({ stage: 'init', message: 'Preparing private prover…', percent: 10 });
   assertProverEnvironment();
   await warmProver(onProgress);
-  if (!noir || !backend) throw new Error('Prover not initialized');
+  if (!noir) throw new Error('Prover not initialized');
 
   const inputs = credential.proverInputs;
   if (!inputs) throw new Error('Issuer did not return prover inputs');
@@ -221,16 +209,32 @@ export async function generateProof(
   onProgress?.({ stage: 'witness', message: 'Building private witness…', percent: 40 });
   const { witness } = await withTimeout(
     noir.execute(normalizeProverInputs(inputs)),
-    60_000,
+    WITNESS_TIMEOUT_MS,
     'Witness generation timed out. Request a fresh passport and try again.',
   );
 
-  onProgress?.({ stage: 'prove', message: 'Generating zero-knowledge proof (~30s)…', percent: 65 });
-  const { proof, publicInputs } = await withTimeout(
-    backend.generateProof(witness, { keccak: true }),
-    PROVE_TIMEOUT_MS,
-    'Proof generation timed out. Hard-refresh, wait for “Private prover ready”, then try again. Keep this tab focused.',
-  );
+  onProgress?.({
+    stage: 'prove',
+    message: 'Starting private prover worker. First proof may take several minutes…',
+    percent: 55,
+  });
+
+  backend = createBackend();
+  let proofData: Awaited<ReturnType<UltraHonkBackend['generateProof']>>;
+  try {
+    proofData = await withTimeout(
+      backend.generateProof(witness, { keccak: true }),
+      PROVE_TIMEOUT_MS,
+      'Proof generation timed out while the private prover worker was running. Close other heavy tabs and try again; your identity data was not sent anywhere.',
+    );
+  } catch (err) {
+    const failedBackend = backend;
+    backend = null;
+    void failedBackend.destroy().catch(() => undefined);
+    throw err;
+  }
+
+  const { proof, publicInputs } = proofData;
   const bundle = bundleFromHonkProof(proof, publicInputs);
 
   onProgress?.({ stage: 'done', message: 'Passport ready', percent: 100 });

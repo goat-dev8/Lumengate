@@ -469,7 +469,7 @@ export function VerifyPage() {
                         ? proverWarmupError
                         : proverReady
                           ? 'Ready to confirm eligibility — proof runs locally (~30s), then your passkey authorizes on-chain binding.'
-                          : 'Preparing private prover in your browser…')}
+                          : 'Private proofs are unavailable in this browser context.')}
                   </p>
                   {proverWarmupError ? (
                     <p className="mt-2 text-sm text-amber-700">
@@ -478,7 +478,7 @@ export function VerifyPage() {
                   ) : null}
                   <Button
                     className="mt-4"
-                    loading={proveLoading || (!proverReady && !proverWarmupError)}
+                    loading={proveLoading}
                     disabled={!credential || !smartAccount || !proverReady}
                     onClick={handleProve}
                   >
