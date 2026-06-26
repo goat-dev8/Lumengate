@@ -114,6 +114,9 @@ type AppContextValue = {
     onProgress?: (message: string) => void,
   ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
+  proverReady: boolean;
+  proverWarmupMessage: string | null;
+  proverWarmupError: string | null;
   refreshSessionProofBound: (proof?: ProofBundle | null) => Promise<boolean>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
   fundSmartAccountEurc: (amount: string) => Promise<string>;
@@ -210,6 +213,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
+  const [proverReady, setProverReady] = useState(false);
+  const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
+  const [proverWarmupError, setProverWarmupError] = useState<string | null>(null);
 
   const refreshSessionProofBound = useCallback(
     async (proofBundle?: ProofBundle | null): Promise<boolean> => {
@@ -445,7 +451,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    warmProver().catch(() => undefined);
+    let cancelled = false;
+    setProverReady(false);
+    setProverWarmupError(null);
+    setProverWarmupMessage('Loading private prover…');
+    warmProver((p) => {
+      if (!cancelled) setProverWarmupMessage(p.message);
+    })
+      .then(() => {
+        if (!cancelled) {
+          setProverReady(true);
+          setProverWarmupMessage(null);
+          setProverWarmupError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setProverReady(false);
+          setProverWarmupError(err instanceof Error ? err.message : String(err));
+          setProverWarmupMessage(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1617,6 +1646,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     confirmPassportEligibility,
     sessionProofBound,
     refreshSessionProofBound,
+    proverReady,
+    proverWarmupMessage,
+    proverWarmupError,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,

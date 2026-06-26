@@ -1,7 +1,7 @@
 import type { DeploymentConfig } from './config';
 import type { ProofBundle } from './contracts';
 import { bundleFromHonkProof, assertProofBundleForChain } from './contracts';
-import { initNoirRuntime } from './prover';
+import { initNoirRuntime, preloadCrsFromOrigin } from './prover';
 
 let pofInit: Promise<{ noir: import('@noir-lang/noir_js').Noir; backend: import('@aztec/bb.js').UltraHonkBackend }> | null = null;
 
@@ -31,6 +31,7 @@ async function ensurePofProver() {
   if (pofInit) return pofInit;
   pofInit = (async () => {
     await initNoirRuntime();
+    await preloadCrsFromOrigin();
     const { Noir } = await import('@noir-lang/noir_js');
     const { UltraHonkBackend } = await import('@aztec/bb.js');
     const res = await fetch('/circuit/proof_of_funds.json');
@@ -40,6 +41,7 @@ async function ensurePofProver() {
     const circuit = await res.json();
     const noir = new Noir(circuit);
     const backend = new UltraHonkBackend(circuit.bytecode, { threads: 1 });
+    await backend.getVerificationKey({ keccak: true });
     return { noir, backend };
   })();
   return pofInit;

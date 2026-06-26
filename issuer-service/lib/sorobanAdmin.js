@@ -58,30 +58,52 @@ async function invokeAdminContract(contractId, method, scArgs, env = process.env
   const { rpcUrl, passphrase } = getNetworkConfig(env);
   const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
   const admin = adminKeypair(env);
-  const account = await server.getAccount(admin.publicKey());
-  const contract = new Contract(contractId);
-  let tx = new TransactionBuilder(account, {
-    fee: '1000000',
-    networkPassphrase: passphrase,
-  })
-    .addOperation(contract.call(method, ...scArgs))
-    .setTimeout(180)
-    .build();
+  let lastError = null;
 
-  const sim = await server.simulateTransaction(tx);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(sim.error || 'Contract simulation failed');
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const account = await server.getAccount(admin.publicKey());
+      const contract = new Contract(contractId);
+      let tx = new TransactionBuilder(account, {
+        fee: '1000000',
+        networkPassphrase: passphrase,
+      })
+        .addOperation(contract.call(method, ...scArgs))
+        .setTimeout(180)
+        .build();
+
+      const sim = await server.simulateTransaction(tx);
+      if (rpc.Api.isSimulationError(sim)) {
+        throw new Error(sim.error || 'Contract simulation failed');
+      }
+
+      tx = rpc.assembleTransaction(tx, sim).build();
+      tx.sign(admin);
+      const sent = await server.sendTransaction(tx);
+      if (sent.status === 'ERROR') {
+        const detail = JSON.stringify(sent.errorResult ?? sent);
+        if (/txBadSeq|BAD_SEQ/i.test(detail) && attempt < 3) {
+          lastError = new Error(detail);
+          await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(detail);
+      }
+
+      await waitForTransactionSuccess(sent.hash, env);
+      return sent.hash;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/txBadSeq|BAD_SEQ/i.test(message) && attempt < 3) {
+        lastError = err instanceof Error ? err : new Error(message);
+        await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
 
-  tx = rpc.assembleTransaction(tx, sim).build();
-  tx.sign(admin);
-  const sent = await server.sendTransaction(tx);
-  if (sent.status === 'ERROR') {
-    throw new Error(JSON.stringify(sent.errorResult ?? sent));
-  }
-
-  await waitForTransactionSuccess(sent.hash, env);
-  return sent.hash;
+  throw lastError ?? new Error('Admin contract invoke failed after retries');
 }
 
 async function syncCredentialRootOnChain(rootHex, env = process.env) {

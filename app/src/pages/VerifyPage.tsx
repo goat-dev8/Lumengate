@@ -93,6 +93,9 @@ export function VerifyPage() {
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
+    proverReady,
+    proverWarmupMessage,
+    proverWarmupError,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -194,13 +197,14 @@ export function VerifyPage() {
         });
       });
       setError(null);
+      setProveProgress(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       recoveryLog('proof.generate.error', { message: msg });
       setError(msg);
+      setProveProgress({ stage: 'error', message: msg, percent: 0 });
     } finally {
       setProveLoading(false);
-      setProveProgress(null);
     }
   };
 
@@ -460,9 +464,24 @@ export function VerifyPage() {
                 <>
                   <p className="mt-3 text-sm text-slate-muted">
                     {proveProgress?.message ||
-                      'Ready to confirm eligibility — proof runs locally (~30s), then your passkey authorizes on-chain binding.'}
+                      proverWarmupMessage ||
+                      (proverWarmupError
+                        ? proverWarmupError
+                        : proverReady
+                          ? 'Ready to confirm eligibility — proof runs locally (~30s), then your passkey authorizes on-chain binding.'
+                          : 'Preparing private prover in your browser…')}
                   </p>
-                  <Button className="mt-4" loading={proveLoading} disabled={!credential || !smartAccount} onClick={handleProve}>
+                  {proverWarmupError ? (
+                    <p className="mt-2 text-sm text-amber-700">
+                      Private prover failed to initialize. Hard-refresh the page. If this persists, try a normal browser window without strict privacy extensions.
+                    </p>
+                  ) : null}
+                  <Button
+                    className="mt-4"
+                    loading={proveLoading || (!proverReady && !proverWarmupError)}
+                    disabled={!credential || !smartAccount || !proverReady}
+                    onClick={handleProve}
+                  >
                     <Sparkles className="h-4 w-4" />
                     Confirm eligibility
                   </Button>
