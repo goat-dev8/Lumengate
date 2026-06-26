@@ -457,6 +457,7 @@ export async function submitWithSmartAccount(
   config: DeploymentConfig,
   state: SmartAccountState,
   transaction: SmartAccountAssembledTransaction,
+  options?: { forceMethod?: 'relayer' | 'rpc' },
 ): Promise<string> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
@@ -468,7 +469,7 @@ export async function submitWithSmartAccount(
   const kit = await connectPersonalSmartAccount(config, hydrated);
   const result = await kit.signAndSubmit(asKitAssembledTransaction(transaction), {
     credentialId: hydrated.credentialId,
-    forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
+    forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
   });
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }

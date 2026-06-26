@@ -68,6 +68,7 @@ export function TransferPage() {
     createSmartAccount,
     replaceSmartAccount,
     ensureProofForAsset,
+    refreshSessionProofBound,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
@@ -296,11 +297,16 @@ export function TransferPage() {
       handleRecovery();
       return;
     }
+    if (!smartAccount || !settlementAddress) {
+      setError('Create your passkey smart account before confirming eligibility.');
+      return;
+    }
     setConfirmingEligibility(true);
     setError(null);
     try {
       await ensureProofForAsset(asset);
       await syncProofLifecycle();
+      await refreshSessionProofBound();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

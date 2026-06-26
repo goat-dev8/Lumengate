@@ -171,4 +171,6 @@ module.exports = {
   normalizeHex32,
   syncCredentialRootOnChain,
   syncNoteRootOnChain,
+  getNetworkConfig,
+  waitForTransactionSuccess,
 };

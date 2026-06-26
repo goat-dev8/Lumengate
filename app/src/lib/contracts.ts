@@ -163,6 +163,34 @@ function normalizeProofHex(hex: string): string {
   return hex.replace(/^0x/i, '').toLowerCase();
 }
 
+function isMissingStorageValue(error: string | undefined): boolean {
+  return String(error || '').includes('MissingValue') || String(error || '').includes('NotConfigured');
+}
+
+function parseSessionProofValue(val: xdr.ScVal | undefined): BoundSessionProof | null {
+  if (!val) return null;
+  const native = scValToNative(val) as
+    | { proof?: Buffer | Uint8Array; public_inputs?: Buffer | Uint8Array; publicInputs?: Buffer | Uint8Array }
+    | [Buffer | Uint8Array, Buffer | Uint8Array]
+    | Map<string, Buffer | Uint8Array>;
+  let proofBytes: Buffer | Uint8Array | undefined;
+  let piBytes: Buffer | Uint8Array | undefined;
+  if (Array.isArray(native)) {
+    [proofBytes, piBytes] = native;
+  } else if (native instanceof Map) {
+    proofBytes = native.get('proof');
+    piBytes = native.get('public_inputs') ?? native.get('publicInputs');
+  } else if (native && typeof native === 'object') {
+    proofBytes = native.proof ?? (native as unknown as [Buffer, Buffer])[0];
+    piBytes = native.public_inputs ?? native.publicInputs ?? (native as unknown as [Buffer, Buffer])[1];
+  }
+  if (!proofBytes || !piBytes) return null;
+  const proofHex = bytesToHex(Uint8Array.from(proofBytes));
+  const publicInputsHex = bytesToHex(Uint8Array.from(piBytes));
+  if (proofHex.length < 64 || publicInputsHex.length < 64) return null;
+  return { proofHex, publicInputsHex };
+}
+
 export async function readSessionProofBound(
   config: DeploymentConfig,
   smartAccountAddress: string,
@@ -179,20 +207,23 @@ export async function readSessionProofBound(
       .setTimeout(30)
       .build();
     const sim = await s.simulateTransaction(tx);
-    if (rpc.Api.isSimulationError(sim)) return null;
-    const val = sim.result?.retval;
-    if (!val) return null;
-    const native = scValToNative(val) as { proof?: Buffer | Uint8Array; public_inputs?: Buffer | Uint8Array };
-    const proofBytes = native.proof ?? (native as unknown as [Buffer, Buffer])[0];
-    const piBytes = native.public_inputs ?? (native as unknown as [Buffer, Buffer])[1];
-    if (!proofBytes || !piBytes) return null;
-    return {
-      proofHex: bytesToHex(Uint8Array.from(proofBytes)),
-      publicInputsHex: bytesToHex(Uint8Array.from(piBytes)),
-    };
+    if (rpc.Api.isSimulationError(sim)) {
+      if (isMissingStorageValue(sim.error)) return null;
+      return null;
+    }
+    return parseSessionProofValue(sim.result?.retval);
   } catch {
     return null;
   }
+}
+
+export async function isSessionProofBoundOnChain(
+  config: DeploymentConfig,
+  smartAccountAddress: string,
+  proof: ProofBundle,
+): Promise<boolean> {
+  const bound = await readSessionProofBound(config, smartAccountAddress);
+  return bound ? sessionProofMatchesBound(bound, proof) : false;
 }
 
 export function sessionProofMatchesBound(bound: BoundSessionProof, proof: ProofBundle): boolean {
@@ -358,9 +389,12 @@ async function readSacBalanceRaw(
     .setTimeout(30)
     .build();
   const sim = await s.simulateTransaction(tx);
-  if (rpc.Api.isSimulationError(sim)) throw new Error(sim.error);
+  if (rpc.Api.isSimulationError(sim)) {
+    if (isMissingStorageValue(sim.error)) return 0n;
+    throw new Error(sim.error);
+  }
   const val = sim.result?.retval;
-  if (!val) throw new Error('No SAC balance returned');
+  if (!val) return 0n;
   return BigInt(String(scValToNative(val)));
 }
 

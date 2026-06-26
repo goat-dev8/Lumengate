@@ -1,6 +1,7 @@
 const { readFileSync, writeFileSync, existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 const { adminSacTransfer, adminMintTreasury } = require('./sorobanAdmin');
+const { sacTransferForFaucet } = require('./sacLiquidity');
 
 const DATA_DIR = join(__dirname, '..', 'data');
 const CLAIMS_PATH = join(DATA_DIR, 'faucet_claims.json');
@@ -79,7 +80,7 @@ async function claimTestnetFunds(smartAccountAddress, asset, env = process.env) 
   } else if (asset === 'eurc') {
     const sacId = env.VITE_EURC_SAC_ID || env.EURC_SAC_ID;
     if (!sacId) throw new Error('EURC SAC not configured');
-    txHash = await adminSacTransfer(sacId, normalized, spec.amount, env);
+    txHash = await sacTransferForFaucet(sacId, normalized, spec.amount, 'EURC', env);
   } else if (asset === 'xlm') {
     const sacId = env.VITE_NATIVE_SAC_ID || env.NATIVE_SAC_ID;
     if (!sacId) throw new Error('Native XLM SAC not configured');

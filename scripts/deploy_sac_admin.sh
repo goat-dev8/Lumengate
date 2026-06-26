@@ -24,6 +24,10 @@ if [[ ! -f "$WASM" ]]; then
 fi
 
 EURC_SAC="${VITE_EURC_SAC_ID:-$(grep '^VITE_EURC_SAC_ID=' "$ROOT/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)}"
+DEPLOYER_PK=$(get_env DEPLOYER_PUBLIC_KEY)
+if [[ -z "$EURC_SAC" && -n "$DEPLOYER_PK" ]]; then
+  EURC_SAC=$(stellar contract id asset --asset "EURC:${DEPLOYER_PK}" --network testnet 2>/dev/null | tail -1)
+fi
 if [[ -z "$EURC_SAC" ]]; then
   EURC_SAC=$(stellar contract id asset --asset "EURC:GA5NJ3H2BQG2Y7SGCHLMSQS3VFDJ236NRUTVF3HQDPKCQED6IN7GYLZK" --network testnet 2>/dev/null | tail -1)
 fi
@@ -58,7 +62,7 @@ cat >> "$ROOT/.env" <<EOF
 COMPLIANCE_SAC_ADMIN_ID=$SAC_ADMIN
 VITE_COMPLIANCE_SAC_ADMIN_ID=$SAC_ADMIN
 VITE_EURC_SAC_ID=$EURC_SAC
-VITE_EURC_ISSUER=GA5NJ3H2BQG2Y7SGCHLMSQS3VFDJ236NRUTVF3HQDPKCQED6IN7GYLZK
+VITE_EURC_ISSUER=${DEPLOYER_PK:-GA5NJ3H2BQG2Y7SGCHLMSQS3VFDJ236NRUTVF3HQDPKCQED6IN7GYLZK}
 EOF
 
 for f in development production local; do

@@ -80,6 +80,8 @@ export function VerifyPage() {
     setPolicyKey,
     setProof,
     bindSessionProofIfNeeded,
+    sessionProofBound,
+    refreshSessionProofBound,
     proofLifecycle,
     syncProofLifecycle,
     beginProofRecovery,
@@ -95,6 +97,7 @@ export function VerifyPage() {
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
+  const [bindLoading, setBindLoading] = useState(false);
   const [proveProgress, setProveProgress] = useState<ProveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const advanced = useAdvancedMode();
@@ -183,6 +186,10 @@ export function VerifyPage() {
       setError('Request a passport first — each settlement needs a fresh private confirmation.');
       return;
     }
+    if (!smartAccount || !settlementAddress) {
+      setError('Create your passkey smart account before confirming eligibility.');
+      return;
+    }
     setProveLoading(true);
     setError(null);
     setProveProgress(null);
@@ -194,7 +201,9 @@ export function VerifyPage() {
         nullifier: bundle.publicInputs.nullifier,
       });
       setProof(bundle, durationSec, credential);
+      setProveProgress({ stage: 'done', message: 'Passport ready — authorize with your passkey…', percent: 95 });
       await bindSessionProofIfNeeded(bundle);
+      await refreshSessionProofBound(bundle);
       setError(null);
       pushActivity({
         kind: 'proof',
@@ -208,6 +217,21 @@ export function VerifyPage() {
       setError(msg);
     } finally {
       setProveLoading(false);
+      setProveProgress(null);
+    }
+  };
+
+  const handleAuthorizePasskey = async () => {
+    if (!activeProof) return;
+    setBindLoading(true);
+    setError(null);
+    try {
+      await bindSessionProofIfNeeded(activeProof);
+      await refreshSessionProofBound(activeProof);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBindLoading(false);
     }
   };
 
@@ -461,8 +485,25 @@ export function VerifyPage() {
                 </>
               ) : null}
               {activeProof ? (
-                <div className="mt-6 space-y-2">
+                <div className="mt-6 space-y-3">
                   <Badge tone="ok">Private passport ready</Badge>
+                  {sessionProofBound === false ? (
+                    <>
+                      <p className="text-sm text-slate-muted">
+                        Your browser generated the proof locally. Authorize once with your passkey to bind it on-chain for settlement.
+                      </p>
+                      <Button className="mt-2" loading={bindLoading} onClick={handleAuthorizePasskey}>
+                        Authorize with passkey
+                      </Button>
+                    </>
+                  ) : sessionProofBound ? (
+                    <p className="text-sm text-brand">
+                      <CheckCircle2 className="mr-1 inline h-4 w-4" />
+                      Passkey authorized — ready for Marketplace or Send
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-muted">Checking passkey authorization…</p>
+                  )}
                   {advanced ? (
                     <ul className="text-xs text-slate-muted">
                       {publicInputsPanel(activeProof).map((row) => (
@@ -471,11 +512,11 @@ export function VerifyPage() {
                         </li>
                       ))}
                     </ul>
-                  ) : (
+                  ) : sessionProofBound ? (
                     <p className="text-sm text-slate-muted">
-                      You can invest or send with an asset-scoped proof. Your passkey smart account will authorize settlement.
+                      You can invest or send with an asset-scoped proof. Your passkey smart account authorizes settlement.
                     </p>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
             </Card>

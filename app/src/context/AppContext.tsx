@@ -30,6 +30,7 @@ import {
   readBalance,
   readSessionProofBound,
   sessionProofMatchesBound,
+  isSessionProofBoundOnChain,
   submitSignedTransaction,
 } from '../lib/contracts';
 import {
@@ -107,6 +108,8 @@ type AppContextValue = {
     credential: IssuerCredentialResponse;
   }>;
   bindSessionProofIfNeeded: (proof: ProofBundle) => Promise<string | null>;
+  sessionProofBound: boolean | null;
+  refreshSessionProofBound: (proof?: ProofBundle | null) => Promise<boolean>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
   fundSmartAccountEurc: (amount: string) => Promise<string>;
   fundSmartAccountXlm: (amountXlm: string) => Promise<string>;
@@ -201,6 +204,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<ActivityEntry[]>(() => loadActivity());
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
   const [smartAccountStale, setSmartAccountStale] = useState(false);
+  const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
+
+  const refreshSessionProofBound = useCallback(
+    async (proofBundle?: ProofBundle | null): Promise<boolean> => {
+      const candidate = proofBundle ?? proof;
+      if (!settlementAddress || !config.sessionStoreId || !candidate) {
+        setSessionProofBound(null);
+        return false;
+      }
+      const bound = await isSessionProofBoundOnChain(config, settlementAddress, candidate);
+      setSessionProofBound(bound);
+      return bound;
+    },
+    [config, settlementAddress, proof],
+  );
+
+  useEffect(() => {
+    if (!proof || !settlementAddress) {
+      setSessionProofBound(null);
+      return;
+    }
+    void refreshSessionProofBound(proof);
+  }, [proof, settlementAddress, refreshSessionProofBound]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1018,10 +1044,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const bindSessionProofIfNeeded = useCallback(
     async (proofBundle: ProofBundle): Promise<string | null> => {
-      if (!smartAccount || !settlementAddress || !config.sessionStoreId) return null;
-      if (!isContractAddress(settlementAddress)) return null;
-      const bound = await readSessionProofBound(config, settlementAddress);
-      if (bound && sessionProofMatchesBound(bound, proofBundle)) return null;
+      if (!smartAccount || !settlementAddress || !config.sessionStoreId) {
+        throw new Error('Create your passkey smart account before authorizing eligibility.');
+      }
+      if (!isContractAddress(settlementAddress)) {
+        throw new Error('Session proof bind requires a smart account address.');
+      }
+      const alreadyBound = await isSessionProofBoundOnChain(config, settlementAddress, proofBundle);
+      if (alreadyBound) {
+        setSessionProofBound(true);
+        return null;
+      }
       const bindSource = resolvePasskeySimulationSource(address);
       const bindTx = await buildBindSessionProofTransaction(
         config,
@@ -1029,7 +1062,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settlementAddress,
         proofBundle,
       );
-      const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
+      const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      setSessionProofBound(true);
       setReceiptTransactions((prev) => {
         const txs = { ...prev, sessionBind: bindHash };
         if (address && walletField) {
@@ -1044,9 +1078,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return txs;
       });
+      pushActivity({
+        kind: 'proof',
+        title: 'Passkey authorized',
+        detail: 'Session proof bound on-chain for settlement',
+        txHash: bindHash,
+        status: 'success',
+      });
       return bindHash;
     },
-    [config, smartAccount, settlementAddress, address, walletField, persistSession, persistPasskeySession],
+    [config, smartAccount, settlementAddress, address, walletField, persistSession, persistPasskeySession, pushActivity],
   );
 
   const ensureProofForAsset = useCallback(
@@ -1363,7 +1404,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               settlementFrom,
               proof,
             );
-            const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
+            const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+            setSessionProofBound(true);
             setReceiptTransactions((prev) => {
               const txs = { ...prev, sessionBind: bindHash };
               if (address && walletField) {
@@ -1487,6 +1529,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPofProof,
     ensureProofForAsset,
     bindSessionProofIfNeeded,
+    sessionProofBound,
+    refreshSessionProofBound,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
