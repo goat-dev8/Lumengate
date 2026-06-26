@@ -6,8 +6,8 @@ import {
   bundleFromHonkProof,
   type ProofBundle,
 } from './contracts';
-import type { UltraHonkBackend } from '@aztec/bb.js';
 import type { Noir } from '@noir-lang/noir_js';
+import { SyncUltraHonkBackend } from './syncUltraHonkBackend';
 
 /** bb.js IndexedDB cache keys (must match @aztec/bb.js CachedNetCrs). */
 const CRS_IDB_DB = 'keyval-store';
@@ -24,9 +24,8 @@ const PROVE_TIMEOUT_MS = 600_000;
 let runtimeInitPromise: Promise<void> | null = null;
 let initPromise: Promise<void> | null = null;
 let noir: Noir | null = null;
-let backend: UltraHonkBackend | null = null;
+let backend: SyncUltraHonkBackend | null = null;
 let circuitBytecode: string | null = null;
-let UltraHonkBackendCtor: typeof import('@aztec/bb.js').UltraHonkBackend | null = null;
 
 export type ProverEnvironmentStatus = {
   crossOriginIsolated: boolean;
@@ -63,11 +62,7 @@ async function ensureProverReady(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
     await initNoirRuntime();
-    const [{ Noir }, { UltraHonkBackend }] = await Promise.all([
-      import('@noir-lang/noir_js'),
-      import('@aztec/bb.js'),
-    ]);
-    UltraHonkBackendCtor = UltraHonkBackend;
+    const { Noir } = await import('@noir-lang/noir_js');
     const res = await fetch('/circuit/lumengate.json');
     if (!res.ok) throw new Error(`Circuit artifact missing (${res.status})`);
     const circuit = await res.json();
@@ -100,22 +95,37 @@ async function idbSet(key: string, value: Uint8Array): Promise<void> {
   });
 }
 
-function createBackend(): UltraHonkBackend {
+function createBackend(): SyncUltraHonkBackend {
   if (!circuitBytecode) throw new Error('Circuit bytecode not loaded');
-  if (!UltraHonkBackendCtor) throw new Error('Prover backend library not loaded');
-  return new UltraHonkBackendCtor(circuitBytecode, {
-    threads: 1,
-    memory: {
-      initial: 1024,
-      maximum: 65536,
-    },
-    logger: import.meta.env.DEV ? (msg: string) => console.debug('[bb.js]', msg) : undefined,
+  return new SyncUltraHonkBackend(circuitBytecode);
+}
+
+async function idbGet(key: string): Promise<Uint8Array | undefined> {
+  const db = await openCrsDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CRS_IDB_STORE, 'readonly');
+    const req = tx.objectStore(CRS_IDB_STORE).get(key);
+    req.onsuccess = () => {
+      const value = req.result;
+      resolve(value instanceof Uint8Array ? value : undefined);
+    };
+    req.onerror = () => reject(req.error ?? new Error(`IndexedDB get ${key} failed`));
   });
 }
 
-/** Seed bb.js CRS cache from same-origin static files (avoids slow/hung CDN fetch in worker). */
+/** Seed bb.js CRS cache from same-origin static files (avoids slow/hung CDN fetch). */
 export async function preloadCrsFromOrigin(): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
+
+  const [cachedG1, cachedG2] = await Promise.all([idbGet(CRS_G1_KEY), idbGet(CRS_G2_KEY)]);
+  if (
+    cachedG1 &&
+    cachedG2 &&
+    cachedG1.length >= CRS_G1_MIN_BYTES &&
+    cachedG2.length >= 64
+  ) {
+    return;
+  }
 
   const [g1Res, g2Res] = await Promise.all([fetch('/crs/g1.dat'), fetch('/crs/g2.dat')]);
   if (!g1Res.ok || !g2Res.ok) {
@@ -215,17 +225,17 @@ export async function generateProof(
 
   onProgress?.({
     stage: 'prove',
-    message: 'Starting private prover worker. First proof may take several minutes…',
+    message: 'Generating private proof on your device (first run may take 1–3 minutes)…',
     percent: 55,
   });
 
   backend = createBackend();
-  let proofData: Awaited<ReturnType<UltraHonkBackend['generateProof']>>;
+  let proofData: Awaited<ReturnType<SyncUltraHonkBackend['generateProof']>>;
   try {
     proofData = await withTimeout(
       backend.generateProof(witness, { keccak: true }),
       PROVE_TIMEOUT_MS,
-      'Proof generation timed out while the private prover worker was running. Close other heavy tabs and try again; your identity data was not sent anywhere.',
+      'Proof generation timed out. Close other heavy tabs and try again; your identity data was not sent anywhere.',
     );
   } catch (err) {
     const failedBackend = backend;

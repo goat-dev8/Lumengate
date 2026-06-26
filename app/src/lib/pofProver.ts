@@ -3,7 +3,9 @@ import type { ProofBundle } from './contracts';
 import { bundleFromHonkProof, assertProofBundleForChain } from './contracts';
 import { initNoirRuntime, preloadCrsFromOrigin } from './prover';
 
-let pofInit: Promise<{ noir: import('@noir-lang/noir_js').Noir; backend: import('@aztec/bb.js').UltraHonkBackend }> | null = null;
+import { SyncUltraHonkBackend } from './syncUltraHonkBackend';
+
+let pofInit: Promise<{ noir: import('@noir-lang/noir_js').Noir; backend: SyncUltraHonkBackend }> | null = null;
 
 function randomFieldSecret(): string {
   const bytes = new Uint8Array(31);
@@ -33,14 +35,13 @@ async function ensurePofProver() {
     await initNoirRuntime();
     await preloadCrsFromOrigin();
     const { Noir } = await import('@noir-lang/noir_js');
-    const { UltraHonkBackend } = await import('@aztec/bb.js');
     const res = await fetch('/circuit/proof_of_funds.json');
     if (!res.ok) {
       throw new Error('Proof-of-funds circuit missing — run scripts/build_pof_circuit.sh');
     }
     const circuit = await res.json();
     const noir = new Noir(circuit);
-    const backend = new UltraHonkBackend(circuit.bytecode, { threads: 1 });
+    const backend = new SyncUltraHonkBackend(circuit.bytecode);
     return { noir, backend };
   })();
   return pofInit;
