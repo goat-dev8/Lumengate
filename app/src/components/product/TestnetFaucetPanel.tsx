@@ -66,6 +66,7 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed }: P
       />
       <p className="text-sm text-slate-muted">
         Real on-chain testnet funds from the Lumengate treasury admin — one claim per asset every 24 hours.
+        EURC is Lumengate testnet SAC (issuer {config.eurcIssuer?.slice(0, 8)}…), not Circle mainnet EURC.
         Treasury units here are for trying Send; marketplace investments still mint production-position units.
       </p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">

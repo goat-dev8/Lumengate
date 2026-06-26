@@ -31,6 +31,7 @@ import {
   readSessionProofBound,
   sessionProofMatchesBound,
   isSessionProofBoundOnChain,
+  credentialRootMatchesChain,
   submitSignedTransaction,
 } from '../lib/contracts';
 import {
@@ -108,6 +109,10 @@ type AppContextValue = {
     credential: IssuerCredentialResponse;
   }>;
   bindSessionProofIfNeeded: (proof: ProofBundle) => Promise<string | null>;
+  confirmPassportEligibility: (
+    asset?: SettlementAsset,
+    onProgress?: (message: string) => void,
+  ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
   refreshSessionProofBound: (proof?: ProofBundle | null) => Promise<boolean>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
@@ -997,6 +1002,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProofState(p);
       const duration = durationSec ?? null;
       setProofDurationSec(duration);
+      const nextLifecycle = p ? deriveProofLifecycle(proofCredential, p, null) : proofLifecycle;
       if (p) {
         setReceiptTransactions(emptyReceiptTxs);
         setTransferResult(null);
@@ -1004,7 +1010,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setReplayMessage(null);
         setProofReceipt(null);
         setConsumedTxHash(null);
-        setProofLifecycle(deriveProofLifecycle(proofCredential, p, null));
+        setProofLifecycle(nextLifecycle);
+      }
+      if (smartAccount && walletField) {
+        persistPasskeySession({
+          smartAccountAddress: smartAccount.smartAccountAddress,
+          walletField,
+          smartAccount,
+          credential: proofCredential,
+          proof: p,
+          proofDurationSec: duration,
+          policyKey,
+          selectedOfferingId,
+          receiptTransactions: p ? emptyReceiptTxs : receiptTransactions,
+          transferResult: p ? null : transferResult,
+          replayBlocked: p ? false : replayBlocked,
+          replayMessage: p ? null : replayMessage,
+          consumedTxHash: p ? null : consumedTxHash,
+          proofLifecycle: p ? nextLifecycle.lifecycle : proofLifecycle.lifecycle,
+          fundingWalletAddress: address,
+        });
       }
       if (address && walletField) {
         persistSession({
@@ -1021,7 +1046,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           replayBlocked: p ? false : replayBlocked,
           replayMessage: p ? null : replayMessage,
           consumedTxHash: p ? null : consumedTxHash,
-          proofLifecycle: p ? 'ready' : proofLifecycle.lifecycle,
+          proofLifecycle: p ? nextLifecycle.lifecycle : proofLifecycle.lifecycle,
         });
       }
     },
@@ -1029,10 +1054,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       address,
       walletField,
       credential,
+      smartAccount,
+      address,
       policyKey,
       selectedOfferingId,
       pofProof,
       persistSession,
+      persistPasskeySession,
       receiptTransactions,
       transferResult,
       replayBlocked,
@@ -1090,6 +1118,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [config, smartAccount, settlementAddress, address, walletField, persistSession, persistPasskeySession, pushActivity],
   );
 
+  const confirmPassportEligibility = useCallback(
+    async (
+      asset: SettlementAsset = 'rwa',
+      onProgress?: (message: string) => void,
+    ): Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }> => {
+      if (!credential) {
+        throw new Error('Request a passport before confirming eligibility.');
+      }
+      if (!smartAccount || !settlementAddress) {
+        throw new Error('Create your passkey smart account before confirming eligibility.');
+      }
+      onProgress?.('Checking eligibility registry on-chain…');
+      const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
+      if (!rootsReady) {
+        throw new Error(
+          'Eligibility registry is still syncing on-chain. Wait ~30 seconds after requesting your passport, then try again.',
+        );
+      }
+      const scope = ASSET_SCOPES[asset];
+      const scopedCredential = credentialForScope(credential, scope);
+      onProgress?.('Generating private proof in your browser (~30s)…');
+      const { bundle, durationSec } = await generateProof(scopedCredential, (p) => {
+        onProgress?.(p.message);
+      });
+      setProof(bundle, durationSec, scopedCredential);
+      onProgress?.('Authorize with your passkey to bind the proof on-chain…');
+      const bindHash = await bindSessionProofIfNeeded(bundle);
+      await refreshSessionProofBound(bundle);
+      pushActivity({
+        kind: 'proof',
+        title: `${asset === 'rwa' ? 'Eligibility' : asset.toUpperCase()} confirmed`,
+        detail: bindHash
+          ? 'Private passport bound on-chain for settlement'
+          : 'Session proof already bound for this passport',
+        txHash: bindHash ?? undefined,
+        status: 'success',
+      });
+      return { proof: bundle, credential: scopedCredential, bindHash };
+    },
+    [
+      credential,
+      smartAccount,
+      settlementAddress,
+      config,
+      setProof,
+      bindSessionProofIfNeeded,
+      refreshSessionProofBound,
+      pushActivity,
+    ],
+  );
+
   const ensureProofForAsset = useCallback(
     async (
       asset: SettlementAsset,
@@ -1100,6 +1179,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { proof, credential };
       }
       if (!credential) throw new Error('Request a passport before settlement');
+      const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
+      if (!rootsReady) {
+        throw new Error(
+          'Eligibility registry is still syncing on-chain. Wait ~30 seconds after requesting your passport, then try again.',
+        );
+      }
       const scopedCredential = credentialForScope(credential, scope);
       const { bundle, durationSec } = await generateProof(scopedCredential);
       setProof(bundle, durationSec, scopedCredential);
@@ -1112,7 +1197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return { proof: bundle, credential: scopedCredential };
     },
-    [credential, proof, setProof, pushActivity, bindSessionProofIfNeeded],
+    [credential, proof, setProof, pushActivity, bindSessionProofIfNeeded, config],
   );
 
   const setPofProof = useCallback(
@@ -1529,6 +1614,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPofProof,
     ensureProofForAsset,
     bindSessionProofIfNeeded,
+    confirmPassportEligibility,
     sessionProofBound,
     refreshSessionProofBound,
     fundSmartAccountUsdc,

@@ -18,6 +18,6 @@ export function loadComplianceAssetTargets(): ComplianceAssetTargets {
     usdcSac: import.meta.env.VITE_USDC_SAC_ID || DEFAULT_USDC_SAC,
     eurcNote:
       import.meta.env.VITE_EURC_NOTE ||
-      'EURC on Stellar uses the same SAC compliance-target pattern as USDC.',
+      'Testnet EURC is a Lumengate-issued SAC token for compliant settlement demos — not Circle mainnet EURC.',
   };
 }

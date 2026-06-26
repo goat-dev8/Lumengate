@@ -43,7 +43,17 @@ async function ensureProverReady(): Promise<void> {
 }
 
 export async function warmProver(): Promise<void> {
+  assertProverEnvironment();
   await ensureProverReady();
+}
+
+function assertProverEnvironment(): void {
+  if (typeof window !== 'undefined' && typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
+    throw new Error(
+      'Private eligibility prover requires a cross-origin isolated page (COOP/COEP). ' +
+        'Redeploy the app with security headers enabled, then hard-refresh.',
+    );
+  }
 }
 
 export type ProveProgress = {
@@ -74,6 +84,7 @@ export async function generateProof(
 ): Promise<{ bundle: ProofBundle; durationSec: number }> {
   const started = performance.now();
   onProgress?.({ stage: 'init', message: 'Loading prover…', percent: 10 });
+  assertProverEnvironment();
   await ensureProverReady();
   if (!noir || !backend) throw new Error('Prover not initialized');
 

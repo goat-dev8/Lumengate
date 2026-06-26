@@ -11,7 +11,6 @@ import { fetchIssuerHealth } from '../lib/config';
 import { policyList } from '../lib/policies';
 import { credentialRootMatchesChain } from '../lib/contracts';
 import {
-  generateProof,
   publicInputsPanel,
   type ProveProgress,
 } from '../lib/prover';
@@ -78,7 +77,7 @@ export function VerifyPage() {
     pushActivity,
     policyKey,
     setPolicyKey,
-    setProof,
+    confirmPassportEligibility,
     bindSessionProofIfNeeded,
     sessionProofBound,
     refreshSessionProofBound,
@@ -182,35 +181,19 @@ export function VerifyPage() {
   };
 
   const handleProve = async () => {
-    if (!credential) {
-      setError('Request a passport first — each settlement needs a fresh private confirmation.');
-      return;
-    }
-    if (!smartAccount || !settlementAddress) {
-      setError('Create your passkey smart account before confirming eligibility.');
-      return;
-    }
     setProveLoading(true);
     setError(null);
-    setProveProgress(null);
-    recoveryLog('proof.generate.begin', { nullifier: credential.proverInputs?.nullifier });
+    setProveProgress({ stage: 'init', message: 'Starting private confirmation…', percent: 5 });
+    recoveryLog('proof.generate.begin', { nullifier: credential?.proverInputs?.nullifier });
     try {
-      const { bundle, durationSec } = await generateProof(credential, setProveProgress);
-      recoveryLog('proof.generate.done', {
-        durationSec,
-        nullifier: bundle.publicInputs.nullifier,
+      await confirmPassportEligibility('rwa', (message) => {
+        setProveProgress({
+          stage: message.toLowerCase().includes('passkey') ? 'done' : 'prove',
+          message,
+          percent: message.toLowerCase().includes('passkey') ? 95 : 70,
+        });
       });
-      setProof(bundle, durationSec, credential);
-      setProveProgress({ stage: 'done', message: 'Passport ready — authorize with your passkey…', percent: 95 });
-      await bindSessionProofIfNeeded(bundle);
-      await refreshSessionProofBound(bundle);
       setError(null);
-      pushActivity({
-        kind: 'proof',
-        title: 'Eligibility confirmed',
-        detail: 'Private passport ready for one settlement',
-        status: 'success',
-      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       recoveryLog('proof.generate.error', { message: msg });
@@ -476,9 +459,10 @@ export function VerifyPage() {
               {!activeProof ? (
                 <>
                   <p className="mt-3 text-sm text-slate-muted">
-                    {proveProgress?.message || 'Ready to confirm eligibility…'}
+                    {proveProgress?.message ||
+                      'Ready to confirm eligibility — proof runs locally (~30s), then your passkey authorizes on-chain binding.'}
                   </p>
-                  <Button className="mt-4" loading={proveLoading} disabled={!credential} onClick={handleProve}>
+                  <Button className="mt-4" loading={proveLoading} disabled={!credential || !smartAccount} onClick={handleProve}>
                     <Sparkles className="h-4 w-4" />
                     Confirm eligibility
                   </Button>
