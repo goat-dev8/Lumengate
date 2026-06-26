@@ -83,7 +83,8 @@ export async function syncProofLifecycleOnChain(
       return {
         lifecycle: 'consumed',
         consumedTxHash: settlementTxHash,
-        reason: 'This asset/action proof was already used. Generate a new scoped proof for the next settlement.',
+        reason:
+          'This asset/action eligibility was already used on-chain. Renew your passport on Verify, then confirm and authorize again.',
       };
     }
     return { lifecycle: 'ready', consumedTxHash: null, reason: null };

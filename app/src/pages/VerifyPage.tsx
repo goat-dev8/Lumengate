@@ -536,7 +536,7 @@ export function VerifyPage() {
           <Card>
             <CardHeader title="Step 4 — Unlock investments" badge={<Badge tone="ok">Ready</Badge>} />
             <p className="text-sm text-slate-muted">
-              Your private passport is active for one compliant settlement.
+              Your private passport is active for one compliant settlement per asset (treasury, USDC, EURC each have their own slot). After a send, renew your passport before the next one.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link to="/app/marketplace">

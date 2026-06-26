@@ -80,6 +80,7 @@ import {
   proofScopeMatches,
   type SettlementAsset,
 } from '../lib/assetScope';
+import { assertScopeNullifierAvailable, isScopeNullifierSpent, scopeNullifierSpentMessage } from '../lib/scopeNullifier';
 import {
   createPersonalSmartAccount,
   hydrateSmartAccountPasskeyMetadata,
@@ -117,6 +118,7 @@ type AppContextValue = {
     proof: ProofBundle;
     credential: IssuerCredentialResponse;
   }>;
+  isScopeSettlementAvailable: (asset: SettlementAsset) => Promise<boolean>;
   bindSessionProofIfNeeded: (proof: ProofBundle) => Promise<string | null>;
   confirmPassportEligibility: (
     asset?: SettlementAsset,
@@ -1182,6 +1184,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!smartAccount || !settlementAddress) {
         throw new Error('Create your passkey smart account before confirming eligibility.');
       }
+      const scope = ASSET_SCOPES[asset];
+      await assertScopeNullifierAvailable(config, credential, asset);
       onProgress?.('Checking eligibility registry on-chain…');
       const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
       if (!rootsReady) {
@@ -1189,7 +1193,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           'Eligibility registry is still syncing on-chain. Wait ~30 seconds after requesting your passport, then try again.',
         );
       }
-      const scope = ASSET_SCOPES[asset];
       const scopedCredential = credentialForScope(credential, scope);
       onProgress?.('Generating private proof in your browser (~30s)…');
       const { bundle, durationSec } = await generateProof(scopedCredential, (p) => {
@@ -1222,10 +1225,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onProgress?: (message: string) => void,
     ): Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse }> => {
       const scope = ASSET_SCOPES[asset];
+      if (!credential) throw new Error('Request a passport before settlement');
+      await assertScopeNullifierAvailable(config, credential, asset);
       if (proof && credential && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
+        const spent = await isScopeNullifierSpent(config, credential, scope);
+        if (spent) {
+          setProofState(null);
+          setSessionProofBound(false);
+          clearLocalProofBindCache();
+          throw new Error(scopeNullifierSpentMessage(asset));
+        }
         return { proof, credential: credentialForScope(credential, scope) };
       }
-      if (!credential) throw new Error('Request a passport before settlement');
       const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
       if (!rootsReady) {
         throw new Error(
@@ -1249,6 +1260,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { proof: bundle, credential: scopedCredential };
     },
     [credential, proof, setProof, pushActivity, config],
+  );
+
+  const isScopeSettlementAvailable = useCallback(
+    async (asset: SettlementAsset): Promise<boolean> => {
+      if (!credential) return false;
+      const scope = ASSET_SCOPES[asset];
+      try {
+        return !(await isScopeNullifierSpent(config, credential, scope));
+      } catch {
+        return true;
+      }
+    },
+    [credential, config],
   );
 
   const setPofProof = useCallback(
@@ -1681,6 +1705,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProof,
     setPofProof,
     ensureProofForAsset,
+    isScopeSettlementAvailable,
     bindSessionProofIfNeeded,
     confirmPassportEligibility,
     sessionProofBound,

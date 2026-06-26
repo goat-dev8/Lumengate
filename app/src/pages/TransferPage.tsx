@@ -21,6 +21,8 @@ import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartA
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { syncProofLifecycleOnChain } from '../lib/proofLifecycle';
+import { ASSET_SCOPES } from '../lib/assetScope';
+import { isScopeNullifierSpent, scopeNullifierSpentMessage } from '../lib/scopeNullifier';
 import { friendlyAssetName } from '../lib/productState';
 import { parseStellarAmount } from '../lib/assetAmount';
 import {
@@ -37,8 +39,8 @@ import {
 import { checkRecipientUsdcCapacity } from '../lib/horizon';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { currentSettlementOwner } from '../lib/settlementOwner';
-import { ASSET_SCOPES } from '../lib/assetScope';
 import { resolvePasskeySimulationSource } from '../lib/smartAccount';
+import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 
@@ -91,6 +93,7 @@ export function TransferPage() {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [balanceRefresh, setBalanceRefresh] = useState(0);
+  const [scopeBlocked, setScopeBlocked] = useState<ProofLifecycleState | null>(null);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -138,6 +141,34 @@ export function TransferPage() {
     }
   }, [asset, config.marketplaceSettlementAddress, to]);
 
+  useEffect(() => {
+    if (!credential) {
+      setScopeBlocked(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const spent = await isScopeNullifierSpent(config, credential, scope);
+        if (cancelled) return;
+        if (spent) {
+          setScopeBlocked({
+            lifecycle: 'consumed',
+            consumedTxHash,
+            reason: scopeNullifierSpentMessage(asset),
+          });
+        } else {
+          setScopeBlocked(null);
+        }
+      } catch {
+        if (!cancelled) setScopeBlocked(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [credential, asset, scope, config, consumedTxHash]);
+
   const handleTransfer = async () => {
     if (!credential || !to || !amount) return;
     if (!smartAccount || !settlementAddress) {
@@ -146,6 +177,10 @@ export function TransferPage() {
     }
     if (proofLifecycle.lifecycle === 'invalid' || proofLifecycle.lifecycle === 'consumed') {
       setError(proofLifecycle.reason ?? 'Your passport is not ready for settlement.');
+      return;
+    }
+    if (scopeBlocked?.lifecycle === 'consumed') {
+      setError(scopeBlocked.reason ?? scopeNullifierSpentMessage(asset));
       return;
     }
 
@@ -396,9 +431,11 @@ export function TransferPage() {
           />
         ) : null}
 
-        {proofLifecycle.lifecycle === 'invalid' || proofLifecycle.lifecycle === 'consumed' ? (
+        {proofLifecycle.lifecycle === 'invalid' ||
+        proofLifecycle.lifecycle === 'consumed' ||
+        scopeBlocked?.lifecycle === 'consumed' ? (
           <ProofLifecyclePanel
-            state={proofLifecycle}
+            state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
             config={config}
             onBeginRecovery={handleRecovery}
             onRefreshProof={() => syncProofLifecycle()}

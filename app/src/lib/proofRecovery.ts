@@ -16,8 +16,8 @@ export function recoveryPlanAfterNullifierSpent(consumedTxHash: string | null): 
     requiresNewCredential: true,
     requiresNewProof: true,
     message: consumedTxHash
-      ? `Settlement ${consumedTxHash.slice(0, 12)}… used your passport. Renew it, then confirm eligibility again.`
-      : 'Your passport was used for settlement. Renew it, then confirm eligibility again.',
+      ? `Settlement ${consumedTxHash.slice(0, 12)}… used this passport slot. Request a new passport below, then confirm eligibility and authorize with passkey.`
+      : 'This passport slot was already used on-chain. Request a new passport below, then confirm eligibility and authorize with passkey.',
   };
 }
 

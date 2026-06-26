@@ -893,7 +893,9 @@ export function formatSorobanUserError(message: string): string {
   }
 
   if (message.includes('Error(Contract, #6)') || message.includes('NullifierSpent')) {
-    hints.push('This passport nullifier was already spent on-chain.');
+    hints.push(
+      'This passport slot was already used on-chain. Renew your passport on Verify, confirm eligibility, authorize with passkey, then retry.',
+    );
   }
   if (message.includes('Error(Contract, #7)')) {
     hints.push('Eligibility scope does not match the selected offering.');
