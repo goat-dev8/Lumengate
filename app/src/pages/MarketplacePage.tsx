@@ -39,6 +39,7 @@ import {
 
   buildTransferTransaction,
   buildUsdcTransferTransaction,
+  buildEurcTransferTransaction,
   buildSwapCompliantTransaction,
   buildPayCompliantTransaction,
   buildVerifyTransaction,
@@ -47,6 +48,7 @@ import {
   readBalance,
   readNullifierSpent,
   readComplianceAdminUsdcBalance,
+  readEurcSacBalance,
 } from '../lib/contracts';
 
 import type { LiveOffering } from '../lib/offerings';
@@ -127,7 +129,11 @@ export function MarketplacePage() {
   const selected =
 
     offerings.find((o) => o.id === selectedOfferingId) ?? offerings[0] ?? null;
-  const selectedScope = ASSET_SCOPES[selected?.settlementAsset === 'usdc' ? 'usdc' : 'rwa'];
+  const selectedAsset =
+    selected?.settlementAsset === 'usdc' || selected?.settlementAsset === 'eurc'
+      ? selected.settlementAsset
+      : 'rwa';
+  const selectedScope = ASSET_SCOPES[selectedAsset];
   const activeProof =
     proofLifecycle.lifecycle === 'ready' &&
     proofMatchesCredential(proof, credential) &&
@@ -140,6 +146,8 @@ export function MarketplacePage() {
   const [balance, setBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [usdcBalanceRaw, setUsdcBalanceRaw] = useState<bigint | null>(null);
+  const [eurcBalance, setEurcBalance] = useState<string | null>(null);
+  const [eurcBalanceRaw, setEurcBalanceRaw] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const [settling, setSettling] = useState(false);
@@ -189,6 +197,20 @@ export function MarketplacePage() {
     } else {
       setUsdcBalance(null);
       setUsdcBalanceRaw(null);
+    }
+    if (config.eurcSacId) {
+      readEurcSacBalance(config, balanceHolder)
+        .then((formatted) => {
+          setEurcBalance(formatted);
+          setEurcBalanceRaw(parseStellarAmount(formatted));
+        })
+        .catch(() => {
+          setEurcBalance(null);
+          setEurcBalanceRaw(null);
+        });
+    } else {
+      setEurcBalance(null);
+      setEurcBalanceRaw(null);
     }
 
   }, [address, settlementAddress, config, txHash, pofTxHash]);
@@ -299,7 +321,8 @@ export function MarketplacePage() {
 
     const amount = offeringMinimumBigInt(offering);
     const isUsdc = offering.settlementAsset === 'usdc';
-    const route = offering.settlementRoute ?? (isUsdc ? 'sac' : 'rwa');
+    const isEurc = offering.settlementAsset === 'eurc';
+    const route = offering.settlementRoute ?? (isUsdc || isEurc ? 'sac' : 'rwa');
     if (route === 'dex' && !config.compliantDexId) return 'CompliantDEX not configured';
     if (route === 'payroll' && !config.compliantPayrollId) return 'CompliantPayroll not configured';
     if (isUsdc) {
@@ -308,6 +331,16 @@ export function MarketplacePage() {
         const minRaw = parseStellarAmount(offering.minimumAmount);
         if (usdcBalanceRaw !== null && !hasSufficientBalance(usdcBalanceRaw, minRaw)) {
           return `Minimum ${offering.minimumAmount} USDC (available ${usdcBalance ?? '0'})`;
+        }
+      } catch {
+        return 'Invalid offering minimum amount';
+      }
+    } else if (isEurc) {
+      if (!config.eurcSacId) return 'EURC settlement not configured';
+      try {
+        const minRaw = parseStellarAmount(offering.minimumAmount);
+        if (eurcBalanceRaw !== null && !hasSufficientBalance(eurcBalanceRaw, minRaw)) {
+          return `Minimum ${offering.minimumAmount} EURC (available ${eurcBalance ?? '0'})`;
         }
       } catch {
         return 'Invalid offering minimum amount';
@@ -340,7 +373,10 @@ export function MarketplacePage() {
 
     try {
 
-      const settlementAsset = offering.settlementAsset === 'usdc' ? 'usdc' : 'rwa';
+      const settlementAsset =
+        offering.settlementAsset === 'usdc' || offering.settlementAsset === 'eurc'
+          ? offering.settlementAsset
+          : 'rwa';
       const scope = ASSET_SCOPES[settlementAsset];
       const scopedProof =
         activeProof ?? (await ensureProofForAsset(settlementAsset)).proof;
@@ -407,7 +443,9 @@ export function MarketplacePage() {
 
       const recipient = offering.settlementAddress || config.marketplaceSettlementAddress;
       const amount = offering.minimumAmount;
-      const route = offering.settlementRoute ?? (offering.settlementAsset === 'usdc' ? 'sac' : 'rwa');
+      const route =
+        offering.settlementRoute ??
+        (offering.settlementAsset === 'usdc' || offering.settlementAsset === 'eurc' ? 'sac' : 'rwa');
       const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
       let tx: Parameters<typeof signAndSubmit>[0];
       if (route === 'dex') {
@@ -430,6 +468,16 @@ export function MarketplacePage() {
         );
       } else if (offering.settlementAsset === 'usdc') {
         tx = await buildUsdcTransferTransaction(
+          config,
+          address,
+          settlementFrom,
+          recipient,
+          amount,
+          scopedProof,
+          scope,
+        );
+      } else if (offering.settlementAsset === 'eurc') {
+        tx = await buildEurcTransferTransaction(
           config,
           address,
           settlementFrom,
@@ -472,7 +520,7 @@ export function MarketplacePage() {
 
         title: `Settlement: ${offering.title}`,
 
-        detail: `${amount} ${offering.settlementAsset === 'usdc' ? 'USDC' : 'units'} → ${truncateMiddle(recipient, 8, 6)} (${route})`,
+        detail: `${amount} ${offering.settlementAsset === 'usdc' ? 'USDC' : offering.settlementAsset === 'eurc' ? 'EURC' : 'units'} → ${truncateMiddle(recipient, 8, 6)} (${route})`,
 
         txHash: hash,
 

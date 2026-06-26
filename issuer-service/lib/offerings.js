@@ -31,6 +31,8 @@ function listOfferings(env = process.env) {
   const usdcIssuer = envTrim(
     env.VITE_USDC_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
   );
+  const eurcSacId = envTrim(env.VITE_EURC_SAC_ID || env.EURC_SAC_ID);
+  const eurcIssuer = envTrim(env.VITE_EURC_ISSUER || env.EURC_ISSUER);
   const compliantDexId = envTrim(env.COMPLIANT_DEX_ID || env.VITE_COMPLIANT_DEX_ID);
   const compliantPayrollId = envTrim(env.COMPLIANT_PAYROLL_ID || env.VITE_COMPLIANT_PAYROLL_ID);
 
@@ -55,7 +57,12 @@ function listOfferings(env = process.env) {
       ...row,
       settlementRoute: route,
       minimumAmount: row.minimumAmount,
-      unitLabel: row.settlementAsset === 'usdc' ? 'USDC' : 'RWA units',
+      unitLabel:
+        row.settlementAsset === 'usdc'
+          ? 'USDC'
+          : row.settlementAsset === 'eurc'
+            ? 'EURC'
+            : 'RWA units',
       policyId: policy.policyId,
       claims: policy.claims || [],
       eligibilityPolicy: policy.title,
@@ -74,8 +81,8 @@ function listOfferings(env = process.env) {
         compliantPayrollId: compliantPayrollId || null,
       },
       complianceTargets: {
-        usdcSacId,
-        usdcIssuer,
+        usdcSacId: row.settlementAsset === 'eurc' ? eurcSacId : usdcSacId,
+        usdcIssuer: row.settlementAsset === 'eurc' ? eurcIssuer : usdcIssuer,
       },
       fundsThreshold: row.fundsThreshold
         ? String(row.fundsThreshold)

@@ -68,7 +68,21 @@ The regression suite uses live Stellar testnet contracts, live Horizon/RPC reads
 - **Frontend:** Vercel — root `app/`, see `app/.env.example`
 - **Backend:** Render — `render.yaml`, root `issuer-service/`
 
-Contract IDs for testnet are in `deployments.json`. Set all `VITE_*` and issuer env vars in your hosting dashboards; never commit `.env`.
+Contract IDs for testnet are in `deployments.json`. Set all required `VITE_*` and issuer env vars in your hosting dashboards; never commit `.env`. Privacy-pool and ASP membership IDs are intentionally unset in the frontend template because those contracts are not wired into the settlement path.
+
+## Verification
+
+```bash
+npm test
+cd app && npm run build
+cd ..
+bash scripts/regression_test.sh
+bash scripts/build_contracts.sh
+bash scripts/verify_passkey_auth_encoding.sh
+bash scripts/verify-tx-events.sh 46c8471c5a536940443f8f172e9193603b87743317ee6ad61b34e712fe1b16f0
+```
+
+`npm run test:e2e` requires Playwright browser system dependencies. On Linux hosts, install them with `npx playwright install-deps chromium`; without sudo the suite is blocked by missing `libnspr4.so`.
 
 ## Security
 

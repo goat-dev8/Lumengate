@@ -163,6 +163,25 @@ export function SettingsPage() {
           </p>
         </Card>
 
+        <Card className="mt-8">
+          <CardHeader title="Passkey recovery" badge={<Badge tone="warn">No key recovery</Badge>} />
+          <div className="space-y-3 text-sm text-slate-muted">
+            <p>
+              Lumengate cannot recover a lost platform passkey. Passkeys authorize the smart account directly, so a lost
+              authenticator means that account cannot sign protected settlement calls.
+            </p>
+            <p>
+              The supported recovery path is replacement: create a new passkey smart account on Passport, fund the new
+              deposit address with XLM and the settlement asset, then request a fresh passport proof. Funds left on an
+              old account remain on that old contract address.
+            </p>
+            <p>
+              For the hackathon testnet deployment, multi-device passkey backup depends on the user platform provider
+              (for example iCloud Keychain or Google Password Manager), not Lumengate custody.
+            </p>
+          </div>
+        </Card>
+
         <div className="mt-8 grid gap-6 xl:grid-cols-2">
           <AssetPolicyMatrix />
           <UsdcCompliancePanel config={config} walletAddress={settlementOwner} variant="compact" />

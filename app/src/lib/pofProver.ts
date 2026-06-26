@@ -1,7 +1,7 @@
 import type { DeploymentConfig } from './config';
 import type { ProofBundle } from './contracts';
 import { bundleFromHonkProof, assertProofBundleForChain } from './contracts';
-import { warmProver } from './prover';
+import { initNoirRuntime } from './prover';
 
 let pofInit: Promise<{ noir: import('@noir-lang/noir_js').Noir; backend: import('@aztec/bb.js').UltraHonkBackend }> | null = null;
 
@@ -30,7 +30,7 @@ async function fetchPofNullifier(issuerServiceUrl: string, noteSecret: string): 
 async function ensurePofProver() {
   if (pofInit) return pofInit;
   pofInit = (async () => {
-    await warmProver();
+    await initNoirRuntime();
     const { Noir } = await import('@noir-lang/noir_js');
     const { UltraHonkBackend } = await import('@aztec/bb.js');
     const res = await fetch('/circuit/proof_of_funds.json');

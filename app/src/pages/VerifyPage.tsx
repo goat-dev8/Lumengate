@@ -90,6 +90,7 @@ export function VerifyPage() {
     replaceSmartAccount,
     settlementAddress,
     fundSmartAccountUsdc,
+    fundSmartAccountEurc,
     fundSmartAccountXlm,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
@@ -394,6 +395,7 @@ export function VerifyPage() {
             config={config}
             smartAccountAddress={settlementAddress}
             onFundUsdc={fundSmartAccountUsdc}
+            onFundEurc={fundSmartAccountEurc}
             onFundXlm={fundSmartAccountXlm}
             compact
           />

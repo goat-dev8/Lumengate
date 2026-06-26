@@ -6,6 +6,7 @@ import {
   readBalance,
   readComplianceAdminUsdcBalance,
   readContractXlmBalance,
+  readEurcSacBalance,
   formatSorobanUserError,
 } from '../../lib/contracts';
 import { explorerTxUrl, truncateMiddle } from '../../lib/utils';
@@ -17,6 +18,7 @@ type Props = {
   config: DeploymentConfig;
   smartAccountAddress: string;
   onFundUsdc: (amount: string) => Promise<string>;
+  onFundEurc?: (amount: string) => Promise<string>;
   onFundXlm: (amountXlm: string) => Promise<string>;
   onFunded?: () => void;
   compact?: boolean;
@@ -26,16 +28,20 @@ export function FundSmartAccountPanel({
   config,
   smartAccountAddress,
   onFundUsdc,
+  onFundEurc,
   onFundXlm,
   onFunded,
   compact,
 }: Props) {
   const [fundAmount, setFundAmount] = useState('10');
+  const [eurcFundAmount, setEurcFundAmount] = useState('10');
   const [xlmAmount, setXlmAmount] = useState('2');
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   const [xlmBalance, setXlmBalance] = useState<string | null>(null);
   const [rwaBalance, setRwaBalance] = useState<string | null>(null);
   const [loadingUsdc, setLoadingUsdc] = useState(false);
+  const [loadingEurc, setLoadingEurc] = useState(false);
   const [loadingXlm, setLoadingXlm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -48,6 +54,13 @@ export function FundSmartAccountPanel({
     readContractXlmBalance(config, smartAccountAddress)
       .then(setXlmBalance)
       .catch(() => setXlmBalance(null));
+    if (config.eurcSacId) {
+      readEurcSacBalance(config, smartAccountAddress)
+        .then(setEurcBalance)
+        .catch(() => setEurcBalance(null));
+    } else {
+      setEurcBalance(null);
+    }
     readBalance(config, smartAccountAddress)
       .then(setRwaBalance)
       .catch(() => setRwaBalance(null));
@@ -59,6 +72,7 @@ export function FundSmartAccountPanel({
 
   const funded =
     Number(usdcBalance ?? '0') > 0 ||
+    Number(eurcBalance ?? '0') > 0 ||
     BigInt(rwaBalance ?? '0') > 0n ||
     Number(xlmBalance ?? '0') > 0;
 
@@ -100,6 +114,23 @@ export function FundSmartAccountPanel({
     }
   };
 
+  const handleFundEurc = async () => {
+    if (!onFundEurc) return;
+    setLoadingEurc(true);
+    setError(null);
+    try {
+      const hash = await onFundEurc(eurcFundAmount);
+      setTxHash(hash);
+      refreshBalances();
+      onFunded?.();
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(formatSorobanUserError(raw));
+    } finally {
+      setLoadingEurc(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader
@@ -113,10 +144,14 @@ export function FundSmartAccountPanel({
         </p>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
         <div>
           <p className="text-xs text-slate-muted">USDC on smart account</p>
           <p className="text-lg font-semibold text-navy">{usdcBalance ?? '…'} USDC</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-muted">EURC on smart account</p>
+          <p className="text-lg font-semibold text-navy">{eurcBalance ?? '…'} EURC</p>
         </div>
         <div>
           <p className="text-xs text-slate-muted">XLM reserve</p>
@@ -137,7 +172,7 @@ export function FundSmartAccountPanel({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-3">
         <label className="block">
           <span className="text-sm text-slate-muted">Send USDC from wallet</span>
           <input
@@ -151,6 +186,28 @@ export function FundSmartAccountPanel({
           <Button type="button" className="mt-3 w-full" loading={loadingUsdc} onClick={handleFundUsdc}>
             <Wallet className="h-4 w-4" />
             Fund with USDC
+          </Button>
+        </label>
+        <label className="block">
+          <span className="text-sm text-slate-muted">Send EURC from wallet</span>
+          <input
+            className="mt-2 w-full rounded-xl border border-slate-line px-4 py-3 text-sm outline-none focus:border-brand"
+            value={eurcFundAmount}
+            onChange={(e) => setEurcFundAmount(e.target.value)}
+            type="number"
+            min="0"
+            step="0.0000001"
+            disabled={!config.eurcSacId || !onFundEurc}
+          />
+          <Button
+            type="button"
+            className="mt-3 w-full"
+            variant="secondary"
+            loading={loadingEurc}
+            onClick={handleFundEurc}
+            disabled={!config.eurcSacId || !onFundEurc}
+          >
+            Fund with EURC
           </Button>
         </label>
         <label className="block">

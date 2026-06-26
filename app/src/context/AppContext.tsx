@@ -80,7 +80,11 @@ import {
   type SmartAccountAssembledTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
-import { buildFundSmartAccountUsdcXdr, buildFundSmartAccountXlmXdr } from '../lib/smartAccountFunding';
+import {
+  buildFundSmartAccountEurcXdr,
+  buildFundSmartAccountUsdcXdr,
+  buildFundSmartAccountXlmXdr,
+} from '../lib/smartAccountFunding';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -99,6 +103,7 @@ type AppContextValue = {
     credential: IssuerCredentialResponse;
   }>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
+  fundSmartAccountEurc: (amount: string) => Promise<string>;
   fundSmartAccountXlm: (amountXlm: string) => Promise<string>;
   connecting: boolean;
   connect: () => Promise<void>;
@@ -1341,6 +1346,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [address, settlementAddress, config, signAndSubmit, pushActivity],
   );
 
+  const fundSmartAccountEurc = useCallback(
+    async (amount: string): Promise<string> => {
+      if (!address) throw new Error('Connect wallet first');
+      if (!settlementAddress) throw new Error('Create your smart account first');
+      const xdr = await buildFundSmartAccountEurcXdr(config, address, settlementAddress, amount);
+      const hash = await signAndSubmit(xdr);
+      pushActivity({
+        kind: 'verify',
+        title: 'Smart account funded with EURC',
+        detail: `${amount} EURC → ${settlementAddress.slice(0, 8)}…`,
+        txHash: hash,
+        status: 'success',
+      });
+      return hash;
+    },
+    [address, settlementAddress, config, signAndSubmit, pushActivity],
+  );
+
   const fundSmartAccountXlm = useCallback(
     async (amountXlm: string): Promise<string> => {
       if (!address) throw new Error('Connect wallet first');
@@ -1398,6 +1421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPofProof,
     ensureProofForAsset,
     fundSmartAccountUsdc,
+    fundSmartAccountEurc,
     fundSmartAccountXlm,
     generatePofProofForWallet,
     setPolicyKey,

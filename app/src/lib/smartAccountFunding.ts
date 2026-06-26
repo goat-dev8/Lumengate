@@ -52,6 +52,31 @@ export async function buildFundSmartAccountUsdcXdr(
   });
 }
 
+/** Move EURC SAC from the connected G-wallet into a smart account (C-address). */
+export async function buildFundSmartAccountEurcXdr(
+  config: DeploymentConfig,
+  sourceWallet: string,
+  smartAccountAddress: string,
+  amount: string,
+): Promise<string> {
+  if (!config.eurcSacId) {
+    throw new Error('EURC SAC not configured. Set VITE_EURC_SAC_ID.');
+  }
+  const sacId = config.eurcSacId;
+  const amountRaw = parseStellarAmount(amount);
+  return buildSimulatedWalletTxXdr(config, sourceWallet, (builder) => {
+    const sac = new Contract(sacId);
+    return builder.addOperation(
+      sac.call(
+        'transfer',
+        nativeToScVal(sourceWallet, { type: 'address' }),
+        nativeToScVal(smartAccountAddress, { type: 'address' }),
+        nativeToScVal(amountRaw, { type: 'i128' }),
+      ),
+    );
+  });
+}
+
 /** Move native XLM SAC from the connected G-wallet into a smart account (C-address). */
 export async function buildFundSmartAccountXlmXdr(
   config: DeploymentConfig,

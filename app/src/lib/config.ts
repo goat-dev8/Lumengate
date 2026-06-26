@@ -177,14 +177,8 @@ export function loadDeploymentConfig(): DeploymentConfig {
       'VITE_TIMELOCK_CONTRACT_ID',
       CANONICAL.governance_timelock,
     ),
-    privacyPoolId:
-      optionalViteEnv('VITE_PRIVACY_POOL_ID') ||
-      CANONICAL.privacy_pool ||
-      'CC4ID36B3B2UCKZOTGX2NY3VUI36IXCGHBUUPNDZBYTS7UGNSPIZ5P2A',
-    aspMembershipVerifierId:
-      optionalViteEnv('VITE_ASP_MEMBERSHIP_ID') ||
-      CANONICAL.asp_membership ||
-      'CBWS5GGCL4Q627GJ4HZ2SL5D2P2NXECFXKEPPTOSXOTR4EA7GTVZZWIH',
+    privacyPoolId: optionalViteEnv('VITE_PRIVACY_POOL_ID'),
+    aspMembershipVerifierId: optionalViteEnv('VITE_ASP_MEMBERSHIP_ID'),
     auditorId: Number(optionalViteEnv('VITE_AUDITOR_ID') || 1),
   };
 }

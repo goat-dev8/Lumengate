@@ -1,7 +1,3 @@
-import { UltraHonkBackend } from '@aztec/bb.js';
-import { Noir } from '@noir-lang/noir_js';
-import initNoirC from '@noir-lang/noirc_abi';
-import initACVM from '@noir-lang/acvm_js';
 import acvmWasm from '@noir-lang/acvm_js/web/acvm_js_bg.wasm?url';
 import noircWasm from '@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm?url';
 import type { IssuerCredentialResponse } from './config';
@@ -10,15 +6,34 @@ import {
   bundleFromHonkProof,
   type ProofBundle,
 } from './contracts';
+import type { UltraHonkBackend } from '@aztec/bb.js';
+import type { Noir } from '@noir-lang/noir_js';
 
+let runtimeInitPromise: Promise<void> | null = null;
 let initPromise: Promise<void> | null = null;
 let noir: Noir | null = null;
 let backend: UltraHonkBackend | null = null;
 
+export async function initNoirRuntime(): Promise<void> {
+  if (runtimeInitPromise) return runtimeInitPromise;
+  runtimeInitPromise = (async () => {
+    const [{ default: initACVM }, { default: initNoirC }] = await Promise.all([
+      import('@noir-lang/acvm_js'),
+      import('@noir-lang/noirc_abi'),
+    ]);
+    await Promise.all([initACVM(fetch(acvmWasm)), initNoirC(fetch(noircWasm))]);
+  })();
+  return runtimeInitPromise;
+}
+
 async function ensureProverReady(): Promise<void> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    await Promise.all([initACVM(fetch(acvmWasm)), initNoirC(fetch(noircWasm))]);
+    await initNoirRuntime();
+    const [{ Noir }, { UltraHonkBackend }] = await Promise.all([
+      import('@noir-lang/noir_js'),
+      import('@aztec/bb.js'),
+    ]);
     const res = await fetch('/circuit/lumengate.json');
     const circuit = await res.json();
     noir = new Noir(circuit);

@@ -17,6 +17,11 @@ const { revokeCredential } = require('./lib/revoke');
 const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle');
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
 const { registerPasskeySigner } = require('./lib/smartAccount');
+const {
+  buildCredentialMaterial,
+  normalizeHex32,
+  syncCredentialRootOnChain,
+} = require('./lib/credentialCommitment');
 
 const app = express();
 const HOST = process.env.HOST || '0.0.0.0';
@@ -35,7 +40,11 @@ function loadEnvFile() {
     if (i === -1) continue;
     const key = t.slice(0, i).trim();
     if (!process.env[key]) {
-      process.env[key] = t.slice(i + 1).trim();
+      process.env[key] = t
+        .slice(i + 1)
+        .trim()
+        .replace(/^"(.*)"$/, '$1')
+        .replace(/^'(.*)'$/, '$1');
     }
   }
 }
@@ -222,6 +231,19 @@ app.post('/credential', express.json(), async (req, res) => {
     });
   }
 
+  const material = buildCredentialMaterial(walletField, process.env, policyKey);
+  if (normalizeHex32(chainRoots.root) !== normalizeHex32(material.root)) {
+    try {
+      syncCredentialRootOnChain(material.root, process.env);
+      chainRoots = await readOnChainRoots(process.env);
+    } catch (err) {
+      return res.status(503).json({
+        error: 'Cannot sync credential root for dynamic credential',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   let built;
   try {
     built = buildProverInputs(walletField, process.env, chainRoots, policyKey);
@@ -254,10 +276,15 @@ app.post('/credential', express.json(), async (req, res) => {
     expiresAt: issuedAt + 365 * 24 * 60 * 60 * 1000,
     credential: {
       ...cred,
+      commitment: built.commitment,
       root: chainRoots.root,
       revocationRoot: chainRoots.revocationRoot,
       nullifier: built.nullifier,
       policyId: policy.policyId,
+      assetId: Number(built.proverInputs.asset_id),
+      actionId: Number(built.proverInputs.action_id),
+      noteSecret: built.noteSecret,
+      noteBlinding: built.noteBlinding,
     },
     proverInputs: built.proverInputs,
     issuerStellarPublicKey: issuer.stellarPublicKey,

@@ -28,7 +28,7 @@ export type LiveOffering = {
   };
   fundsThreshold?: string;
   whyProofRequired: string;
-  settlementAsset: 'rwa' | 'usdc';
+  settlementAsset: 'rwa' | 'usdc' | 'eurc';
   settlementRoute?: 'rwa' | 'sac' | 'dex' | 'payroll';
   riskLevel: string;
   offeringStatus: string;

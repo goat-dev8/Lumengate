@@ -69,6 +69,7 @@ export function TransferPage() {
     replaceSmartAccount,
     ensureProofForAsset,
     fundSmartAccountUsdc,
+    fundSmartAccountEurc,
     fundSmartAccountXlm,
   } = useApp();
 
@@ -380,6 +381,7 @@ export function TransferPage() {
             config={config}
             smartAccountAddress={settlementAddress}
             onFundUsdc={fundSmartAccountUsdc}
+            onFundEurc={fundSmartAccountEurc}
             onFundXlm={fundSmartAccountXlm}
             onFunded={() => setBalanceRefresh((n: number) => n + 1)}
           />
@@ -414,19 +416,19 @@ export function TransferPage() {
 
             {advanced ? (
               <Card>
-                <CardHeader title="Private settlement layer" badge={<Badge tone="brand">Nethermind ASP</Badge>} />
+                <CardHeader title="Private settlement layer" badge={<Badge tone="warn">Not implemented</Badge>} />
                 <p className="text-sm text-slate-muted">
-                  Unlinkable deposit/withdraw via Stellar Private Payments testnet pool. Eligibility proofs gate
-                  compliant ASP membership before private USDC flows.
+                  Privacy-pool and ASP membership contracts are not wired into the settlement path. Current sends use
+                  the verified compliant settlement contracts shown in the receipt.
                 </p>
                 <dl className="mt-3 space-y-1 text-xs font-mono">
                   <div>
                     <dt className="text-slate-muted">Privacy pool</dt>
-                    <dd className="break-all">{config.privacyPoolId}</dd>
+                    <dd className="break-all">{config.privacyPoolId ?? 'NOT IMPLEMENTED'}</dd>
                   </div>
                   <div>
                     <dt className="text-slate-muted">ASP membership verifier</dt>
-                    <dd className="break-all">{config.aspMembershipVerifierId}</dd>
+                    <dd className="break-all">{config.aspMembershipVerifierId ?? 'NOT IMPLEMENTED'}</dd>
                   </div>
                 </dl>
               </Card>

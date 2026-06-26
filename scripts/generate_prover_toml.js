@@ -8,6 +8,11 @@ const { join } = require('path');
 const { readOnChainRoots } = require('../issuer-service/lib/onChainRoots');
 const { signCommitment, issuerMetadata } = require('../issuer-service/lib/ed25519Issuer');
 const { computeNullifier: poseidonNullifier } = require('../issuer-service/lib/poseidonFields');
+const {
+  buildCredentialMaterial,
+  normalizeHex32,
+  syncCredentialRootOnChain,
+} = require('../issuer-service/lib/credentialCommitment');
 
 const ROOT = join(__dirname, '..');
 const ENV_PATH = join(ROOT, '.env');
@@ -51,18 +56,24 @@ const POLICY_OVERRIDES = {
 };
 
 function buildProverInputs(
-  _walletField,
+  walletField,
   env,
   chainRoots,
   policyKey = 'general-eligibility',
   scope = {},
 ) {
   const policy = POLICY_OVERRIDES[policyKey] || POLICY_OVERRIDES['general-eligibility'];
-  const commitment = '0x0ec5ca8fee7fa9f51c7377ca0c80b97265878305a6b6874dea5d69c99ecdfe7e';
+  const material = buildCredentialMaterial(walletField, env, policyKey);
+  const commitment = material.commitment;
   if (!chainRoots?.root || !chainRoots?.revocationRoot) {
     throw new Error('On-chain Merkle roots are required');
   }
   const root = chainRoots.root;
+  if (normalizeHex32(root) !== normalizeHex32(material.root)) {
+    throw new Error(
+      `CredentialRegistry root (${root}) does not match credential root (${material.root}) for walletField=${walletField}.`,
+    );
+  }
   const revRoot = chainRoots.revocationRoot;
   const { computeRevocationWitness } = require('./compute_revocation_root.js');
   const { loadRevoked } = require('../issuer-service/lib/revoke');
@@ -95,10 +106,10 @@ function buildProverInputs(
     proverInputs: {
       accredited: true,
       sanctions_clear: true,
-      jurisdiction_code: '840',
-      dob_timestamp: '631152000',
-      issuer_id: String(env.ISSUER_ID || env.ISSUER_ETH_ID || 2),
-      salt: '123456789',
+      jurisdiction_code: material.jurisdictionCode,
+      dob_timestamp: material.dobTimestamp,
+      issuer_id: material.issuerId,
+      salt: material.salt,
       note_secret: noteSecret,
       note_blinding: noteBlinding,
       current_time: String(Math.floor(Date.now() / 1000)),
@@ -110,8 +121,8 @@ function buildProverInputs(
       root: fieldHexToDecimal(root),
       revocation_root: fieldHexToDecimal(revRoot),
       nullifier: fieldHexToDecimal(nullifier),
-      path_siblings: ['0', '0', '0', '0', '0', '0', '0', '0'],
-      path_bits: ['0', '0', '0', '0', '0', '0', '0', '0'],
+      path_siblings: material.pathSiblings,
+      path_bits: material.pathBits,
       rev_path_siblings: revWitness.rev_path_siblings,
       rev_path_bits: revWitness.rev_path_bits,
     },
@@ -121,8 +132,14 @@ function buildProverInputs(
 async function main() {
   const env = loadEnv();
   const walletField = process.env.WALLET_FIELD || '42';
-  const chainRoots = await readOnChainRoots(env);
-  const built = buildProverInputs(walletField, env, chainRoots, 'general-eligibility', {
+  const policyKey = process.env.POLICY_KEY || 'general-eligibility';
+  const material = buildCredentialMaterial(walletField, env, policyKey);
+  let chainRoots = await readOnChainRoots(env);
+  if (normalizeHex32(chainRoots.root) !== normalizeHex32(material.root)) {
+    syncCredentialRootOnChain(material.root, env);
+    chainRoots = await readOnChainRoots(env);
+  }
+  const built = buildProverInputs(walletField, env, chainRoots, policyKey, {
     assetId: process.env.ASSET_ID || process.env.ASSET_SCOPE_ID,
     actionId: process.env.ACTION_ID || process.env.ACTION_SCOPE_ID,
   });

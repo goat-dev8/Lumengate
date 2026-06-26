@@ -49,6 +49,18 @@
     "offeringStatus": "Open"
   },
   {
+    "id": "treasury-eurc",
+    "title": "EURC Treasury Settlement",
+    "category": "treasury",
+    "description": "Settle in testnet EURC through the same compliance-gated SAC admin path, with eligibility verified before funds move.",
+    "requiredPolicy": "general-eligibility",
+    "minimumAmount": "1",
+    "settlementAsset": "eurc",
+    "settlementRoute": "sac",
+    "riskLevel": "Low",
+    "offeringStatus": "Open"
+  },
+  {
     "id": "compliant-dex-swap",
     "title": "Compliant USDC Swap",
     "category": "treasury",
