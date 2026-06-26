@@ -97,6 +97,10 @@ research/runtime-screenshots/
 *.webp
 !app/public/**/*.svg
 !app/src/**/*.svg
+!app/public/design/**/*.jpg
+!app/public/design/**/*.jpeg
+!app/public/design/**/*.png
+!app/public/design/**/*.webp
 
 # --- Downloads & datasets ---
 downloads/

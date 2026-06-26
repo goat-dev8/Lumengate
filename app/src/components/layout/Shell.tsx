@@ -233,7 +233,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--lg-border)] bg-[var(--lg-background)]/90 px-4 backdrop-blur-md md:hidden">
           <button
             type="button"
-            className="rounded-lg p-2 text-[#64748b] hover:bg-[var(--lg-muted-bg)]"
+            className="lg-focus-ring rounded-lg p-2 text-[#64748b] hover:bg-[var(--lg-muted-bg)]"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
@@ -271,7 +271,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <div className="flex h-14 items-center justify-between border-b border-[var(--lg-sidebar-border)] px-4">
                   <span className="font-semibold text-[#012b54]">Menu</span>
-                  <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+                  <button
+                    type="button"
+                    className="lg-focus-ring rounded-lg p-2"
+                    onClick={() => setMobileOpen(false)}
+                    aria-label="Close menu"
+                  >
                     <X className="h-5 w-5 text-[#64748b]" />
                   </button>
                 </div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SectionHeader } from '../design/Primitives';
 import { OfferingIllustration } from '../fintech/OfferingIllustration';
+import { Skeleton } from '../ui/States';
 import type { DeploymentConfig } from '../../lib/config';
 import type { ActivityEntry } from '../../lib/activity';
 import type { LiveOffering } from '../../lib/offerings';
@@ -116,17 +117,48 @@ export function DashboardHoldings({ config, settlementOwner, activity, offerings
 
       <div className="mt-5 lg-surface-card divide-y divide-[var(--lg-border)] overflow-hidden">
         {loading && rows.length === 0 ? (
-          <p className="p-5 text-sm text-[#64748b]">Loading on-chain balances…</p>
+          <div className="space-y-0 divide-y divide-[var(--lg-border)]">
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="flex items-center gap-4 p-5">
+                <Skeleton className="h-14 w-14 shrink-0 rounded-xl" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-44 max-w-full" />
+                  <Skeleton className="h-3 w-64 max-w-full" />
+                </div>
+                <div className="hidden w-40 space-y-2 text-right sm:block">
+                  <Skeleton className="ml-auto h-3 w-20" />
+                  <Skeleton className="ml-auto h-4 w-28" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : error ? (
           <p className="p-5 text-sm text-red-600">{error}</p>
         ) : !settlementOwner ? (
-          <p className="p-5 text-sm text-[#64748b]">
-            Create your passkey smart account to see holdings here.
-          </p>
+          <div className="lg-empty-panel m-4 p-6">
+            <p className="text-sm font-semibold text-[#012b54]">Create your passkey account</p>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Holdings appear after your Lumengate account exists and on-chain balances can be read.
+            </p>
+            <Link to="/app/verify" className="mt-4 inline-flex text-sm font-semibold text-[#007dfc] hover:underline">
+              Start with passkey →
+            </Link>
+          </div>
         ) : rows.length === 0 ? (
-          <p className="p-5 text-sm text-[#64748b]">
-            No holdings yet — fund your account or subscribe on Marketplace.
-          </p>
+          <div className="lg-empty-panel m-4 p-6">
+            <p className="text-sm font-semibold text-[#012b54]">No holdings yet</p>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Fund your account with USDC, or subscribe to an eligible marketplace offering.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link to="/app/verify" className="text-sm font-semibold text-[#007dfc] hover:underline">
+                Add funds →
+              </Link>
+              <Link to="/app/marketplace" className="text-sm font-semibold text-[#007dfc] hover:underline">
+                View marketplace →
+              </Link>
+            </div>
+          </div>
         ) : (
           rows.map((row) => (
             <div

@@ -47,9 +47,15 @@ export function DashboardActivityFeed({ activity }: { activity: ActivityEntry[] 
       <SectionHeader eyebrow="Activity" title="Recent" />
       <div className="mt-5 lg-surface-card divide-y divide-[var(--lg-border)] overflow-hidden">
         {feed.length === 0 ? (
-          <p className="p-5 text-sm text-[#64748b]">
-            No activity yet — verify eligibility to get started.
-          </p>
+          <div className="lg-empty-panel m-4 p-6">
+            <p className="text-sm font-semibold text-[#012b54]">No activity yet</p>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Your passport, proof, settlement, and receipt events appear here after they happen on the live flow.
+            </p>
+            <Link to="/app/verify" className="mt-4 inline-flex text-sm font-semibold text-[#007dfc] hover:underline">
+              Verify eligibility →
+            </Link>
+          </div>
         ) : (
           feed.map((item) => {
             const Icon = activityIcon(item.kind);

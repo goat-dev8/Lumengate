@@ -553,18 +553,35 @@ export function MarketplacePage() {
     return (
 
       <AppShell>
-
-        <Skeleton className="h-32 w-full" />
-
-        <div className="mt-8 grid gap-8 xl:grid-cols-3">
-
-          <Skeleton className="h-96" />
-
-          <Skeleton className="h-96" />
-
-          <Skeleton className="h-96" />
-
-        </div>
+        <AppPageLayout
+          title="Marketplace"
+          subtitle="Loading live issuer offerings from Lumengate."
+        >
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Skeleton className="h-10 w-72 rounded-full" />
+            <Skeleton className="h-10 w-24 rounded-full" />
+            <Skeleton className="h-10 w-28 rounded-full" />
+            <Skeleton className="h-10 w-20 rounded-full" />
+          </div>
+          <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
+              <div key={idx} className="lg-surface-card overflow-hidden">
+                <Skeleton className="h-44 rounded-none" />
+                <div className="space-y-4 p-5">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                  <div className="grid grid-cols-4 gap-3 border-t border-[var(--lg-border)] pt-4">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </AppPageLayout>
 
       </AppShell>
 
@@ -579,20 +596,23 @@ export function MarketplacePage() {
     return (
 
       <AppShell>
-
-        <EmptyState
-
-          title="Offerings unavailable"
-
-          description={
-
-            offeringsError ||
-
-            'Issuer service returned no offerings. Start issuer-service and verify /offerings.'
-
-          }
-
-        />
+        <AppPageLayout
+          title="Marketplace"
+          subtitle="Regulated, tokenized, settlement-ready offerings on Stellar."
+        >
+          <EmptyState
+            title="Offerings unavailable"
+            description={
+              offeringsError ||
+              'Issuer service returned no offerings. Start issuer-service and verify /offerings.'
+            }
+            action={
+              <Link to="/app/home">
+                <Button variant="secondary">Back to dashboard</Button>
+              </Link>
+            }
+          />
+        </AppPageLayout>
 
       </AppShell>
 
