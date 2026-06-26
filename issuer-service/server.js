@@ -17,6 +17,7 @@ const { revokeCredential } = require('./lib/revoke');
 const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle');
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
 const { registerPasskeySigner } = require('./lib/smartAccount');
+const { listFaucetStatus, claimTestnetFunds } = require('./lib/faucet');
 const {
   buildCredentialMaterial,
   normalizeHex32,
@@ -107,6 +108,36 @@ app.get('/health', (_req, res) => {
     signatureScheme: issuer.signatureScheme,
     network: process.env.STELLAR_NETWORK_NAME || 'testnet',
   });
+});
+
+app.get('/faucet/status', (req, res) => {
+  const smartAccountAddress = String(req.query.smartAccountAddress || '');
+  if (!smartAccountAddress.startsWith('C')) {
+    return res.status(400).json({ error: 'smartAccountAddress query param required' });
+  }
+  if (process.env.STELLAR_NETWORK_NAME === 'mainnet') {
+    return res.status(403).json({ error: 'Testnet faucet only' });
+  }
+  return res.json({ smartAccountAddress, assets: listFaucetStatus(smartAccountAddress) });
+});
+
+app.post('/faucet/claim', express.json(), async (req, res) => {
+  const smartAccountAddress = String(req.body?.smartAccountAddress || '');
+  const asset = String(req.body?.asset || '').toLowerCase();
+  if (!smartAccountAddress.startsWith('C')) {
+    return res.status(400).json({ error: 'smartAccountAddress required' });
+  }
+  if (process.env.STELLAR_NETWORK_NAME === 'mainnet') {
+    return res.status(403).json({ error: 'Testnet faucet only' });
+  }
+  try {
+    const result = await claimTestnetFunds(smartAccountAddress, asset, process.env);
+    return res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg.includes('24 hours') ? 429 : 503;
+    return res.status(status).json({ error: msg });
+  }
 });
 
 app.get('/roots', async (_req, res) => {

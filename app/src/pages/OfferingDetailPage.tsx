@@ -1,6 +1,5 @@
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowRight, Shield, ExternalLink } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -47,7 +46,7 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
   };
 
   return (
-    <AppShell>
+    <>
       <PageHeader eyebrow="Investment detail" title={offering.title} subtitle={offering.description} />
 
       <div className="mb-6 flex justify-end">
@@ -159,7 +158,7 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
           </Card>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -169,16 +168,16 @@ export function OfferingDetailRoute() {
 
   if (loading) {
     return (
-      <AppShell>
+      <>
         <Skeleton className="h-12 w-64" />
         <Skeleton className="mt-8 h-96" />
-      </AppShell>
+      </>
     );
   }
 
   if (error || !offering) {
     return (
-      <AppShell>
+      <>
         <EmptyState
           title="Offering not found"
           description={error || 'Issuer service has no offering with this ID.'}
@@ -188,7 +187,7 @@ export function OfferingDetailRoute() {
             </Link>
           }
         />
-      </AppShell>
+      </>
     );
   }
 

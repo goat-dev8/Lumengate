@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Share2, Shield } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { ProofReceiptHero } from '../components/compliance/ProofReceiptHero';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -108,7 +107,7 @@ export function CompliancePage() {
   };
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Receipts"
         subtitle="Auditor-grade settlement records"
@@ -217,6 +216,6 @@ export function CompliancePage() {
         <JourneyRail steps={journey} compact />
       </div>
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, LogOut, Network, ShieldCheck } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { Pill, SectionHeader, StatusDot } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -43,7 +42,7 @@ export function SettingsPage() {
   ];
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Settings"
         subtitle="Account, network, and deployed contract references."
@@ -187,6 +186,6 @@ export function SettingsPage() {
           <UsdcCompliancePanel config={config} walletAddress={settlementOwner} variant="compact" />
         </div>
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

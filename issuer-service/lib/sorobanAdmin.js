@@ -2,6 +2,7 @@ const {
   Address,
   Contract,
   Keypair,
+  nativeToScVal,
   rpc,
   TransactionBuilder,
   xdr,
@@ -113,8 +114,60 @@ async function syncNoteRootOnChain(noteRootHex, env = process.env) {
   return root;
 }
 
+async function adminSacTransfer(sacId, toAddress, amountRaw, env = process.env) {
+  const { rpcUrl, passphrase } = getNetworkConfig(env);
+  const admin = adminKeypair(env);
+  const adminAddr = env.CONTRACT_ADMIN_PUBLIC_KEY || admin.publicKey();
+  const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
+  const account = await server.getAccount(admin.publicKey());
+  const sac = new Contract(sacId);
+  let tx = new TransactionBuilder(account, {
+    fee: '1000000',
+    networkPassphrase: passphrase,
+  })
+    .addOperation(
+      sac.call(
+        'transfer',
+        Address.fromString(adminAddr).toScVal(),
+        Address.fromString(toAddress).toScVal(),
+        nativeToScVal(BigInt(amountRaw), { type: 'i128' }),
+      ),
+    )
+    .setTimeout(180)
+    .build();
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(sim.error || 'SAC transfer simulation failed');
+  }
+  tx = rpc.assembleTransaction(tx, sim).build();
+  tx.sign(admin);
+  const sent = await server.sendTransaction(tx);
+  if (sent.status === 'ERROR') {
+    throw new Error(JSON.stringify(sent.errorResult ?? sent));
+  }
+  await waitForTransactionSuccess(sent.hash, env);
+  return sent.hash;
+}
+
+async function adminMintTreasury(rwaTokenId, toAddress, amountRaw, env = process.env) {
+  const admin = env.CONTRACT_ADMIN_PUBLIC_KEY;
+  if (!admin) throw new Error('Missing CONTRACT_ADMIN_PUBLIC_KEY');
+  return invokeAdminContract(
+    rwaTokenId,
+    'admin_mint',
+    [
+      Address.fromString(admin).toScVal(),
+      Address.fromString(toAddress).toScVal(),
+      nativeToScVal(BigInt(amountRaw), { type: 'i128' }),
+    ],
+    env,
+  );
+}
+
 module.exports = {
   invokeAdminContract,
+  adminSacTransfer,
+  adminMintTreasury,
   normalizeHex32,
   syncCredentialRootOnChain,
   syncNoteRootOnChain,

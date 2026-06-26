@@ -254,6 +254,40 @@ export async function fetchIssuerCredential(
   });
 }
 
+export type FaucetAssetStatus = {
+  amount: string;
+  label: string;
+  available: boolean;
+  nextClaimAt: number | null;
+  lastClaimAt: number | null;
+};
+
+export async function fetchFaucetStatus(baseUrl: string, smartAccountAddress: string) {
+  const q = new URLSearchParams({ smartAccountAddress });
+  return issuerFetch<{ smartAccountAddress: string; assets: Record<string, FaucetAssetStatus> }>(
+    baseUrl,
+    `/faucet/status?${q.toString()}`,
+  );
+}
+
+export async function claimTestnetFaucet(
+  baseUrl: string,
+  smartAccountAddress: string,
+  asset: 'usdc' | 'eurc' | 'xlm' | 'treasury',
+) {
+  return issuerFetch<{
+    asset: string;
+    amount: string;
+    txHash: string;
+    smartAccountAddress: string;
+    nextClaimAt: number;
+  }>(baseUrl, '/faucet/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ smartAccountAddress, asset }),
+  });
+}
+
 export async function registerSmartAccountPasskey(
   baseUrl: string,
   params: {

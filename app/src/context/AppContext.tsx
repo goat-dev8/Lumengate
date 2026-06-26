@@ -28,6 +28,8 @@ import {
   buildBindSessionProofTransaction,
   formatSorobanUserError,
   readBalance,
+  readSessionProofBound,
+  sessionProofMatchesBound,
   submitSignedTransaction,
 } from '../lib/contracts';
 import {
@@ -104,6 +106,7 @@ type AppContextValue = {
     proof: ProofBundle;
     credential: IssuerCredentialResponse;
   }>;
+  bindSessionProofIfNeeded: (proof: ProofBundle) => Promise<string | null>;
   fundSmartAccountUsdc: (amount: string) => Promise<string>;
   fundSmartAccountEurc: (amount: string) => Promise<string>;
   fundSmartAccountXlm: (amountXlm: string) => Promise<string>;
@@ -1013,18 +1016,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const bindSessionProofIfNeeded = useCallback(
+    async (proofBundle: ProofBundle): Promise<string | null> => {
+      if (!smartAccount || !settlementAddress || !config.sessionStoreId) return null;
+      if (!isContractAddress(settlementAddress)) return null;
+      const bound = await readSessionProofBound(config, settlementAddress);
+      if (bound && sessionProofMatchesBound(bound, proofBundle)) return null;
+      const bindSource = resolvePasskeySimulationSource(address);
+      const bindTx = await buildBindSessionProofTransaction(
+        config,
+        bindSource,
+        settlementAddress,
+        proofBundle,
+      );
+      const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
+      setReceiptTransactions((prev) => {
+        const txs = { ...prev, sessionBind: bindHash };
+        if (address && walletField) {
+          persistSession({ address, walletField, receiptTransactions: txs });
+        } else if (smartAccount && walletField) {
+          persistPasskeySession({
+            smartAccountAddress: smartAccount.smartAccountAddress,
+            walletField,
+            smartAccount,
+            receiptTransactions: txs,
+          });
+        }
+        return txs;
+      });
+      return bindHash;
+    },
+    [config, smartAccount, settlementAddress, address, walletField, persistSession, persistPasskeySession],
+  );
+
   const ensureProofForAsset = useCallback(
     async (
       asset: SettlementAsset,
     ): Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse }> => {
       const scope = ASSET_SCOPES[asset];
       if (proof && credential && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
+        await bindSessionProofIfNeeded(proof);
         return { proof, credential };
       }
       if (!credential) throw new Error('Request a passport before settlement');
       const scopedCredential = credentialForScope(credential, scope);
       const { bundle, durationSec } = await generateProof(scopedCredential);
       setProof(bundle, durationSec, scopedCredential);
+      await bindSessionProofIfNeeded(bundle);
       pushActivity({
         kind: 'proof',
         title: `${asset.toUpperCase()} eligibility confirmed`,
@@ -1033,7 +1071,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return { proof: bundle, credential: scopedCredential };
     },
-    [credential, proof, setProof, pushActivity],
+    [credential, proof, setProof, pushActivity, bindSessionProofIfNeeded],
   );
 
   const setPofProof = useCallback(
@@ -1315,31 +1353,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const bindSource = resolvePasskeySimulationSource(address);
       if (config.sessionStoreId && isContractAddress(settlementFrom)) {
-        try {
-          const bindTx = await buildBindSessionProofTransaction(
-            config,
-            bindSource,
-            settlementFrom,
-            proof,
-          );
-          const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
-          setReceiptTransactions((prev) => {
-            const txs = { ...prev, sessionBind: bindHash };
-            if (address && walletField) {
-              persistSession({ address, walletField, receiptTransactions: txs });
-            } else if (smartAccount && walletField) {
-              persistPasskeySession({
-                smartAccountAddress: smartAccount.smartAccountAddress,
-                walletField,
-                smartAccount,
-                receiptTransactions: txs,
-              });
-            }
-            return txs;
-          });
-        } catch (err) {
-          const raw = err instanceof Error ? err.message : String(err);
-          throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
+        const bound = await readSessionProofBound(config, settlementFrom);
+        const alreadyBound = bound && sessionProofMatchesBound(bound, proof);
+        if (!alreadyBound) {
+          try {
+            const bindTx = await buildBindSessionProofTransaction(
+              config,
+              bindSource,
+              settlementFrom,
+              proof,
+            );
+            const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
+            setReceiptTransactions((prev) => {
+              const txs = { ...prev, sessionBind: bindHash };
+              if (address && walletField) {
+                persistSession({ address, walletField, receiptTransactions: txs });
+              } else if (smartAccount && walletField) {
+                persistPasskeySession({
+                  smartAccountAddress: smartAccount.smartAccountAddress,
+                  walletField,
+                  smartAccount,
+                  receiptTransactions: txs,
+                });
+              }
+              return txs;
+            });
+          } catch (err) {
+            const raw = err instanceof Error ? err.message : String(err);
+            throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
+          }
         }
       }
       try {
@@ -1444,6 +1486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProof,
     setPofProof,
     ensureProofForAsset,
+    bindSessionProofIfNeeded,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,

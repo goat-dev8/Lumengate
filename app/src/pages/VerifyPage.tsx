@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Circle, Fingerprint, Sparkles, Wallet } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { PassportHero } from '../components/design/PassportHero';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -10,7 +9,7 @@ import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
 import { fetchIssuerHealth } from '../lib/config';
 import { policyList } from '../lib/policies';
-import { readOnChainRoots } from '../lib/contracts';
+import { credentialRootMatchesChain } from '../lib/contracts';
 import {
   generateProof,
   publicInputsPanel,
@@ -80,6 +79,7 @@ export function VerifyPage() {
     policyKey,
     setPolicyKey,
     setProof,
+    bindSessionProofIfNeeded,
     proofLifecycle,
     syncProofLifecycle,
     beginProofRecovery,
@@ -159,15 +159,14 @@ export function VerifyPage() {
         nullifier: cred.proverInputs?.nullifier,
         policyId: cred.credential.policyId,
       });
-      const onChain = await readOnChainRoots(config);
-      const matches =
-        onChain.root.toLowerCase() === cred.credential.root.toLowerCase() ||
-        onChain.root.replace(/^0x/i, '') === cred.credential.root.replace(/^0x/i, '');
-      if (!matches) throw new Error('Compliance registry is syncing — wait a moment and retry.');
+      const synced = await credentialRootMatchesChain(config, cred.credential.root);
+      setError(null);
       pushActivity({
         kind: 'credential',
         title: recoveryHint || proofConsumed ? 'New passport issued' : 'Passport issued',
-        detail: 'Eligibility attested — identity stays off-chain',
+        detail: synced
+          ? 'Eligibility attested — identity stays off-chain'
+          : 'Passport issued — registry still syncing on-chain; you can confirm eligibility next',
         status: 'success',
       });
     } catch (err) {
@@ -189,13 +188,14 @@ export function VerifyPage() {
     setProveProgress(null);
     recoveryLog('proof.generate.begin', { nullifier: credential.proverInputs?.nullifier });
     try {
-      const fresh = await requestCredential(policyKey);
-      const { bundle, durationSec } = await generateProof(fresh, setProveProgress);
+      const { bundle, durationSec } = await generateProof(credential, setProveProgress);
       recoveryLog('proof.generate.done', {
         durationSec,
         nullifier: bundle.publicInputs.nullifier,
       });
-      setProof(bundle, durationSec, fresh);
+      setProof(bundle, durationSec, credential);
+      await bindSessionProofIfNeeded(bundle);
+      setError(null);
       pushActivity({
         kind: 'proof',
         title: 'Eligibility confirmed',
@@ -226,7 +226,7 @@ export function VerifyPage() {
   });
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Passport"
         subtitle="Prove who you are. Reveal nothing else."
@@ -510,6 +510,6 @@ export function VerifyPage() {
         ) : null}
         </div>
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

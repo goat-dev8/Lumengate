@@ -1,5 +1,4 @@
 import { FileCheck2, ShieldCheck, Sparkles } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { SectionHeader, Stagger, StaggerItem } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -17,7 +16,7 @@ export function ActivityPage() {
   const credentialEvents = activity.filter((e) => e.kind === 'credential' && e.status === 'success').length;
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Activity"
         subtitle="Compliance and settlement timeline from the current session."
@@ -54,6 +53,6 @@ export function ActivityPage() {
           <UsdcCompliancePanel config={config} walletAddress={settlementOwner} variant="compact" />
         </div>
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

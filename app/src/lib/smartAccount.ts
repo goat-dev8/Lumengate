@@ -13,6 +13,7 @@ import {
   type CreateWalletResult,
   type TransactionResult,
 } from 'smart-account-kit';
+import { waitForTransactionStatus } from './contracts';
 import type { DeploymentConfig } from './config';
 import {
   coerceKeyDataBuffer,
@@ -365,6 +366,14 @@ async function submitResultOrThrow(
   fallback: string,
   rpcUrl?: string,
 ): Promise<string> {
+  if (result.hash && rpcUrl && result.error?.toLowerCase().includes('timed out')) {
+    try {
+      await waitForTransactionStatus(rpcUrl, result.hash, 45, 2000);
+      return result.hash;
+    } catch {
+      // continue to error handling below
+    }
+  }
   if (!result.success || !result.hash) {
     const detail =
       result.hash && rpcUrl ? await readFailedTransactionDiagnostics(rpcUrl, result.hash) : '';

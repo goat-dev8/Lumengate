@@ -7,7 +7,6 @@ import {
   ShieldCheck,
   Store,
 } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { Stagger, StaggerItem, StatusDot } from '../components/design/Primitives';
 import { useApp } from '../context/AppContext';
@@ -173,7 +172,7 @@ export function DashboardPage() {
   ];
 
   return (
-    <AppShell>
+    
       <AppPageLayout title={dashboardTitle} subtitle={topSubtitle}>
         {advanced ? (
           <div className="mb-6 space-y-4">
@@ -265,6 +264,6 @@ export function DashboardPage() {
           </div>
         ) : null}
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Search, ShieldCheck, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { Pill, SectionHeader } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -110,7 +109,7 @@ export function AuditorPage() {
   };
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Audit"
         subtitle="Selective disclosure for regulators and auditors"
@@ -377,6 +376,6 @@ export function AuditorPage() {
         ) : null}
 
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

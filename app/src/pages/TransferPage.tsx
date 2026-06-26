@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ExternalLink } from 'lucide-react';
 
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { SendTransferForm } from '../components/send/SendTransferForm';
 
@@ -17,6 +16,7 @@ import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
+import { TestnetFaucetPanel } from '../components/product/TestnetFaucetPanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
@@ -346,7 +346,7 @@ export function TransferPage() {
   ];
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Send"
         subtitle="Safer than banking. Settles in seconds on Stellar."
@@ -387,6 +387,14 @@ export function TransferPage() {
               />
             ) : null}
           </>
+        ) : null}
+
+        {sendAccountReady && settlementAddress ? (
+          <TestnetFaucetPanel
+            config={config}
+            smartAccountAddress={settlementAddress}
+            onClaimed={() => setBalanceRefresh((n: number) => n + 1)}
+          />
         ) : null}
 
         {sendAccountReady && address && settlementAddress ? (
@@ -515,6 +523,6 @@ export function TransferPage() {
 
       </div>
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

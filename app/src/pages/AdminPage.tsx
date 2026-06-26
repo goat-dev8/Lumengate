@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { ShieldCheck, Terminal } from 'lucide-react';
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { Pill, SectionHeader, Stagger, StaggerItem, StatusDot } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -73,7 +72,7 @@ export function AdminPage() {
   ];
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Operators"
         subtitle="Issuer console · policies · deployments"
@@ -185,6 +184,6 @@ export function AdminPage() {
           </div>
         )}
       </AppPageLayout>
-    </AppShell>
+    
   );
 }

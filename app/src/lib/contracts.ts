@@ -154,6 +154,71 @@ export async function readOnChainRoots(config: DeploymentConfig): Promise<{ root
   };
 }
 
+export type BoundSessionProof = {
+  proofHex: string;
+  publicInputsHex: string;
+};
+
+function normalizeProofHex(hex: string): string {
+  return hex.replace(/^0x/i, '').toLowerCase();
+}
+
+export async function readSessionProofBound(
+  config: DeploymentConfig,
+  smartAccountAddress: string,
+): Promise<BoundSessionProof | null> {
+  if (!config.sessionStoreId) return null;
+  try {
+    const s = server(config.rpcUrl);
+    const store = new Contract(config.sessionStoreId);
+    const tx = new TransactionBuilder(readOnlyLedgerAccount(), {
+      fee: '100000',
+      networkPassphrase: config.networkPassphrase,
+    })
+      .addOperation(store.call('get_proof', nativeToScVal(smartAccountAddress, { type: 'address' })))
+      .setTimeout(30)
+      .build();
+    const sim = await s.simulateTransaction(tx);
+    if (rpc.Api.isSimulationError(sim)) return null;
+    const val = sim.result?.retval;
+    if (!val) return null;
+    const native = scValToNative(val) as { proof?: Buffer | Uint8Array; public_inputs?: Buffer | Uint8Array };
+    const proofBytes = native.proof ?? (native as unknown as [Buffer, Buffer])[0];
+    const piBytes = native.public_inputs ?? (native as unknown as [Buffer, Buffer])[1];
+    if (!proofBytes || !piBytes) return null;
+    return {
+      proofHex: bytesToHex(Uint8Array.from(proofBytes)),
+      publicInputsHex: bytesToHex(Uint8Array.from(piBytes)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function sessionProofMatchesBound(bound: BoundSessionProof, proof: ProofBundle): boolean {
+  return (
+    normalizeProofHex(bound.proofHex) === normalizeProofHex(proof.proofHex) &&
+    normalizeProofHex(bound.publicInputsHex) === normalizeProofHex(proof.publicInputsHex)
+  );
+}
+
+export async function credentialRootMatchesChain(
+  config: DeploymentConfig,
+  credentialRoot: string,
+  attempts = 5,
+  intervalMs = 1500,
+): Promise<boolean> {
+  const expected = normalizeProofHex(credentialRoot);
+  for (let i = 0; i < attempts; i += 1) {
+    const onChain = await readOnChainRoots(config);
+    if (normalizeProofHex(onChain.root) === expected) return true;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  return false;
+}
+
 export async function readBalance(config: DeploymentConfig, holder: string): Promise<string> {
   const s = server(config.rpcUrl);
   const contract = new Contract(config.rwaTokenId);
@@ -683,10 +748,10 @@ export async function submitSignedTransaction(config: DeploymentConfig, signedXd
 }
 
 /** Poll Soroban RPC without parsing XDR (Protocol 25 meta v4 breaks stellar-sdk parsers). */
-async function waitForTransactionStatus(
+export async function waitForTransactionStatus(
   rpcUrl: string,
   hash: string,
-  attempts = 30,
+  attempts = 45,
   intervalMs = 2000,
 ): Promise<void> {
   for (let i = 0; i < attempts; i += 1) {
@@ -695,6 +760,7 @@ async function waitForTransactionStatus(
     if (status === 'FAILED') throw new Error('Transaction failed on-chain');
     await new Promise((r) => setTimeout(r, intervalMs));
   }
+  throw new Error('Transaction confirmation timed out');
 }
 
 async function fetchTransactionStatus(rpcUrl: string, hash: string): Promise<string> {

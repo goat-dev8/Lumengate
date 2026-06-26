@@ -4,7 +4,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ArrowRightLeft, Sparkles, Search, ShieldCheck, Filter } from 'lucide-react';
 
-import { AppShell } from '../components/layout/Shell';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { SectionHeader, Stagger, StaggerItem } from '../components/design/Primitives';
 import { MarketplaceProductCard } from '../components/marketplace/MarketplaceProductCard';
@@ -552,7 +551,7 @@ export function MarketplacePage() {
 
     return (
 
-      <AppShell>
+      
         <AppPageLayout
           title="Marketplace"
           subtitle="Loading live issuer offerings from Lumengate."
@@ -583,7 +582,7 @@ export function MarketplacePage() {
           </div>
         </AppPageLayout>
 
-      </AppShell>
+      
 
     );
 
@@ -595,7 +594,7 @@ export function MarketplacePage() {
 
     return (
 
-      <AppShell>
+      
         <AppPageLayout
           title="Marketplace"
           subtitle="Regulated, tokenized, settlement-ready offerings on Stellar."
@@ -614,7 +613,7 @@ export function MarketplacePage() {
           />
         </AppPageLayout>
 
-      </AppShell>
+      
 
     );
 
@@ -623,7 +622,7 @@ export function MarketplacePage() {
 
 
   return (
-    <AppShell>
+    
       <AppPageLayout
         title="Marketplace"
         subtitle="Regulated, tokenized, settlement-ready offerings on Stellar."
@@ -911,6 +910,6 @@ export function MarketplacePage() {
 
       ) : null}
       </AppPageLayout>
-    </AppShell>
+    
   );
 }
