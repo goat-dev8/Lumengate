@@ -2,9 +2,9 @@ const {
   Address,
   Contract,
   Keypair,
-  nativeToScVal,
   rpc,
   TransactionBuilder,
+  xdr,
 } = require('@stellar/stellar-sdk');
 
 function normalizeHex32(hex) {
@@ -13,6 +13,10 @@ function normalizeHex32(hex) {
 
 function hex32ToBuffer(hex) {
   return Buffer.from(normalizeHex32(hex), 'hex');
+}
+
+function bytesN32ScVal(hex) {
+  return xdr.ScVal.scvBytes(hex32ToBuffer(hex));
 }
 
 function getNetworkConfig(env = process.env) {
@@ -30,14 +34,23 @@ function adminKeypair(env = process.env) {
   return Keypair.fromSecret(secret);
 }
 
-async function waitForTransaction(server, hash, maxWaitMs = 120000) {
+async function waitForTransactionSuccess(hash, env = process.env, maxWaitMs = 120000) {
+  const horizon = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
   const started = Date.now();
   while (Date.now() - started < maxWaitMs) {
-    const tx = await server.getTransaction(hash);
-    if (tx.status !== 'NOT_FOUND') return tx;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const res = await fetch(`${horizon}/transactions/${hash}`);
+    if (res.ok) {
+      const body = await res.json();
+      if (body.successful) return hash;
+      throw new Error(`Transaction ${hash} failed on ledger`);
+    }
+    if (res.status !== 404) {
+      const detail = await res.text();
+      throw new Error(`Horizon lookup failed for ${hash}: ${res.status} ${detail.slice(0, 200)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error(`Transaction ${hash} not found after ${maxWaitMs}ms`);
+  throw new Error(`Transaction ${hash} not confirmed after ${maxWaitMs}ms`);
 }
 
 async function invokeAdminContract(contractId, method, scArgs, env = process.env) {
@@ -66,10 +79,7 @@ async function invokeAdminContract(contractId, method, scArgs, env = process.env
     throw new Error(JSON.stringify(sent.errorResult ?? sent));
   }
 
-  const result = await waitForTransaction(server, sent.hash);
-  if (result.status !== 'SUCCESS') {
-    throw new Error(`Transaction ${sent.hash} failed with status ${result.status}`);
-  }
+  await waitForTransactionSuccess(sent.hash, env);
   return sent.hash;
 }
 
@@ -82,7 +92,7 @@ async function syncCredentialRootOnChain(rootHex, env = process.env) {
   await invokeAdminContract(
     registryId,
     'set_root',
-    [Address.fromString(admin).toScVal(), nativeToScVal(hex32ToBuffer(root), { type: 'bytes' })],
+    [Address.fromString(admin).toScVal(), bytesN32ScVal(root)],
     env,
   );
   return root;
@@ -97,7 +107,7 @@ async function syncNoteRootOnChain(noteRootHex, env = process.env) {
   await invokeAdminContract(
     registryId,
     'set_note_root',
-    [Address.fromString(admin).toScVal(), nativeToScVal(hex32ToBuffer(root), { type: 'bytes' })],
+    [Address.fromString(admin).toScVal(), bytesN32ScVal(root)],
     env,
   );
   return root;
