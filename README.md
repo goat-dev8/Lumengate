@@ -5,7 +5,7 @@ Privacy-preserving compliance for Stellar. Prove eligibility with zero-knowledge
 ## What it does
 
 - **Issuer service** — Stellar Ed25519-signed credentials, Merkle roots, revocation, auditor disclosures
-- **Noir circuits** — Eligibility + proof-of-funds (UltraHonk, 4 public inputs, private note binding)
+- **Noir circuits** — Eligibility + proof-of-funds (UltraHonk; eligibility uses 6 public inputs: root, revocation root, policy, asset, action, nullifier)
 - **Soroban contracts** — Policy verifier (external UltraHonk), credential registry, RWA adapter, SAC admin, compliant DEX/payroll, auditor registry, smart account scaffold
 - **React app** — Wallet connect, credential request, in-browser proving, compliant transfers
 
@@ -30,6 +30,7 @@ Privacy-preserving compliance for Stellar. Prove eligibility with zero-knowledge
 - Node.js 20+
 - Rust + `stellar` CLI
 - `nargo` + `bb` (Noir / Barretenberg)
+- Playwright browser dependencies for e2e (`npx playwright install-deps chromium`, requires sudo on Linux)
 
 ### Backend
 
@@ -56,8 +57,11 @@ node scripts/generate_prover_toml.js
 bash scripts/build_circuit.sh
 
 # Regression (requires funded testnet wallets in .env)
+node scripts/fund_usdc_testnet.mjs
 bash scripts/regression_test.sh
 ```
+
+The regression suite uses live Stellar testnet contracts, live Horizon/RPC reads, and real testnet USDC/EURC SAC balances. It does not seed fake balances; fund the eligible wallet first if SAC transfers fail for insufficient balance.
 
 ## Deployment
 

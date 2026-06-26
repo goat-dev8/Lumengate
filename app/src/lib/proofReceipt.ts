@@ -24,6 +24,8 @@ export type ProofReceiptTransactions = {
   verify?: string;
   transfer?: string;
   pofVerify?: string;
+  /** SessionStore bind_session_proof transaction (tx 1 of passkey settlement). */
+  sessionBind?: string;
 };
 
 export type ProofReceiptTransferResult = {
@@ -142,7 +144,7 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
   const txs = resolveReceiptTransactions(input.transactions ?? {});
   const events: ChainEventRecord[] = input.events ?? [];
   if (events.length === 0) {
-    const hashes = [txs.transfer, txs.verify, txs.pofVerify].filter(Boolean) as string[];
+    const hashes = [txs.transfer, txs.sessionBind, txs.verify, txs.pofVerify].filter(Boolean) as string[];
     for (const hash of hashes) {
       const evs = await fetchEventsForTransaction(config, hash);
       events.push(...evs);
@@ -189,6 +191,7 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
   if (txs.verify) explorerLinks.verify = explorerTxUrl(config.explorerBaseUrl, txs.verify);
   if (txs.transfer) explorerLinks.transfer = explorerTxUrl(config.explorerBaseUrl, txs.transfer);
   if (txs.pofVerify) explorerLinks.pofVerify = explorerTxUrl(config.explorerBaseUrl, txs.pofVerify);
+  if (txs.sessionBind) explorerLinks.sessionBind = explorerTxUrl(config.explorerBaseUrl, txs.sessionBind);
 
   return {
     version: 2,

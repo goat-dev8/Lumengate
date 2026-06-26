@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, ShieldCheck, Download, Copy, CheckCircle2, XCircle } from 'lucide-react';
+import { ExternalLink, RefreshCw, ShieldCheck, Download, Copy, CheckCircle2, XCircle, Check } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -7,6 +7,7 @@ import type { ProofReceipt } from '../../lib/proofReceipt';
 import { proofReceiptFilename } from '../../lib/proofReceipt';
 import { truncateMiddle } from '../../lib/utils';
 import { useAdvancedMode } from '../product/AdvancedModeToggle';
+import { Pill } from '../design/Primitives';
 
 type Props = {
   receipt: ProofReceipt;
@@ -58,29 +59,122 @@ export function ProofReceiptHero({
     URL.revokeObjectURL(url);
   };
 
+  const receiptId = receipt.transactions.transfer
+    ? `RCPT-${receipt.transactions.transfer.slice(0, 8).toUpperCase()}`
+    : 'RCPT-PENDING';
+  const displayAmount = receipt.transferResult?.amount ?? '—';
+  const assetLabel = receipt.asset?.label ?? 'RWA';
+
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#007dfc]/20 bg-gradient-to-br from-[#012b54] to-[#023d72] p-6 text-white shadow-lg">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60">
-          Settlement Receipt · Stellar testnet
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold lg:text-3xl">{receipt.productLabel}</h1>
-        <p className="mt-2 text-sm text-white/80">{receipt.tagline}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Badge tone={receipt.settlementStatus === 'verified' ? 'ok' : receipt.settlementStatus === 'pending' ? 'warn' : 'err'}>
-            {receipt.settlementStatus === 'verified'
-              ? 'Settlement verified'
-              : receipt.settlementStatus === 'pending'
-                ? 'Pending'
-                : 'Settlement failed'}
-          </Badge>
-          {receipt.verificationResult === 'passed' && receipt.settlementStatus !== 'verified' ? (
-            <Badge tone="ok">Eligibility passed</Badge>
-          ) : null}
-          <Badge tone="brand">Auditor ready</Badge>
-          {advanced ? <Badge tone="brand">{receipt.verifierVersion.protocol}</Badge> : null}
-          {advanced ? <Badge tone="neutral">SDK {receipt.verifierVersion.sorobanSdk}</Badge> : null}
-          {advanced && receipt.replayBlocked ? <Badge tone="err">Replay blocked</Badge> : null}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Pill tone="brand">Receipt</Pill>
+          <h2 className="mt-3 lg-font-display text-4xl tracking-tight text-[#012b54]">{receiptId}</h2>
+          <p className="mt-1 text-sm text-[#64748b]">
+            A cryptographically sealed record of a regulated settlement.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={download}>
+            <Download className="h-4 w-4" />
+            PDF / JSON
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-3xl lg-shadow-lift">
+        <div className="relative lg-gradient-passport p-8 text-white md:p-10">
+          <div className="pointer-events-none absolute inset-0 lg-grid-bg opacity-10" />
+          <div className="relative grid gap-8 md:grid-cols-[1.2fr_1fr] md:items-end">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                Lumengate · Settlement receipt
+              </p>
+              <p className="mt-4 lg-font-display text-5xl tabular-nums tracking-tight md:text-6xl">
+                {displayAmount}
+              </p>
+              <p className="mt-1 text-sm text-white/70">
+                {assetLabel} · {receipt.network}
+              </p>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+              <div>
+                <dt className="text-white/50">Receipt</dt>
+                <dd className="mt-0.5 font-mono">{receiptId}</dd>
+              </div>
+              <div>
+                <dt className="text-white/50">Status</dt>
+                <dd className="mt-0.5 capitalize">{receipt.settlementStatus}</dd>
+              </div>
+              <div>
+                <dt className="text-white/50">Proof</dt>
+                <dd className="mt-0.5 font-mono">{truncateMiddle(receipt.nullifier, 8, 6)}</dd>
+              </div>
+              <div>
+                <dt className="text-white/50">Policy</dt>
+                <dd className="mt-0.5">{receipt.policyId}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <div className="grid gap-6 bg-white p-6 md:grid-cols-2 md:p-8">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Timeline</p>
+            <ul className="mt-4 space-y-4 border-l border-[var(--lg-border)] pl-4">
+              {receipt.transactions.sessionBind ? (
+                <li className="relative">
+                  <span className="absolute -left-[21px] top-0.5 grid h-3 w-3 place-items-center rounded-full bg-[#007dfc] ring-4 ring-white">
+                    <Check className="h-2 w-2 text-white" />
+                  </span>
+                  <p className="text-sm font-medium text-[#012b54]">Session proof bound</p>
+                  <p className="font-mono text-[10px] text-[#64748b]">{truncateMiddle(receipt.transactions.sessionBind, 10, 8)}</p>
+                </li>
+              ) : null}
+              {receipt.transactions.transfer ? (
+                <li className="relative">
+                  <span className="absolute -left-[21px] top-0.5 grid h-3 w-3 place-items-center rounded-full bg-[#007dfc] ring-4 ring-white">
+                    <Check className="h-2 w-2 text-white" />
+                  </span>
+                  <p className="text-sm font-medium text-[#012b54]">Stellar settlement</p>
+                  <p className="font-mono text-[10px] text-[#64748b]">{truncateMiddle(receipt.transactions.transfer, 10, 8)}</p>
+                </li>
+              ) : null}
+              <li className="relative">
+                <span className="absolute -left-[21px] top-0.5 grid h-3 w-3 place-items-center rounded-full bg-emerald-500 ring-4 ring-white">
+                  <Check className="h-2 w-2 text-white" />
+                </span>
+                <p className="text-sm font-medium text-[#012b54]">Eligibility verified</p>
+                <p className="text-xs text-[#64748b]">{receipt.claims.join(' · ') || 'ZK proof verified'}</p>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Compliance badges</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {receipt.claims.map((c) => (
+                <Pill key={c} tone="success">
+                  {c}
+                </Pill>
+              ))}
+              <Pill tone="brand">Selective disclosure</Pill>
+            </div>
+            <div className="mt-5 rounded-xl bg-[#f6f9fc] p-3">
+              <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Proof hash</dt>
+              <dd className="mt-1 break-all font-mono text-[11px] text-[#012b54]">{receipt.nullifier}</dd>
+            </div>
+            {receipt.explorerLinks.transfer ? (
+              <a
+                href={receipt.explorerLinks.transfer}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-[#007dfc] hover:underline"
+              >
+                View on Stellar Expert <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -183,13 +277,29 @@ export function ProofReceiptHero({
         </dl>
       </Card> : null}
 
-      {(receipt.transactions.transfer || receipt.transactions.verify) && (
+      {(receipt.transactions.transfer || receipt.transactions.verify || receipt.transactions.sessionBind) && (
         <Card>
-          <CardHeader title="Settlement reference" description="Real testnet transaction" badge={<Badge tone="brand">On-chain</Badge>} />
+          <CardHeader title="Settlement reference" description="Real testnet transactions" badge={<Badge tone="brand">On-chain</Badge>} />
           <dl className="grid gap-3">
+            {receipt.transactions.sessionBind ? (
+              <div className="rounded-xl bg-[#f6f9fc] p-3">
+                <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Session bind (tx 1)</dt>
+                <dd className="mt-1 font-mono text-xs break-all">{receipt.transactions.sessionBind}</dd>
+                {receipt.explorerLinks.sessionBind ? (
+                  <a
+                    href={receipt.explorerLinks.sessionBind}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#007dfc] hover:underline"
+                  >
+                    Stellar Expert <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
             {receipt.transactions.transfer ? (
               <div className="rounded-xl bg-[#f6f9fc] p-3">
-                <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Settlement</dt>
+                <dt className="text-[10px] font-semibold uppercase text-[#64748b]">Settlement (tx 2)</dt>
                 <dd className="mt-1 font-mono text-xs break-all">{receipt.transactions.transfer}</dd>
                 {receipt.explorerLinks.transfer ? (
                   <a

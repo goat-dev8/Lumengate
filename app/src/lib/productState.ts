@@ -21,13 +21,16 @@ export type ProductReadiness = {
 
 export function buildProductSteps(input: {
   address: string | null;
+  settlementAddress?: string | null;
   credential: IssuerCredentialResponse | null;
   proof: ProofBundle | null;
   lifecycle: ProofLifecycleState['lifecycle'];
   hasSettlement?: boolean;
+  passkeyFirst?: boolean;
 }): ProductStep[] {
+  const hasAccount = Boolean(input.settlementAddress ?? input.address);
   const flags = [
-    Boolean(input.address),
+    input.passkeyFirst ? hasAccount : Boolean(input.address),
     Boolean(input.credential && input.lifecycle !== 'consumed'),
     Boolean(input.proof && input.lifecycle === 'ready'),
     Boolean(input.proof && input.lifecycle === 'ready'),
@@ -35,13 +38,21 @@ export function buildProductSteps(input: {
   ];
   const firstIncomplete = flags.findIndex((flag) => !flag);
   const currentIndex = firstIncomplete === -1 ? flags.length - 1 : firstIncomplete;
-  const steps: Omit<ProductStep, 'state'>[] = [
-    { id: 'connect', label: 'Connect', description: 'Link your Stellar wallet.' },
-    { id: 'verify', label: 'Verify', description: 'Confirm you meet the policy.' },
-    { id: 'passport', label: 'Passport', description: 'Receive your private passport.' },
-    { id: 'invest', label: 'Invest', description: 'Choose a regulated offering.' },
-    { id: 'receipt', label: 'Receipt', description: 'Keep your settlement record.' },
-  ];
+  const steps: Omit<ProductStep, 'state'>[] = input.passkeyFirst
+    ? [
+        { id: 'connect', label: 'Passkey', description: 'Create your smart account.' },
+        { id: 'verify', label: 'Verify', description: 'Confirm you meet the policy.' },
+        { id: 'passport', label: 'Passport', description: 'Receive your private passport.' },
+        { id: 'invest', label: 'Invest', description: 'Choose a regulated offering.' },
+        { id: 'receipt', label: 'Receipt', description: 'Keep your settlement record.' },
+      ]
+    : [
+        { id: 'connect', label: 'Connect', description: 'Link your Stellar wallet.' },
+        { id: 'verify', label: 'Verify', description: 'Confirm you meet the policy.' },
+        { id: 'passport', label: 'Passport', description: 'Receive your private passport.' },
+        { id: 'invest', label: 'Invest', description: 'Choose a regulated offering.' },
+        { id: 'receipt', label: 'Receipt', description: 'Keep your settlement record.' },
+      ];
 
   return steps.map((step, index) => ({
     ...step,
@@ -51,11 +62,26 @@ export function buildProductSteps(input: {
 
 export function getProductReadiness(input: {
   address: string | null;
+  settlementAddress?: string | null;
   credential: IssuerCredentialResponse | null;
   proof: ProofBundle | null;
   lifecycle: ProofLifecycleState['lifecycle'];
+  passkeyFirst?: boolean;
 }): ProductReadiness {
-  if (!input.address) {
+  const hasFundingWallet = Boolean(input.address);
+  const hasSmartAccount = Boolean(input.settlementAddress);
+
+  if (input.passkeyFirst && !hasSmartAccount && !hasFundingWallet) {
+    return {
+      title: 'Start with your passkey',
+      description: 'Create a smart account with WebAuthn — connect a wallet only when you need to add funds.',
+      cta: 'Create passkey account',
+      href: '/app/verify',
+      tone: 'default',
+    };
+  }
+
+  if (!input.passkeyFirst && !hasFundingWallet) {
     return {
       title: 'Private investing on Stellar',
       description: 'Connect once, verify eligibility privately, then access regulated investments.',

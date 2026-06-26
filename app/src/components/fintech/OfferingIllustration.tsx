@@ -1,4 +1,5 @@
 import type { LiveOffering } from '../../lib/offerings';
+import { offeringDesignImage } from '../../lib/offeringDisplay';
 
 const CATEGORY_LABEL: Record<LiveOffering['category'], string> = {
   treasury: 'Tokenized treasury exposure',
@@ -7,9 +8,9 @@ const CATEGORY_LABEL: Record<LiveOffering['category'], string> = {
 };
 
 const OFFERING_IMAGES: Record<LiveOffering['category'], string> = {
-  treasury: '/offerings/treasury-fund.png',
-  'real-estate': '/offerings/real-estate-fund.png',
-  'private-credit': '/offerings/private-credit.png',
+  treasury: '/design/product-treasury.jpg',
+  'real-estate': '/design/product-realestate.jpg',
+  'private-credit': '/design/product-credit.jpg',
 };
 
 export function OfferingIllustration({
@@ -21,7 +22,11 @@ export function OfferingIllustration({
   className?: string;
   variant?: 'card' | 'hero';
 }) {
-  const src = OFFERING_IMAGES[offering.category];
+  const src = offering.settlementRoute === 'dex'
+    ? '/design/product-dex.jpg'
+    : offering.settlementRoute === 'payroll'
+      ? '/design/product-payroll.jpg'
+      : offeringDesignImage(offering) || OFFERING_IMAGES[offering.category];
 
   return (
     <div className={`relative overflow-hidden ${variant === 'card' ? 'rounded-t-2xl' : 'rounded-2xl'} ${className}`}>

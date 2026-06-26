@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { ArrowRightLeft, Sparkles } from 'lucide-react';
+import { ArrowRightLeft, Sparkles, Search, ShieldCheck, Filter } from 'lucide-react';
 
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
+import { SectionHeader, Stagger, StaggerItem } from '../components/design/Primitives';
+import { MarketplaceProductCard } from '../components/marketplace/MarketplaceProductCard';
+import {
+  MARKETPLACE_CATEGORIES,
+  offeringMatchesCategory,
+  type MarketplaceCategory,
+} from '../lib/offeringDisplay';
 
 import { Card } from '../components/ui/Card';
 
@@ -13,8 +21,6 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 
 import { EmptyState, Skeleton } from '../components/ui/States';
-
-import { OfferingIconBadge, OfferingIllustration } from '../components/fintech/OfferingIllustration';
 
 import { useApp } from '../context/AppContext';
 
@@ -50,20 +56,6 @@ import { offeringMinimumBigInt } from '../lib/offerings';
 import { policyByKey } from '../lib/policies';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
-
-
-
-function riskTone(risk: string) {
-
-  if (risk === 'Low') return 'ok' as const;
-
-  if (risk === 'Medium') return 'warn' as const;
-
-  return 'err' as const;
-
-}
-
-
 
 export function MarketplacePage() {
 
@@ -115,6 +107,22 @@ export function MarketplacePage() {
 
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [marketSearch, setMarketSearch] = useState(searchParams.get('q') ?? '');
+  const [category, setCategory] = useState<MarketplaceCategory>('All');
+  const visibleOfferings = useMemo(() => {
+    const q = (marketSearch || searchParams.get('q') || '').trim().toLowerCase();
+    return offerings.filter((o) => {
+      if (!offeringMatchesCategory(o, category)) return false;
+      if (!q) return true;
+      return (
+        o.title.toLowerCase().includes(q) ||
+        o.description.toLowerCase().includes(q) ||
+        o.category.toLowerCase().includes(q) ||
+        o.eligibilityPolicy.toLowerCase().includes(q)
+      );
+    });
+  }, [offerings, marketSearch, searchParams, category]);
 
   const selected =
 
@@ -188,33 +196,26 @@ export function MarketplacePage() {
 
 
   const prepareOffering = async (offering: LiveOffering) => {
-
     setSelectedOfferingId(offering.id);
-
     setPolicyKey(offering.requiredPolicy);
-
     setError(null);
 
-    if (!address) {
-
-      await connect();
-
-      return;
-
-    }
-
-    try {
-
-      await requestCredential(offering.requiredPolicy);
-
+    if (!settlementAddress) {
       navigate('/app/verify');
-
-    } catch (err) {
-
-      setError(err instanceof Error ? err.message : String(err));
-
+      return;
     }
 
+    if (!credential) {
+      try {
+        await requestCredential(offering.requiredPolicy);
+        navigate('/app/verify');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    navigate('/app/verify');
   };
 
 
@@ -262,7 +263,7 @@ export function MarketplacePage() {
     if (!isProofUsable(proofLifecycle)) {
       return proofLifecycle.reason ?? 'Complete your passport first';
     }
-    if (!address || !credential) return 'Complete your passport first';
+    if (!settlementAddress || !credential) return 'Complete your passport first';
     if (!smartAccount) return 'Create your smart account first';
     if (smartAccountStale) return 'Upgrade your smart account on Verify or Send first';
 
@@ -554,33 +555,33 @@ export function MarketplacePage() {
 
 
   return (
-
     <AppShell>
-
-      <div className="lg-section-head flex flex-wrap items-end justify-between gap-4">
-
-        <div>
-
-          <p className="lg-section-eyebrow">Invest</p>
-
-          <h1 className="lg-section-title text-2xl lg:text-3xl">Private investments</h1>
-
-          <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
-
-            {proofConsumed
+      <AppPageLayout
+        title="Marketplace"
+        subtitle="Regulated, tokenized, settlement-ready offerings on Stellar."
+      >
+        <SectionHeader
+          eyebrow="Offerings"
+          title="Curated by Lumengate"
+          description={
+            proofConsumed
               ? 'Your passport was used — renew it to invest again.'
               : activeProof
-                ? 'You are verified. Choose an offering and confirm in your wallet.'
+                ? 'You are verified. Choose an offering and authorize with your passkey.'
                 : credential
                   ? 'Finish eligibility to unlock investing.'
-                  : `${offerings.length} offerings available — verify once to get started.`}
+                  : 'Every offering is permissioned. Your passport unlocks eligibility automatically.'
+          }
+          action={
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--lg-border)] bg-white px-3 py-1.5 text-xs text-[#64748b]">
+              <ShieldCheck className="h-3.5 w-3.5 text-[#007dfc]" />
+              Eligible offerings shown first
+            </div>
+          }
+        />
 
-          </p>
-
-        </div>
-
-        {address ? (
-          <div className="flex flex-wrap gap-3">
+        {(settlementAddress || address) ? (
+          <div className="mt-6 flex flex-wrap gap-3">
             <div className="rounded-xl border border-[#e3e8ee] bg-white px-5 py-3 shadow-sm">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
                 Treasury units
@@ -605,8 +606,6 @@ export function MarketplacePage() {
             ) : null}
           </div>
         ) : null}
-
-      </div>
 
       {proofConsumed || proofLifecycle.lifecycle === 'invalid' ? (
         <div className="mb-6">
@@ -637,9 +636,49 @@ export function MarketplacePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-8 xl:grid-cols-3">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-full border border-[var(--lg-border)] bg-white px-3 py-2">
+          <Search className="h-4 w-4 text-[#64748b]" />
+          <input
+            type="search"
+            value={marketSearch}
+            onChange={(e) => setMarketSearch(e.target.value)}
+            placeholder="Search by name or issuer"
+            className="w-48 bg-transparent text-sm outline-none placeholder:text-[#94a3b8] sm:w-64"
+            aria-label="Search offerings"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {MARKETPLACE_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCategory(c)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                category === c
+                  ? 'border-[#012b54] bg-[#012b54] text-white'
+                  : 'border-[var(--lg-border)] bg-white text-[#64748b] hover:bg-[var(--lg-muted-bg)]'
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--lg-border)] bg-white px-3 py-1.5 text-xs text-[#64748b]"
+          onClick={() => {
+            setCategory('All');
+            setMarketSearch('');
+          }}
+        >
+          <Filter className="h-3.5 w-3.5" /> Clear filters
+        </button>
+      </div>
 
-        {offerings.map((offering) => {
+      <Stagger className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+
+        {visibleOfferings.map((offering) => {
 
           const policy = policyByKey(offering.requiredPolicy);
 
@@ -650,201 +689,77 @@ export function MarketplacePage() {
           const threshold = fundsThreshold(offering);
 
           return (
-
-            <div
-
-              key={offering.id}
-
-              className={`lg-offering-card ${isSelected ? 'ring-2 ring-[#007dfc]' : ''}`}
-
-            >
-
-              <OfferingIllustration offering={offering} className="h-44" variant="card" />
-
-              <div className="lg-offering-body">
-
-                <div className="flex items-start gap-3">
-
-                  <OfferingIconBadge category={offering.category} />
-
-                  <div className="min-w-0 flex-1">
-
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-
-                      <Link to={`/app/marketplace/${offering.id}`}>
-
-                        <h3 className="text-lg font-semibold text-[#012b54] hover:text-[#007dfc]">
-
-                          {offering.title}
-
-                        </h3>
-
-                      </Link>
-
-                      <Badge tone="brand">{offering.offeringStatus}</Badge>
-
-                    </div>
-
-                    <p className="mt-1 text-sm text-[#64748b]">{offering.description}</p>
-
-                  </div>
-
-                </div>
-
-
-
-                <div className="lg-offering-stats">
-
-                  <div className="lg-offering-stat">
-
-                    <div className="lg-offering-stat-label">Access</div>
-
-                    <div className="lg-offering-stat-value">Passport</div>
-
-                  </div>
-
-                  <div className="lg-offering-stat">
-
-                    <div className="lg-offering-stat-label">Risk</div>
-
-                    <div className="lg-offering-stat-value">
-
-                      <Badge tone={riskTone(offering.riskLevel)}>{offering.riskLevel}</Badge>
-
-                    </div>
-
-                  </div>
-
-                  <div className="lg-offering-stat">
-
-                    <div className="lg-offering-stat-label">Minimum</div>
-
-                    <div className="lg-offering-stat-value">
-
-                      {offering.minimumAmount} {offering.unitLabel}
-
-                    </div>
-
-                  </div>
-
-                </div>
-
-
-
-                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[#eef0f3] pt-4 text-sm">
-
+            <StaggerItem key={offering.id}>
+            <MarketplaceProductCard offering={offering} selected={isSelected}>
+                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--lg-border)] pt-4 text-sm">
                   <div>
-
                     <span className="text-[#64748b]">Settles in</span>
-
                     <p className="font-medium text-[#012b54]">
                       {offering.settlementAsset.toUpperCase()}
                       {offering.settlementRoute && offering.settlementRoute !== 'rwa'
                         ? ` · ${offering.settlementRoute}`
                         : ''}
                     </p>
-
                   </div>
-
                   <div>
-
                     <span className="text-[#64748b]">Who can invest</span>
-
                     <p className="font-medium text-[#012b54]">{policy.title}</p>
-
                   </div>
-
                 </div>
-
-
 
                 <div className="mt-4 flex flex-wrap gap-1.5">
-
                   {policy.claims.slice(0, 3).map((c) => (
-
-                    <span key={c} className="lg-verified-chip text-[#012b54] !bg-[#f0f6ff] !border-[#e3e8ee]">
-
+                    <span
+                      key={c}
+                      className="rounded-md bg-[var(--lg-muted-bg)] px-2 py-0.5 text-[10.5px] font-medium text-[#64748b]"
+                    >
                       {c}
-
                     </span>
-
                   ))}
-
                 </div>
-
-
 
                 <div className="mt-6 flex flex-col gap-2">
-
                   <Button variant="secondary" onClick={() => prepareOffering(offering)}>
-
                     Get ready to invest
-
                   </Button>
-
                   {threshold ? (
-
                     <Button
-
                       variant="secondary"
-
                       loading={pofLoading && isSelected}
-
                       onClick={() => {
-
                         setSelectedOfferingId(offering.id);
-
                         handleGeneratePof(offering);
-
                       }}
-
                     >
-
                       <Sparkles className="h-4 w-4" />
-
                       Confirm balance privately
-
                     </Button>
-
                   ) : null}
-
                   <Button
-
                     loading={settling && isSelected}
-
                     disabled={Boolean(block)}
-
                     onClick={() => {
-
                       setSelectedOfferingId(offering.id);
-
                       handleSettle(offering);
-
                     }}
-
                   >
-
                     <ArrowRightLeft className="h-4 w-4" />
-
                     Invest now
-
                   </Button>
-
                   {block && address ? <p className="text-xs text-[#64748b]">{block}</p> : null}
-
                 </div>
-
-              </div>
-
-            </div>
-
+            </MarketplaceProductCard>
+            </StaggerItem>
           );
-
         })}
+      </Stagger>
 
-      </div>
-
-
+      {visibleOfferings.length === 0 && !offeringsLoading ? (
+        <div className="mt-16 lg-surface-card p-12 text-center">
+          <p className="text-sm font-semibold text-[#012b54]">No offerings match</p>
+          <p className="mt-1 text-sm text-[#64748b]">Try clearing filters or another category.</p>
+        </div>
+      ) : null}
 
       {!address ? (
 
@@ -927,9 +842,7 @@ export function MarketplacePage() {
         </Card>
 
       ) : null}
-
+      </AppPageLayout>
     </AppShell>
-
   );
-
 }

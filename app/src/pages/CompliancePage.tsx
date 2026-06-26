@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Share2, Shield } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
 import { ProofReceiptHero } from '../components/compliance/ProofReceiptHero';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -108,15 +109,11 @@ export function CompliancePage() {
 
   return (
     <AppShell>
-      <div className="lg-section-head mb-6">
-        <p className="lg-section-eyebrow">Receipt</p>
-        <h1 className="lg-section-title text-2xl lg:text-3xl">Your compliant settlement receipt</h1>
-        <p className="mt-2 max-w-2xl text-[15px] text-[#475569]">
-          A clean record that your settlement was allowed, completed on Stellar, and can be verified by an auditor
-          without exposing your private identity details.
-        </p>
-      </div>
-
+      <AppPageLayout
+        title="Receipts"
+        subtitle="Auditor-grade settlement records"
+        width="6xl"
+      >
       {!hasReceipt ? (
         <EmptyState
           title="No receipt yet"
@@ -219,6 +216,7 @@ export function CompliancePage() {
       <div className="mt-8">
         <JourneyRail steps={journey} compact />
       </div>
+      </AppPageLayout>
     </AppShell>
   );
 }

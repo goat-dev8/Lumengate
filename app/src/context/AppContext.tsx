@@ -40,6 +40,13 @@ import {
   clearWalletSession,
   type WalletSession,
 } from '../lib/session';
+import {
+  clearPasskeySession,
+  linkPasskeySessionToWallet,
+  loadPasskeySession,
+  savePasskeySession,
+  type PasskeySession,
+} from '../lib/passkeySession';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import {
   deriveProofLifecycle,
@@ -265,6 +272,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const persistPasskeySession = useCallback(
+    (partial: Partial<PasskeySession> & { smartAccountAddress: string; walletField: string; smartAccount: SmartAccountState }) => {
+      const existing = loadPasskeySession();
+      const next: PasskeySession = {
+        smartAccountAddress: partial.smartAccountAddress,
+        walletField: partial.walletField,
+        smartAccount: partial.smartAccount,
+        credential: partial.credential !== undefined ? partial.credential : (existing?.credential ?? null),
+        proof: partial.proof !== undefined ? partial.proof : (existing?.proof ?? null),
+        pofProof: partial.pofProof !== undefined ? partial.pofProof : (existing?.pofProof ?? null),
+        proofDurationSec:
+          partial.proofDurationSec !== undefined
+            ? partial.proofDurationSec
+            : (existing?.proofDurationSec ?? null),
+        policyKey: partial.policyKey ?? existing?.policyKey ?? 'general-eligibility',
+        selectedOfferingId:
+          partial.selectedOfferingId !== undefined
+            ? partial.selectedOfferingId
+            : (existing?.selectedOfferingId ?? null),
+        receiptTransactions:
+          partial.receiptTransactions ?? existing?.receiptTransactions ?? emptyReceiptTxs,
+        transferResult:
+          partial.transferResult !== undefined
+            ? partial.transferResult
+            : (existing?.transferResult ?? null),
+        replayBlocked: partial.replayBlocked ?? existing?.replayBlocked ?? false,
+        replayMessage:
+          partial.replayMessage !== undefined
+            ? partial.replayMessage
+            : (existing?.replayMessage ?? null),
+        proofReceipt:
+          partial.proofReceipt !== undefined
+            ? partial.proofReceipt
+            : (existing?.proofReceipt ?? null),
+        passportActivated:
+          partial.passportActivated !== undefined
+            ? partial.passportActivated
+            : (existing?.passportActivated ?? false),
+        proofLifecycle: partial.proofLifecycle ?? existing?.proofLifecycle,
+        consumedTxHash:
+          partial.consumedTxHash !== undefined
+            ? partial.consumedTxHash
+            : (existing?.consumedTxHash ?? null),
+        fundingWalletAddress: partial.fundingWalletAddress ?? existing?.fundingWalletAddress ?? null,
+        updatedAt: Date.now(),
+      };
+      savePasskeySession(next);
+    },
+    [],
+  );
+
   const applySession = useCallback((saved: WalletSession) => {
     setCredentialState(saved.credential);
     const proofOk = proofMatchesCredential(saved.proof, saved.credential);
@@ -306,6 +364,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [kit]);
 
+  const applyPasskeySession = useCallback(
+    (saved: PasskeySession) => {
+      setWalletField(saved.walletField);
+      applySession({
+        address: saved.fundingWalletAddress ?? saved.smartAccountAddress,
+        walletField: saved.walletField,
+        smartAccount: saved.smartAccount,
+        credential: saved.credential,
+        proof: saved.proof,
+        pofProof: saved.pofProof,
+        proofDurationSec: saved.proofDurationSec,
+        policyKey: saved.policyKey,
+        selectedOfferingId: saved.selectedOfferingId,
+        receiptTransactions: saved.receiptTransactions,
+        transferResult: saved.transferResult,
+        replayBlocked: saved.replayBlocked,
+        replayMessage: saved.replayMessage,
+        proofReceipt: saved.proofReceipt,
+        passportActivated: saved.passportActivated,
+        proofLifecycle: saved.proofLifecycle,
+        consumedTxHash: saved.consumedTxHash,
+        updatedAt: saved.updatedAt,
+      });
+    },
+    [applySession],
+  );
+
   const restoreSession = useCallback(
     (addr: string) => {
       let saved = loadWalletSession(addr);
@@ -322,7 +407,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!smartAccount || !address || !walletField) return;
+    if (!smartAccount || !walletField) return;
     let cancelled = false;
     hydrateSmartAccountPasskeyMetadata(config, smartAccount)
       .then((hydrated) => {
@@ -334,7 +419,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         setSmartAccount(hydrated);
-        persistSession({ address, walletField, smartAccount: hydrated });
+        if (address) {
+          persistSession({ address, walletField, smartAccount: hydrated });
+        } else {
+          persistPasskeySession({
+            smartAccountAddress: hydrated.smartAccountAddress,
+            walletField,
+            smartAccount: hydrated,
+          });
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -349,43 +442,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     walletField,
     config,
     persistSession,
+    persistPasskeySession,
   ]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const passkeySaved = loadPasskeySession();
+      if (passkeySaved && !loadLastWalletConnection()) {
+        applyPasskeySession(passkeySaved);
+      }
+
       const last = loadLastWalletConnection();
       if (last) {
         setAddress(last.address);
-        setWalletField(last.walletField);
+        if (!passkeySaved) {
+          setWalletField(last.walletField);
+        }
         setWalletModuleId(last.walletModuleId ?? null);
         setWalletModuleName(last.walletModuleName ?? null);
         restoreSession(last.address);
         if (last.walletModuleId) {
           kit.setWallet(last.walletModuleId);
         }
+        return;
       }
       try {
         const { address: addr } = await kit.getAddress({ skipRequestAccess: true });
         const wf = await walletFieldFromAddress(addr);
         if (cancelled) return;
         setAddress(addr);
-        setWalletField(wf);
+        if (!passkeySaved) {
+          setWalletField(wf);
+        }
         restoreSession(addr);
         saveLastWalletConnection({
           address: addr,
-          walletField: wf,
-          walletModuleId: last?.walletModuleId,
-          walletModuleName: last?.walletModuleName,
+          walletField: passkeySaved?.walletField ?? wf,
         });
       } catch {
-        /* extension not auto-connected — UI still shows last session */
+        /* extension not auto-connected — passkey session may still restore */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [kit, restoreSession]);
+  }, [kit, restoreSession, applyPasskeySession]);
 
   const syncProofLifecycle = useCallback(async () => {
     const settlementTx = consumedTxHash;
@@ -580,24 +682,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       const selected = walletRef.current;
       const { address: addr } = await kit.getAddress();
-      const wf = await walletFieldFromAddress(addr);
+      const fundingField = await walletFieldFromAddress(addr);
+      const passkeySaved = loadPasskeySession();
       setAddress(addr);
-      setWalletField(wf);
       setWalletModuleId(selected?.id ?? null);
       setWalletModuleName(selected?.name ?? null);
-      restoreSession(addr);
-      saveLastWalletConnection({
-        address: addr,
-        walletField: wf,
-        walletModuleId: selected?.id,
-        walletModuleName: selected?.name,
-      });
-      persistSession({
-        address: addr,
-        walletField: wf,
-        walletModuleId: selected?.id,
-        walletModuleName: selected?.name,
-      });
+
+      if (passkeySaved) {
+        const merged = linkPasskeySessionToWallet(addr, fundingField);
+        if (merged) {
+          setWalletField(merged.walletField);
+          applySession(merged);
+        }
+      } else {
+        setWalletField(fundingField);
+        restoreSession(addr);
+        saveLastWalletConnection({
+          address: addr,
+          walletField: fundingField,
+          walletModuleId: selected?.id,
+          walletModuleName: selected?.name,
+        });
+        persistSession({
+          address: addr,
+          walletField: fundingField,
+          walletModuleId: selected?.id,
+          walletModuleName: selected?.name,
+        });
+      }
+
+      if (passkeySaved) {
+        saveLastWalletConnection({
+          address: addr,
+          walletField: passkeySaved.walletField,
+          walletModuleId: selected?.id,
+          walletModuleName: selected?.name,
+        });
+        persistPasskeySession({
+          ...passkeySaved,
+          smartAccountAddress: passkeySaved.smartAccountAddress,
+          walletField: passkeySaved.walletField,
+          smartAccount: passkeySaved.smartAccount,
+          fundingWalletAddress: addr,
+        });
+      }
       pushActivity({
         kind: 'verify',
         title: 'Wallet connected',
@@ -607,16 +735,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setConnecting(false);
     }
-  }, [kit, pushActivity, restoreSession, persistSession]);
+  }, [kit, pushActivity, restoreSession, persistSession, persistPasskeySession, applySession]);
 
   const disconnect = useCallback(() => {
     kit.disconnect().catch(() => undefined);
+    const passkeySaved = loadPasskeySession();
     if (address) clearWalletSession(address);
     clearLastWalletConnection();
     setAddress(null);
-    setWalletField(null);
     setWalletModuleId(null);
     setWalletModuleName(null);
+
+    if (passkeySaved) {
+      applyPasskeySession({ ...passkeySaved, fundingWalletAddress: null });
+      return;
+    }
+
+    clearPasskeySession();
+    setWalletField(null);
     setSmartAccount(null);
     setCredentialState(null);
     setProofState(null);
@@ -625,19 +761,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPassportActivatedState(false);
     setConsumedTxHash(null);
     setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
-  }, [kit, address]);
+  }, [kit, address, applyPasskeySession]);
 
   const createSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
-    if (!address || !walletField) throw new Error('Connect wallet first');
+    const canDeployWithoutWallet = Boolean(config.openZeppelinRelayerUrl);
+    if (!address && !canDeployWithoutWallet) {
+      throw new Error('Connect wallet first to pay deploy fees, or configure the OpenZeppelin relayer.');
+    }
     setSmartAccountCreating(true);
     try {
-      const created = await createPersonalSmartAccount(config, address);
+      const deploySeed = address ?? crypto.randomUUID();
+      const created = await createPersonalSmartAccount(config, deploySeed);
+      const issuerField = await walletFieldFromAddress(created.smartAccountAddress);
       setSmartAccount(created);
-      persistSession({
-        address,
-        walletField,
-        smartAccount: created,
-      });
+      setWalletField(issuerField);
+
+      if (address) {
+        persistSession({
+          address,
+          walletField: issuerField,
+          smartAccount: created,
+        });
+      } else {
+        persistPasskeySession({
+          smartAccountAddress: created.smartAccountAddress,
+          walletField: issuerField,
+          smartAccount: created,
+        });
+      }
       pushActivity({
         kind: 'verify',
         title: 'Smart account ready',
@@ -648,24 +799,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setSmartAccountCreating(false);
     }
-  }, [address, walletField, config, persistSession, pushActivity]);
+  }, [address, config, persistSession, persistPasskeySession, pushActivity]);
 
   const replaceSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
-    if (!address || !walletField) throw new Error('Connect wallet first');
+    const issuerField =
+      walletField ??
+      (settlementAddress ? await walletFieldFromAddress(settlementAddress) : null);
+    if (!address && !issuerField) throw new Error('Create or restore your passkey account first');
     setSmartAccount(null);
     setProofState(null);
     setProofDurationSec(null);
     setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
-    persistSession({
-      address,
-      walletField,
-      smartAccount: null,
-      proof: null,
-      proofDurationSec: null,
-      proofLifecycle: 'none',
-    });
+    if (address && issuerField) {
+      persistSession({
+        address,
+        walletField: issuerField,
+        smartAccount: null,
+        proof: null,
+        proofDurationSec: null,
+        proofLifecycle: 'none',
+      });
+    } else if (settlementAddress && issuerField && smartAccount) {
+      persistPasskeySession({
+        smartAccountAddress: settlementAddress,
+        walletField: issuerField,
+        smartAccount,
+        proof: null,
+        proofDurationSec: null,
+        proofLifecycle: 'none',
+      });
+    }
     return createSmartAccount();
-  }, [address, walletField, persistSession, createSmartAccount]);
+  }, [address, walletField, settlementAddress, smartAccount, persistSession, persistPasskeySession, createSmartAccount]);
 
   const setCredential = useCallback((c: IssuerCredentialResponse | null) => {
     setCredentialState(c);
@@ -708,10 +873,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const requestCredential = useCallback(
     async (requestedPolicyKey?: PolicyKey) => {
-      if (!walletField || !address) throw new Error('Connect wallet first');
+      const issuerField =
+        walletField ??
+        (settlementAddress ? await walletFieldFromAddress(settlementAddress) : null);
+      if (!issuerField) throw new Error('Create your passkey account first');
       const pk = requestedPolicyKey ?? policyKey;
-      const cred = await fetchIssuerCredential(config.issuerServiceUrl, walletField, pk);
+      const cred = await fetchIssuerCredential(config.issuerServiceUrl, issuerField, pk);
       setPolicyKeyState(pk);
+      setWalletField(issuerField);
       setCredentialState(cred);
       setProofState(null);
       setPofProofState(null);
@@ -719,19 +888,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConsumedTxHash(null);
       setPassportActivatedState(false);
       setProofLifecycle({ lifecycle: 'none', consumedTxHash: null, reason: null });
-      persistSession({
-        address,
-        walletField,
-        credential: cred,
-        proof: null,
-        pofProof: null,
-        proofDurationSec: null,
-        policyKey: pk,
-        selectedOfferingId,
-        consumedTxHash: null,
-        passportActivated: false,
-        proofLifecycle: 'none',
-      });
+
+      if (address) {
+        persistSession({
+          address,
+          walletField: issuerField,
+          credential: cred,
+          proof: null,
+          pofProof: null,
+          proofDurationSec: null,
+          policyKey: pk,
+          selectedOfferingId,
+          consumedTxHash: null,
+          passportActivated: false,
+          proofLifecycle: 'none',
+        });
+      } else if (smartAccount) {
+        persistPasskeySession({
+          smartAccountAddress: smartAccount.smartAccountAddress,
+          walletField: issuerField,
+          smartAccount,
+          credential: cred,
+          proof: null,
+          pofProof: null,
+          proofDurationSec: null,
+          policyKey: pk,
+          selectedOfferingId,
+          consumedTxHash: null,
+          passportActivated: false,
+          proofLifecycle: 'none',
+        });
+      }
       const synced = await syncProofLifecycleOnChain(config, cred, null, null);
       setProofLifecycle(synced);
       pushActivity({
@@ -742,7 +929,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return cred;
     },
-    [config.issuerServiceUrl, config, walletField, address, policyKey, selectedOfferingId, pushActivity, persistSession],
+    [config.issuerServiceUrl, config, walletField, settlementAddress, smartAccount, address, policyKey, selectedOfferingId, pushActivity, persistSession, persistPasskeySession],
   );
 
   const setProof = useCallback(
@@ -1113,7 +1300,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             settlementFrom,
             proof,
           );
-          await submitWithSmartAccount(config, smartAccount, bindTx);
+          const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx);
+          setReceiptTransactions((prev) => {
+            const txs = { ...prev, sessionBind: bindHash };
+            if (address && walletField) {
+              persistSession({ address, walletField, receiptTransactions: txs });
+            }
+            return txs;
+          });
         } catch (err) {
           const raw = err instanceof Error ? err.message : String(err);
           throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
@@ -1126,7 +1320,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount],
+    [config, address, smartAccount, walletField, persistSession],
   );
 
   const fundSmartAccountUsdc = useCallback(

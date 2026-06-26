@@ -1,0 +1,100 @@
+@layer components {
+  .lg-surface-card {
+    border-radius: calc(var(--lg-radius) + 4px);
+    border: 1px solid var(--lg-border);
+    background: var(--lg-card);
+    box-shadow: var(--lg-shadow-sm);
+  }
+
+  .lg-surface-card-hover {
+    transition: transform 0.2s var(--lg-ease-out), box-shadow 0.2s var(--lg-ease-out);
+  }
+
+  .lg-surface-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lg-shadow-lift);
+  }
+
+  .lg-gradient-passport {
+    background-image: var(--lg-gradient-passport);
+    color: #fff;
+  }
+
+  .lg-gradient-brand {
+    background-image: var(--lg-gradient-brand);
+    color: #fff;
+  }
+
+  .lg-shadow-lift {
+    box-shadow: var(--lg-shadow-lift);
+  }
+
+  .lg-page {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 80rem;
+    padding: 2rem 1.5rem 5rem;
+  }
+
+  .lg-sidebar-v2 {
+    display: flex;
+    width: 260px;
+    shrink: 0;
+    flex-direction: column;
+    border-right: 1px solid var(--lg-sidebar-border);
+    background: var(--lg-sidebar);
+    color: var(--lg-sidebar-fg);
+  }
+
+  .lg-sidebar-v2-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    width: 260px;
+    flex-direction: column;
+    border-right: 1px solid var(--lg-sidebar-border);
+    background: var(--lg-sidebar);
+    color: var(--lg-sidebar-fg);
+  }
+
+  .lg-grid-bg {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .lg-shadow-elegant {
+    box-shadow: 0 8px 30px -12px rgba(0, 125, 252, 0.45);
+  }
+
+  .lg-sidebar-link-v2 {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgba(51, 65, 85, 0.75);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .lg-sidebar-link-v2:hover {
+    background: var(--lg-muted-bg);
+    color: var(--lg-foreground);
+  }
+
+  .lg-sidebar-link-v2-active {
+    background: var(--lg-gradient-brand);
+    color: #fff;
+    box-shadow: var(--lg-shadow-sm);
+  }
+
+  .lg-font-display {
+    font-family: var(--lg-font-display);
+  }
+}

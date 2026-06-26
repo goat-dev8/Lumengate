@@ -24,7 +24,8 @@ function env(name) {
     .split('\n')
     .find((l) => l.startsWith(`${name}=`));
   if (!line) throw new Error(`Missing ${name}`);
-  return line.slice(name.length + 1).trim().replace(/\r$/, '');
+  const raw = line.slice(name.length + 1).trim().replace(/\r$/, '');
+  return raw.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
 }
 
 const horizonUrl = env('STELLAR_HORIZON_URL');
@@ -51,10 +52,11 @@ async function loadAccount() {
 
 async function submit(ops) {
   const acct = await loadAccount();
-  const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: passphrase })
-    .addOperations(ops)
-    .setTimeout(120)
-    .build();
+  const builder = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase: passphrase });
+  for (const op of ops) {
+    builder.addOperation(op);
+  }
+  const tx = builder.setTimeout(120).build();
   tx.sign(kp);
   return server.submitTransaction(tx);
 }
@@ -114,6 +116,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  if (err?.response?.data) {
+    console.error(JSON.stringify(err.response.data, null, 2));
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });

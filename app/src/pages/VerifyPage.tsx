@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle, Sparkles, Wallet } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, Circle, Fingerprint, Sparkles, Wallet } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
+import { PassportHero } from '../components/design/PassportHero';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -19,23 +21,31 @@ import { AdvancedModeToggle, useAdvancedMode } from '../components/product/Advan
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
-import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
+import { OnboardingPathPicker, getOnboardingPath, setOnboardingPath, type OnboardingPath } from '../components/product/OnboardingPathPicker';
 import { recoveryLog, verifyStepFlags, type VerifyStepId } from '../lib/proofRecovery';
+import { derivePassportPhase } from '../lib/passportLifecycle';
 
-const STEP_META: { id: VerifyStepId; label: string; hint: string }[] = [
+const PASSKEY_STEP_META: { id: VerifyStepId | 'passkey'; label: string; hint: string }[] = [
+  { id: 'passkey', label: 'Passkey account', hint: 'Create your smart account' },
+  { id: 'credential', label: 'Verify eligibility', hint: 'Issuer confirms access' },
+  { id: 'proof', label: 'Private passport', hint: 'Confirm locally in browser' },
+  { id: 'ready', label: 'Unlock investments', hint: 'Invest or send privately' },
+];
+
+const WALLET_STEP_META: { id: VerifyStepId; label: string; hint: string }[] = [
   { id: 'wallet', label: 'Connect wallet', hint: 'Link your Stellar account' },
   { id: 'credential', label: 'Verify eligibility', hint: 'Issuer confirms access' },
-  { id: 'proof', label: 'Private passport', hint: 'Confirm locally in your browser' },
+  { id: 'proof', label: 'Private passport', hint: 'Confirm locally in browser' },
   { id: 'ready', label: 'Unlock investments', hint: 'Invest or send privately' },
 ];
 
 function stepState(
-  id: VerifyStepId,
-  flags: Record<VerifyStepId, boolean>,
+  id: VerifyStepId | 'passkey',
+  flags: Record<string, boolean>,
+  order: (VerifyStepId | 'passkey')[],
 ): 'complete' | 'current' | 'upcoming' {
-  const order = STEP_META.map((s) => s.id);
   const idx = order.indexOf(id);
   if (flags[id]) return 'complete';
   const firstIncomplete = order.findIndex((k) => !flags[k]);
@@ -43,6 +53,21 @@ function stepState(
 }
 
 export function VerifyPage() {
+  const [searchParams] = useSearchParams();
+  const pathParam = searchParams.get('path');
+  const [onboardingPath, setOnboardingPathState] = useState<OnboardingPath>(() =>
+    pathParam === 'wallet' ? 'wallet' : getOnboardingPath(),
+  );
+
+  useEffect(() => {
+    if (pathParam === 'wallet' || pathParam === 'passkey') {
+      setOnboardingPath(pathParam);
+      setOnboardingPathState(pathParam);
+    }
+  }, [pathParam]);
+
+  const passkeyFirst = onboardingPath === 'passkey';
+  const stepMeta = passkeyFirst ? PASSKEY_STEP_META : WALLET_STEP_META;
   const {
     address,
     connect,
@@ -76,21 +101,41 @@ export function VerifyPage() {
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
   const recoveryHint = proofLifecycle.lifecycle === 'none' && Boolean(proofLifecycle.reason);
 
-  const flags = useMemo(
-    () =>
-      verifyStepFlags({
-        address: Boolean(address),
-        credential: Boolean(credential),
-        activeProof: Boolean(activeProof),
-        lifecycle: proofLifecycle.lifecycle,
-      }),
-    [address, credential, activeProof, proofLifecycle.lifecycle],
+  const flags = useMemo((): Record<string, boolean> => {
+    const base = verifyStepFlags({
+      address: Boolean(address),
+      credential: Boolean(credential),
+      activeProof: Boolean(activeProof),
+      lifecycle: proofLifecycle.lifecycle,
+    });
+    if (passkeyFirst) {
+      return {
+        passkey: Boolean(smartAccount && settlementAddress),
+        credential: base.credential,
+        proof: base.proof,
+        ready: base.ready,
+        wallet: base.wallet,
+      };
+    }
+    return base;
+  }, [
+    address,
+    credential,
+    activeProof,
+    proofLifecycle.lifecycle,
+    passkeyFirst,
+    smartAccount,
+    settlementAddress,
+  ]);
+
+  const stepOrder = useMemo(
+    () => stepMeta.map((s) => s.id),
+    [stepMeta],
   );
 
   const currentStep = useMemo(() => {
-    const order = STEP_META.map((s) => s.id);
-    return order.find((id) => !flags[id]) ?? 'ready';
-  }, [flags]);
+    return stepOrder.find((id) => !flags[id]) ?? 'ready';
+  }, [flags, stepOrder]);
 
   useEffect(() => {
     if (window.location.hash === '#recovery-credential') {
@@ -99,7 +144,7 @@ export function VerifyPage() {
   }, [proofLifecycle.lifecycle, credential]);
 
   const handleCredential = async () => {
-    if (!address) {
+    if (!address && !settlementAddress && !config.openZeppelinRelayerUrl) {
       await connect();
       return;
     }
@@ -166,23 +211,40 @@ export function VerifyPage() {
   };
 
   const showCredentialStep =
-    (currentStep === 'credential' || flags.credential || proofConsumed || recoveryHint) && Boolean(address);
+    (currentStep === 'credential' || flags.credential || proofConsumed || recoveryHint) &&
+    (passkeyFirst ? Boolean(smartAccount) : Boolean(address));
   const needsNewPassport = proofConsumed || recoveryHint || currentStep === 'credential' || !credential;
   const showProofStep =
     Boolean(credential) && !proofConsumed && flags.credential && (currentStep === 'proof' || flags.proof);
 
+  const phase = derivePassportPhase({
+    address,
+    credential,
+    proof,
+    lifecycle: proofLifecycle,
+  });
+
   return (
     <AppShell>
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <AdvancedModeToggle />
-        </div>
-
-        <ProductHero
-          eyebrow="Verify"
-          title="Verify eligibility in minutes"
-          subtitle="Connect your wallet, receive a private passport, and unlock regulated investments without exposing personal details."
+      <AppPageLayout
+        title="Passport"
+        subtitle="Prove who you are. Reveal nothing else."
+      >
+        <PassportHero
+          phase={phase}
+          credential={credential}
+          policyKey={policyKey}
+          settlementAddress={settlementAddress}
         />
+
+        <div className="mt-10 space-y-6">
+        <OnboardingPathPicker compact />
+
+        {advanced ? (
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <AdvancedModeToggle />
+          </div>
+        ) : null}
 
         <WalletSigningNotice compact />
         <PrivacyJourney compact />
@@ -203,8 +265,8 @@ export function VerifyPage() {
         ) : null}
 
         <nav aria-label="Verification steps" className="grid gap-2 sm:grid-cols-4">
-          {STEP_META.map((step) => {
-            const state = stepState(step.id, flags);
+          {stepMeta.map((step) => {
+            const state = stepState(step.id, flags, stepOrder);
             return (
               <div
                 key={step.id}
@@ -230,7 +292,53 @@ export function VerifyPage() {
           })}
         </nav>
 
-        {currentStep === 'wallet' ? (
+        {passkeyFirst && (currentStep === 'passkey' || !smartAccount) ? (
+          <Card>
+            <CardHeader
+              title="Step 1 — Create passkey smart account"
+              badge={<Badge tone="brand">Passkey</Badge>}
+            />
+            <p className="text-sm text-slate-muted">
+              Your passkey authorizes every settlement. Deployment uses the OpenZeppelin relayer — no wallet required
+              for this step when relayer is configured.
+            </p>
+            {!address && !config.openZeppelinRelayerUrl ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Relayer not configured — connect Freighter once to pay deploy fees, then create your passkey.
+              </p>
+            ) : null}
+            {!address && !config.openZeppelinRelayerUrl ? (
+              <Button className="mt-4" loading={connecting} onClick={() => connect()}>
+                Connect wallet for deploy
+              </Button>
+            ) : null}
+            {address && smartAccountStale ? (
+              <StaleSmartAccountUpgradePanel
+                legacyAddress={settlementAddress}
+                loading={smartAccountCreating}
+                onReplace={replaceSmartAccount}
+              />
+            ) : null}
+            {(!smartAccount || smartAccountStale) && (address || config.openZeppelinRelayerUrl) ? (
+              <Button
+                className="mt-4"
+                loading={smartAccountCreating}
+                onClick={() => createSmartAccount()}
+              >
+                <Fingerprint className="h-4 w-4" />
+                Create passkey smart account
+              </Button>
+            ) : null}
+            {smartAccount && settlementAddress && !smartAccountStale ? (
+              <p className="mt-4 text-sm text-brand">
+                <CheckCircle2 className="mr-1 inline h-4 w-4" />
+                Smart account ready — {settlementAddress.slice(0, 8)}…
+              </p>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {!passkeyFirst && currentStep === 'wallet' ? (
           <Card>
             <CardHeader title="Step 1 — Connect wallet" badge={<Badge tone="brand">Stellar</Badge>} />
             <p className="text-sm text-slate-muted">
@@ -249,7 +357,7 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {address && smartAccountStale ? (
+        {!passkeyFirst && address && smartAccountStale ? (
           <StaleSmartAccountUpgradePanel
             legacyAddress={settlementAddress}
             loading={smartAccountCreating}
@@ -257,7 +365,7 @@ export function VerifyPage() {
           />
         ) : null}
 
-        {address && !smartAccount ? (
+        {!passkeyFirst && address && !smartAccount ? (
           <Card>
             <CardHeader title="Step 2 — Create passkey smart account" badge={<Badge tone="brand">Passkey</Badge>} />
             <p className="text-sm text-slate-muted">
@@ -267,7 +375,21 @@ export function VerifyPage() {
               Create passkey smart account
             </Button>
           </Card>
-        ) : address && smartAccount && settlementAddress && !smartAccountStale ? (
+        ) : null}
+
+        {passkeyFirst && smartAccount && settlementAddress && !smartAccountStale && !address ? (
+          <Card>
+            <CardHeader title="Add funds when ready" badge={<Badge tone="brand">Optional</Badge>} />
+            <p className="text-sm text-slate-muted">
+              Connect Freighter only to fund your smart account with USDC or XLM. Your passkey still authorizes settlement.
+            </p>
+            <Button className="mt-4" loading={connecting} onClick={() => connect()}>
+              Connect wallet to fund
+            </Button>
+          </Card>
+        ) : null}
+
+        {address && smartAccount && settlementAddress && !smartAccountStale ? (
           <FundSmartAccountPanel
             config={config}
             smartAccountAddress={settlementAddress}
@@ -384,7 +506,8 @@ export function VerifyPage() {
             <p className="mt-1">{error}</p>
           </div>
         ) : null}
-      </div>
+        </div>
+      </AppPageLayout>
     </AppShell>
   );
 }

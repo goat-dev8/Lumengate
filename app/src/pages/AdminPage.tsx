@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { ShieldCheck, Terminal } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
+import { Pill, SectionHeader, Stagger, StaggerItem, StatusDot } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
@@ -46,29 +49,69 @@ export function AdminPage() {
     ['Session store', config.sessionStoreId],
   ].filter(([, id]) => Boolean(id));
 
+  const metrics = [
+    {
+      label: 'Deployed contracts',
+      value: String(contracts.length),
+      detail: config.network,
+    },
+    {
+      label: 'Credential roots',
+      value: status.roots ? 'Live' : '—',
+      detail: status.rootsError ? 'RPC error' : status.roots ? 'Reachable' : 'Loading',
+    },
+    {
+      label: 'Eligibility policies',
+      value: '2',
+      detail: `IDs ${config.policyId} · ${config.policyId2}`,
+    },
+    {
+      label: 'Session store',
+      value: config.sessionStoreId ? 'Active' : '—',
+      detail: config.sessionStoreId ? truncateMiddle(config.sessionStoreId, 8, 6) : 'Not configured',
+    },
+  ];
+
   return (
     <AppShell>
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Badge tone="brand">Operators</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-navy">Manage trusted operators</h1>
-            <p className="mt-2 max-w-2xl text-slate-muted">
-              Delegate controlled access for compliance teams. Set limits, review status, and revoke access without
-              exposing customer identity data.
-            </p>
-          </div>
-          <AdvancedModeToggle />
-        </div>
+      <AppPageLayout
+        title="Operators"
+        subtitle="Issuer console · policies · deployments"
+        actions={<AdvancedModeToggle />}
+      >
+        <SectionHeader
+          eyebrow="Console"
+          title="Operations overview"
+          description="Issue credentials, manage policies, and monitor deployed contracts on testnet."
+          action={
+            advanced ? (
+              <Pill tone="brand">
+                <Terminal className="h-3 w-3" /> Developer mode
+              </Pill>
+            ) : null
+          }
+        />
+
+        <Stagger className="mt-6 grid gap-4 md:grid-cols-4">
+          {metrics.map((m) => (
+            <StaggerItem key={m.label} className="lg-surface-card p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">{m.label}</p>
+              <p className="mt-2 lg-font-display text-3xl tracking-tight tabular-nums text-[#012b54] md:text-4xl">
+                {m.value}
+              </p>
+              <p className="mt-1 text-xs text-[#64748b]">{m.detail}</p>
+            </StaggerItem>
+          ))}
+        </Stagger>
 
         {!advanced ? (
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader
                 title="Operator access"
-                badge={<Badge tone={status.roots ? 'ok' : 'warn'}>
-                  {status.roots ? 'Live' : 'Check setup'}
-                </Badge>}
+                badge={
+                  <Badge tone={status.roots ? 'ok' : 'warn'}>{status.roots ? 'Live' : 'Check setup'}</Badge>
+                }
               />
               <p className="text-sm text-slate-muted">
                 {status.roots
@@ -90,7 +133,7 @@ export function AdminPage() {
             </Card>
           </div>
         ) : (
-          <>
+          <div className="mt-10 space-y-6">
             <Card>
               <CardHeader title="On-chain policy roots" badge={<Badge>Live RPC</Badge>} />
               {status.roots ? (
@@ -117,23 +160,31 @@ export function AdminPage() {
 
             <RevokeCredentialPanel issuerUrl={config.issuerServiceUrl} />
 
-            <Card>
-              <CardHeader title="Deployed contracts" badge={<Badge>{config.network}</Badge>} />
-              <dl className="space-y-3 text-xs">
-                {contracts.map(([label, id]) => (
-                  <div key={label}>
-                    <dt className="text-slate-muted">{label}</dt>
-                    <dd className="font-mono break-all">{truncateMiddle(String(id), 12, 8)}</dd>
+            <div className="lg-surface-card divide-y divide-[var(--lg-border)]">
+              <div className="p-5">
+                <SectionHeader title="Deployed contracts" description={`Network: ${config.network}`} />
+              </div>
+              {contracts.map(([label, id]) => (
+                <div key={label} className="flex items-center gap-4 p-5">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#007dfc] to-[#012b54] text-white">
+                    <ShieldCheck className="h-5 w-5" />
                   </div>
-                ))}
-              </dl>
-              <p className="mt-4 text-sm text-slate-muted">
-                Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}.
-              </p>
-            </Card>
-          </>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#012b54]">{label}</p>
+                    <p className="truncate font-mono text-xs text-[#64748b]">{String(id)}</p>
+                  </div>
+                  <Pill tone="success">
+                    <StatusDot /> Live
+                  </Pill>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm text-slate-muted">
+              Eligibility plans: investor access {config.policyId}, balance confirmation {config.policyId2}.
+            </p>
+          </div>
         )}
-      </div>
+      </AppPageLayout>
     </AppShell>
   );
 }

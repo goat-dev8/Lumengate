@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { Search, ShieldCheck, KeyRound } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Search, ShieldCheck, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
+import { Pill, SectionHeader } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -108,39 +111,78 @@ export function AuditorPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <AppPageLayout
+        title="Audit"
+        subtitle="Selective disclosure for regulators and auditors"
+        actions={<AdvancedModeToggle />}
+      >
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="lg-surface-card relative grid gap-6 overflow-hidden p-8 md:grid-cols-[1.5fr_1fr] md:p-10"
+        >
           <div>
-            <Badge tone="brand">Audit</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-navy">Verify settlement without seeing identity</h1>
-            <p className="mt-2 max-w-2xl text-slate-muted">
-              Enter a viewing key or receipt reference. Lumengate returns only the compliance facts needed for review.
+            <Pill tone="brand">
+              <ShieldCheck className="h-3 w-3" /> Auditor mode
+            </Pill>
+            <h2 className="mt-5 lg-font-display text-4xl leading-tight tracking-tight text-[#012b54] md:text-5xl">
+              Verify what matters.
+              <br />
+              <span className="italic text-[#007dfc]">Reveal nothing more.</span>
+            </h2>
+            <p className="mt-4 max-w-lg text-sm text-[#64748b]">
+              Lumengate audits use zero-knowledge proofs and viewing keys. Confirm regulated facts — eligibility,
+              jurisdiction, sanctions — without learning the investor&apos;s identity unless the law requires it.
             </p>
           </div>
-          <AdvancedModeToggle />
+          <div className="relative mx-auto w-full max-w-xs">
+            <img
+              src="/design/product-compliance.jpg"
+              alt=""
+              className="rounded-2xl border border-[var(--lg-border)] shadow-sm"
+            />
+          </div>
+        </motion.section>
+
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div className="lg-surface-card p-6">
+            <div className="flex items-center gap-2 text-emerald-600">
+              <Eye className="h-4 w-4" />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Verifiable</p>
+            </div>
+            <h3 className="mt-2 text-xl font-semibold text-[#012b54]">What auditors can confirm</h3>
+            <ul className="mt-4 space-y-2 text-sm text-[#64748b]">
+              {['Eligibility passed', 'One-time settlement used', 'Settlement reference on Stellar'].map((item) => (
+                <li key={item} className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-[#007dfc]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="lg-surface-card p-6">
+            <div className="flex items-center gap-2 text-[#64748b]">
+              <EyeOff className="h-4 w-4" />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Stays private</p>
+            </div>
+            <h3 className="mt-2 text-xl font-semibold text-[#012b54]">What never reaches the ledger</h3>
+            <ul className="mt-4 space-y-2 text-sm text-[#64748b]">
+              {['Legal name & address', 'Date of birth', 'Government ID number'].map((item) => (
+                <li key={item} className="flex items-center gap-2">
+                  <EyeOff className="h-4 w-4 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[
-            { title: 'Auditor sees', items: ['Eligibility passed', 'One-time settlement used', 'Settlement reference'] },
-            { title: 'Auditor never sees', items: ['Legal name', 'Date of birth', 'Sanctions details'] },
-            { title: 'Privacy guarantee', items: ['Private confirmation verified', 'Selective disclosure only', 'No identity link'] },
-          ].map((col) => (
-            <Card key={col.title}>
-              <CardHeader title={col.title} />
-              <ul className="space-y-2 text-sm text-slate-muted">
-                {col.items.map((item) => (
-                  <li key={item} className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 shrink-0 text-brand" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ))}
+        <div className="mt-10">
+          <SectionHeader title="Run verification" description="Paste a disclosure pack or query with a viewing key." />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <AuditorWorkflowDiagram />
           {advanced ? (
             <Card>
@@ -333,7 +375,8 @@ export function AuditorPage() {
             </ul>
           </Card>
         ) : null}
-      </div>
+
+      </AppPageLayout>
     </AppShell>
   );
 }

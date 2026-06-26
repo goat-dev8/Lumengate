@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import { ArrowRightLeft, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 import { AppShell } from '../components/layout/Shell';
+import { AppPageLayout } from '../components/design/AppPageLayout';
+import { SendTransferForm } from '../components/send/SendTransferForm';
 
 import { Card, CardHeader } from '../components/ui/Card';
 
@@ -16,7 +18,6 @@ import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
-import { ProductHero } from '../components/product/ProductHero';
 import { PrivacyJourney } from '../components/product/PrivacyJourney';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
@@ -72,6 +73,7 @@ export function TransferPage() {
   } = useApp();
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const handleRecovery = () => {
     beginProofRecovery();
     navigate('/app/verify#recovery-credential');
@@ -87,6 +89,12 @@ export function TransferPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [confirmingEligibility, setConfirmingEligibility] = useState(false);
   const [balanceRefresh, setBalanceRefresh] = useState(0);
+  useEffect(() => {
+    const prefilled = searchParams.get('to');
+    if (prefilled && validateStellarAddress(prefilled)) {
+      setTo(prefilled);
+    }
+  }, [searchParams]);
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
   const advanced = useAdvancedMode();
@@ -306,19 +314,41 @@ export function TransferPage() {
           ? `${rwaBalance} treasury units`
           : 'Loading…';
 
+  const recipientValid = to ? validateStellarAddress(to) : null;
+  const complianceLines = [
+    {
+      label: 'Passport eligibility',
+      status: sendReady && credential ? 'Cleared' : credential ? 'Confirm for asset' : 'Passport needed',
+      ok: Boolean(sendReady && credential),
+    },
+    {
+      label: 'Sanctions screening',
+      status: credential ? 'Issuer attested' : 'Not verified',
+      ok: Boolean(credential),
+    },
+    {
+      label: 'Recipient address',
+      status: recipientValid ? 'Valid Stellar address' : to ? 'Invalid address' : 'Enter recipient',
+      ok: Boolean(recipientValid),
+    },
+    {
+      label: 'Receipt generation',
+      status: sendReady ? 'Ready after settlement' : 'Pending eligibility',
+      ok: Boolean(sendReady),
+    },
+  ];
+
   return (
-
     <AppShell>
-
+      <AppPageLayout
+        title="Send"
+        subtitle="Safer than banking. Settles in seconds on Stellar."
+        width="5xl"
+      >
       <div className="space-y-6">
         <div className="flex justify-end">
           <AdvancedModeToggle />
         </div>
-        <ProductHero
-          eyebrow="Send"
-          title="Send privately"
-          subtitle="Move regulated assets with a private eligibility check. Your passkey smart account authorizes settlement."
-        />
 
         <WalletSigningNotice compact />
         <PrivacyJourney compact />
@@ -411,154 +441,42 @@ export function TransferPage() {
               </Card>
             )}
 
-            <div className="flex flex-wrap gap-2">
-
-              <Button variant={asset === 'rwa' ? 'primary' : 'secondary'} size="sm" onClick={() => setAsset('rwa')}>
-
-                Treasury units
-
-              </Button>
-
-              <Button
-
-                variant={asset === 'usdc' ? 'primary' : 'secondary'}
-
-                size="sm"
-
-                disabled={!usdcReady}
-
-                onClick={() => {
-
-                  setAsset('usdc');
-
-                  setTo(config.marketplaceSettlementAddress);
-
+            {!address ? (
+              <Card>
+                <CardHeader title="Connect to send" badge={<Badge tone="warn">Wallet needed</Badge>} />
+                <p className="text-sm text-slate-muted">
+                  Connect a funding wallet to sign Stellar settlements. Your passkey smart account authorizes
+                  eligibility.
+                </p>
+              </Card>
+            ) : asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
+              <div className="lg-surface-card p-6 text-sm text-[#64748b]">
+                Treasury units are minted when you invest on Marketplace — they are not deposited like USDC.{' '}
+                <button type="button" className="text-[#007dfc] underline" onClick={() => navigate('/app/marketplace')}>
+                  Browse investments
+                </button>
+              </div>
+            ) : (
+              <SendTransferForm
+                amount={amount}
+                onAmountChange={setAmount}
+                asset={asset}
+                onAssetChange={(next) => {
+                  setAsset(next);
+                  if (next === 'usdc' || next === 'eurc') {
+                    setTo(config.marketplaceSettlementAddress);
+                  }
                 }}
-
-              >
-
-                USDC
-
-              </Button>
-
-              <Button
-                variant={asset === 'eurc' ? 'primary' : 'secondary'}
-                size="sm"
-                disabled={!eurcReady}
-                onClick={() => {
-                  setAsset('eurc');
-                  setTo(config.marketplaceSettlementAddress);
-                }}
-              >
-                EURC
-              </Button>
-
-            </div>
-
-
-
-            <Card>
-
-              <CardHeader
-
-                title={`Send ${friendlyAssetName(asset)}`}
-
-                description={
-
-                  asset === 'usdc'
-
-                    ? advanced
-                      ? `Compliance contract ${truncateMiddle(config.complianceSacAdminId ?? '', 6, 4)} → official USDC`
-                      : 'Private passport check before USDC settlement'
-
-                    : advanced
-                      ? 'Policy check inside asset settlement'
-                      : 'Private passport check before asset settlement'
-
-                }
-
-                badge={<Badge tone="ok">{balanceLabel}</Badge>}
-
-              />
-
-              {!address ? (
-
-                <p className="text-sm text-slate-muted">Connect wallet to transfer.</p>
-
-              ) : asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
-
-                <div className="rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 text-sm text-slate-muted">
-                  Treasury units are minted when you invest on Marketplace — they are not deposited like USDC.
-                  {' '}
-                  <button type="button" className="text-brand underline" onClick={() => navigate('/app/marketplace')}>
-                    Browse investments
-                  </button>
-                </div>
-
-              ) : (
-
-                <div className="grid gap-4 md:grid-cols-2">
-
-                  <label className="block">
-
-                    <span className="text-sm text-slate-muted">Recipient</span>
-
-                    <input
-
-                      className="mt-2 w-full rounded-xl border border-slate-line px-4 py-3 font-mono text-sm outline-none focus:border-brand"
-
-                      value={to}
-
-                      onChange={(e) => setTo(e.target.value)}
-
-                      aria-label={asset === 'usdc' ? 'USDC settlement recipient' : 'Recipient Stellar address'}
-
-                    />
-
-                    {asset === 'usdc' ? (
-
-                      <p className="mt-2 text-xs text-slate-muted">
-
-                        We prefill the treasury settlement account because it is ready to receive testnet USDC.
-
-                      </p>
-
-                    ) : null}
-
-                  </label>
-
-                  <label className="block">
-
-                    <span className="text-sm text-slate-muted">Amount</span>
-
-                    <input
-
-                      className="mt-2 w-full rounded-xl border border-slate-line px-4 py-3 text-sm outline-none focus:border-brand"
-
-                      value={amount}
-
-                      onChange={(e) => setAmount(e.target.value)}
-
-                      type="number"
-
-                      min="0"
-
-                      step={asset === 'usdc' ? '0.0000001' : '1'}
-
-                    />
-
-                  </label>
-
-                </div>
-
-              )}
-
-              <Button
-
-                className="mt-6"
-
+                usdcReady={usdcReady}
+                eurcReady={eurcReady}
+                to={to}
+                onToChange={setTo}
+                recipientValid={recipientValid}
+                complianceLines={complianceLines}
+                balanceLabel={balanceLabel}
+                fromLabel={settlementAddress ? 'Your Lumengate account' : 'Smart account'}
+                fromAddress={settlementAddress}
                 loading={loading}
-
                 disabled={
                   !address ||
                   !credential ||
@@ -566,24 +484,13 @@ export function TransferPage() {
                   smartAccountStale ||
                   !to ||
                   !amount ||
-                  !sendReady
+                  !sendReady ||
+                  recipientValid === false
                 }
-
-                onClick={handleTransfer}
-
-              >
-
-                <ArrowRightLeft className="h-4 w-4" />
-
-                Send privately
-
-              </Button>
-
-              {error ? <p className="mt-4 text-sm text-status-err">{error}</p> : null}
-
-            </Card>
-
-
+                error={error}
+                onSubmit={handleTransfer}
+              />
+            )}
 
             {txHash ? (
 
@@ -620,9 +527,7 @@ export function TransferPage() {
         )}
 
       </div>
-
+      </AppPageLayout>
     </AppShell>
-
   );
-
 }

@@ -14,15 +14,14 @@ import { MetricsShowcase } from '../components/marketing/MetricsShowcase';
 import { CtaPremium } from '../components/marketing/CtaPremium';
 import { MarketingFooter } from '../components/marketing/MarketingFooter';
 import { ProductStoryStrip } from '../components/marketing/ProductStoryStrip';
-import { useApp } from '../context/AppContext';
 import { loadDeploymentConfig } from '../lib/config';
 import { useScrollReveal } from '../hooks/useScrollReveal';
 import { cn } from '../lib/cn';
+import { setOnboardingPath } from '../components/product/OnboardingPathPicker';
 
-const pipeline = ['Connect', 'Passport', 'Eligibility', 'Invest', 'Receipt'];
+const pipeline = ['Passkey', 'Passport', 'Eligibility', 'Invest', 'Receipt'];
 
 export function LandingPage() {
-  const { connect, connecting } = useApp();
   const config = loadDeploymentConfig();
   const verifyTx = import.meta.env.VITE_REFERENCE_VERIFY_TX || '';
   const transferTx = import.meta.env.VITE_REFERENCE_TRANSFER_TX || '';
@@ -59,13 +58,17 @@ export function LandingPage() {
               off the public ledger. Every settlement is passkey-approved and receipt-ready.
             </p>
             <div className="flex flex-wrap justify-center gap-3 lg:justify-start lg-fade-up lg-fade-up-d3">
-              <Link to="/app/marketplace" className="lg-btn-primary">
-                Start investing
+              <Link
+                to="/app/verify"
+                className="lg-btn-primary"
+                onClick={() => setOnboardingPath('passkey')}
+              >
+                Create passport
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <button type="button" className="lg-btn-white" onClick={() => connect()} disabled={connecting}>
-                {connecting ? 'Connecting…' : 'Connect wallet'}
-              </button>
+              <Link to="/app/marketplace" className="lg-btn-white">
+                Browse investments
+              </Link>
             </div>
             <div className="lg-hero-pipeline lg-fade-up lg-fade-up-d4">
               {pipeline.map((step, i) => (
