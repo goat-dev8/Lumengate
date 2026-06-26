@@ -37,7 +37,6 @@ import {
   readSessionProofBound,
   sessionProofMatchesBound,
   isSessionProofBoundOnChain,
-  credentialRootMatchesChain,
   submitSignedTransaction,
 } from '../lib/contracts';
 import {
@@ -81,6 +80,11 @@ import {
   type SettlementAsset,
 } from '../lib/assetScope';
 import { assertScopeNullifierAvailable, isScopeNullifierSpent, scopeNullifierSpentMessage } from '../lib/scopeNullifier';
+import {
+  ensureRegistryRootForWallet,
+  registryRootMismatchMessage,
+  waitForCredentialRootsReady,
+} from '../lib/registrySync';
 import {
   createPersonalSmartAccount,
   hydrateSmartAccountPasskeyMetadata,
@@ -1186,12 +1190,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const scope = ASSET_SCOPES[asset];
       await assertScopeNullifierAvailable(config, credential, asset);
-      onProgress?.('Checking eligibility registry on-chain…');
-      const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
+      onProgress?.('Confirming eligibility registry on-chain…');
+      if (walletField) {
+        await ensureRegistryRootForWallet(config.issuerServiceUrl, walletField, policyKey).catch(() => undefined);
+      }
+      const rootsReady = await waitForCredentialRootsReady(config, credential, proof, onProgress);
       if (!rootsReady) {
-        throw new Error(
-          'Eligibility registry is still syncing on-chain. Wait ~30 seconds after requesting your passport, then try again.',
-        );
+        throw new Error(registryRootMismatchMessage());
       }
       const scopedCredential = credentialForScope(credential, scope);
       onProgress?.('Generating private proof in your browser (~30s)…');
@@ -1216,6 +1221,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       config,
       setProof,
       pushActivity,
+      walletField,
+      policyKey,
+      proof,
     ],
   );
 
@@ -1237,11 +1245,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return { proof, credential: credentialForScope(credential, scope) };
       }
-      const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
+      onProgress?.('Confirming eligibility registry on-chain…');
+      if (walletField) {
+        await ensureRegistryRootForWallet(config.issuerServiceUrl, walletField, policyKey).catch(() => undefined);
+      }
+      const rootsReady = await waitForCredentialRootsReady(config, credential, proof, onProgress);
       if (!rootsReady) {
-        throw new Error(
-          'Eligibility registry is still syncing on-chain. Wait ~30 seconds after requesting your passport, then try again.',
-        );
+        throw new Error(registryRootMismatchMessage());
       }
       const scopedCredential = credentialForScope(credential, scope);
       onProgress?.('Generating private proof in your browser…');
@@ -1259,7 +1269,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return { proof: bundle, credential: scopedCredential };
     },
-    [credential, proof, setProof, pushActivity, config],
+    [credential, proof, setProof, pushActivity, config, walletField, policyKey],
   );
 
   const isScopeSettlementAvailable = useCallback(

@@ -241,6 +241,31 @@ app.get('/offerings/:id', (req, res) => {
   }
 });
 
+app.post('/registry/sync-root', express.json(), async (req, res) => {
+  const walletField = String(req.body?.walletField || '0');
+  const policyKey = String(req.body?.policyKey || 'general-eligibility');
+  try {
+    const material = buildCredentialMaterial(walletField, process.env, policyKey);
+    let chainRoots = await readOnChainRoots(process.env);
+    let synced = false;
+    if (normalizeHex32(chainRoots.root) !== normalizeHex32(material.root)) {
+      await syncCredentialRootOnChain(material.root, process.env);
+      chainRoots = await readOnChainRoots(process.env);
+      synced = true;
+    }
+    return res.json({
+      root: chainRoots.root,
+      expectedRoot: material.root,
+      synced,
+    });
+  } catch (err) {
+    return res.status(503).json({
+      error: 'Cannot sync eligibility registry root',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
 app.post('/credential', express.json(), async (req, res) => {
   if (!existsSync(CREDENTIAL_PATH)) {
     return res.status(503).json({

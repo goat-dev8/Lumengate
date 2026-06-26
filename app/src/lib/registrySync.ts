@@ -1,0 +1,77 @@
+import type { DeploymentConfig, IssuerCredentialResponse } from './config';
+import { fetchRegistrySyncRoot } from './config';
+import type { ProofBundle } from './contracts';
+import { credentialRootMatchesChain, readOnChainRoots } from './contracts';
+import { proofMatchesCredential } from './credentialProof';
+import { verifyPublicInputsMatchRoots } from './prover';
+
+function rootHexFromCredential(credential: IssuerCredentialResponse): string {
+  const raw = credential.credential.root;
+  if (String(raw).startsWith('0x')) return String(raw);
+  return `0x${BigInt(String(raw)).toString(16).padStart(64, '0')}`;
+}
+
+/** Wait until on-chain registry matches this passport (or an existing proof’s public inputs). */
+export async function waitForCredentialRootsReady(
+  config: DeploymentConfig,
+  credential: IssuerCredentialResponse,
+  existingProof?: ProofBundle | null,
+  onProgress?: (message: string) => void,
+): Promise<boolean> {
+  const credentialRoot = rootHexFromCredential(credential);
+  if (await credentialRootMatchesChain(config, credentialRoot, 2, 500)) {
+    return true;
+  }
+
+  if (existingProof && proofMatchesCredential(existingProof, credential)) {
+    if (await chainMatchesProofWithConfig(config, existingProof)) {
+      return true;
+    }
+  }
+
+  const attempts = 12;
+  const intervalMs = 2500;
+  for (let i = 0; i < attempts; i += 1) {
+    onProgress?.(`Syncing eligibility registry on-chain (${i + 1}/${attempts})…`);
+    if (await credentialRootMatchesChain(config, credentialRoot, 1, 0)) {
+      return true;
+    }
+    if (existingProof && proofMatchesCredential(existingProof, credential)) {
+      if (await chainMatchesProofWithConfig(config, existingProof)) {
+        return true;
+      }
+    }
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  return false;
+}
+
+async function chainMatchesProofWithConfig(
+  config: DeploymentConfig,
+  proof: ProofBundle,
+): Promise<boolean> {
+  try {
+    const onChain = await readOnChainRoots(config);
+    return verifyPublicInputsMatchRoots(proof, onChain);
+  } catch {
+    return false;
+  }
+}
+
+/** Ask issuer to re-assert this wallet’s eligibility root on-chain (no new note secret). */
+export async function ensureRegistryRootForWallet(
+  issuerServiceUrl: string,
+  walletField: string,
+  policyKey: string,
+): Promise<void> {
+  await fetchRegistrySyncRoot(issuerServiceUrl, walletField, policyKey);
+}
+
+export function registryRootMismatchMessage(): string {
+  return (
+    'Eligibility registry does not match your passport yet. ' +
+    'Wait a few seconds and try Send again, or go to Verify → Request new passport if it persists.'
+  );
+}

@@ -257,6 +257,19 @@ export async function fetchIssuerRoots(baseUrl: string) {
   return issuerFetch<{ root: string; revocationRoot: string; noteRoot?: string }>(baseUrl, '/roots');
 }
 
+/** Re-assert this wallet’s eligibility Merkle root on-chain without issuing a new passport. */
+export async function fetchRegistrySyncRoot(
+  baseUrl: string,
+  walletField: string,
+  policyKey = 'general-eligibility',
+) {
+  return issuerFetch<{ root: string; expectedRoot: string; synced: boolean }>(baseUrl, '/registry/sync-root', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletField, policyKey }),
+  });
+}
+
 export async function fetchIssuerCredential(
   baseUrl: string,
   walletField: string,

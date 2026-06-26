@@ -21,6 +21,9 @@ export function friendlyIssuerError(raw: string): string {
   if (lower.includes('on-chain roots') || lower.includes('merkle root') || lower.includes('does not match credential root')) {
     return 'Compliance registry is syncing. Wait ~30 seconds and try again.';
   }
+  if (lower.includes('eligibility registry does not match')) {
+    return raw;
+  }
   if (lower.includes('503') || lower.includes('502') || lower.includes('520')) {
     return 'Passport service is waking up (hosted issuer). Wait ~30 seconds and retry.';
   }
