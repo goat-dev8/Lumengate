@@ -1,5 +1,5 @@
 import type { DeploymentConfig, IssuerCredentialResponse } from './config';
-import { fetchRegistrySyncRoot } from './config';
+import { fetchIssuerRoots, fetchRegistrySyncRoot } from './config';
 import type { ProofBundle } from './contracts';
 import { credentialRootMatchesChain, readOnChainRoots } from './contracts';
 import { proofMatchesCredential } from './credentialProof';
@@ -60,13 +60,34 @@ async function chainMatchesProofWithConfig(
   }
 }
 
+export type RegistrySyncResult = {
+  root: string;
+  synced: boolean;
+};
+
 /** Ask issuer to re-assert this wallet’s eligibility root on-chain (no new note secret). */
 export async function ensureRegistryRootForWallet(
   issuerServiceUrl: string,
   walletField: string,
   policyKey: string,
-): Promise<void> {
-  await fetchRegistrySyncRoot(issuerServiceUrl, walletField, policyKey);
+): Promise<RegistrySyncResult | null> {
+  try {
+    const result = await fetchRegistrySyncRoot(issuerServiceUrl, walletField, policyKey);
+    return { root: result.root, synced: result.synced };
+  } catch (primaryErr) {
+    const message = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    const missingSyncRoute = message.includes('sync-root failed (404)');
+    if (!missingSyncRoute) {
+      throw primaryErr;
+    }
+  }
+
+  const roots = await fetchIssuerRoots(issuerServiceUrl, {
+    walletField,
+    policyKey,
+    sync: true,
+  });
+  return { root: roots.root, synced: true };
 }
 
 export function registryRootMismatchMessage(): string {

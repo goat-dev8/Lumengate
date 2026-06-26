@@ -140,8 +140,19 @@ app.post('/faucet/claim', express.json(), async (req, res) => {
   }
 });
 
-app.get('/roots', async (_req, res) => {
+app.get('/roots', async (req, res) => {
   try {
+    const walletField = req.query.walletField ? String(req.query.walletField) : '';
+    const policyKey = String(req.query.policyKey || 'general-eligibility');
+    const shouldSync = req.query.sync === '1' || req.query.sync === 'true';
+    if (shouldSync && walletField) {
+      const material = buildCredentialMaterial(walletField, process.env, policyKey);
+      let chainRoots = await readOnChainRoots(process.env);
+      if (normalizeHex32(chainRoots.root) !== normalizeHex32(material.root)) {
+        await syncCredentialRootOnChain(material.root, process.env);
+        chainRoots = await readOnChainRoots(process.env);
+      }
+    }
     const roots = await readOnChainRoots(process.env);
     return res.json(roots);
   } catch (err) {

@@ -253,8 +253,16 @@ export async function fetchIssuerHealth(baseUrl: string) {
   return issuerFetch<{ ok: boolean; issuer: string; service: string }>(baseUrl, '/health');
 }
 
-export async function fetchIssuerRoots(baseUrl: string) {
-  return issuerFetch<{ root: string; revocationRoot: string; noteRoot?: string }>(baseUrl, '/roots');
+export async function fetchIssuerRoots(
+  baseUrl: string,
+  options?: { walletField?: string; policyKey?: string; sync?: boolean },
+) {
+  const q = new URLSearchParams();
+  if (options?.walletField) q.set('walletField', options.walletField);
+  if (options?.policyKey) q.set('policyKey', options.policyKey);
+  if (options?.sync) q.set('sync', '1');
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return issuerFetch<{ root: string; revocationRoot: string; noteRoot?: string }>(baseUrl, `/roots${suffix}`);
 }
 
 /** Re-assert this wallet’s eligibility Merkle root on-chain without issuing a new passport. */

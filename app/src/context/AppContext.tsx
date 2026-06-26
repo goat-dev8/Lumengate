@@ -1191,14 +1191,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const scope = ASSET_SCOPES[asset];
       await assertScopeNullifierAvailable(config, credential, asset);
       onProgress?.('Confirming eligibility registry on-chain…');
+      let activeCredential = credential;
       if (walletField) {
-        await ensureRegistryRootForWallet(config.issuerServiceUrl, walletField, policyKey).catch(() => undefined);
+        const syncResult = await ensureRegistryRootForWallet(
+          config.issuerServiceUrl,
+          walletField,
+          policyKey,
+        ).catch(() => null);
+        if (syncResult?.root) {
+          activeCredential = {
+            ...activeCredential,
+            credential: { ...activeCredential.credential, root: syncResult.root },
+          };
+          setCredentialState(activeCredential);
+          if (address) {
+            persistSession({ address, walletField, credential: activeCredential });
+          }
+        }
       }
-      const rootsReady = await waitForCredentialRootsReady(config, credential, proof, onProgress);
+      const rootsReady = await waitForCredentialRootsReady(config, activeCredential, proof, onProgress);
       if (!rootsReady) {
         throw new Error(registryRootMismatchMessage());
       }
-      const scopedCredential = credentialForScope(credential, scope);
+      const scopedCredential = credentialForScope(activeCredential, scope);
       onProgress?.('Generating private proof in your browser (~30s)…');
       const { bundle, durationSec } = await generateProof(scopedCredential, (p) => {
         onProgress?.(p.message);
@@ -1224,6 +1239,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       walletField,
       policyKey,
       proof,
+      address,
+      persistSession,
     ],
   );
 
@@ -1246,14 +1263,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { proof, credential: credentialForScope(credential, scope) };
       }
       onProgress?.('Confirming eligibility registry on-chain…');
+      let activeCredential = credential;
       if (walletField) {
-        await ensureRegistryRootForWallet(config.issuerServiceUrl, walletField, policyKey).catch(() => undefined);
+        const syncResult = await ensureRegistryRootForWallet(
+          config.issuerServiceUrl,
+          walletField,
+          policyKey,
+        ).catch(() => null);
+        if (syncResult?.root) {
+          activeCredential = {
+            ...activeCredential,
+            credential: { ...activeCredential.credential, root: syncResult.root },
+          };
+          setCredentialState(activeCredential);
+          if (address) {
+            persistSession({ address, walletField, credential: activeCredential });
+          }
+        }
       }
-      const rootsReady = await waitForCredentialRootsReady(config, credential, proof, onProgress);
+      const rootsReady = await waitForCredentialRootsReady(config, activeCredential, proof, onProgress);
       if (!rootsReady) {
         throw new Error(registryRootMismatchMessage());
       }
-      const scopedCredential = credentialForScope(credential, scope);
+      const scopedCredential = credentialForScope(activeCredential, scope);
       onProgress?.('Generating private proof in your browser…');
       const { bundle, durationSec } = await generateProof(scopedCredential, (p) => {
         onProgress?.(p.message);
@@ -1269,7 +1301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return { proof: bundle, credential: scopedCredential };
     },
-    [credential, proof, setProof, pushActivity, config, walletField, policyKey],
+    [credential, proof, setProof, pushActivity, config, walletField, policyKey, address, persistSession],
   );
 
   const isScopeSettlementAvailable = useCallback(
