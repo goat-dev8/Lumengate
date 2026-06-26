@@ -845,6 +845,13 @@ export function nullifierHexFromBundle(proof: ProofBundle): string {
 export function formatSorobanUserError(message: string): string {
   const hints: string[] = [];
 
+  if (message.toLowerCase().includes('abort signal')) {
+    return (
+      'Passkey prompt was interrupted — usually because two prompts overlapped. ' +
+      'Close any open passkey dialogs, wait a moment, then try again.'
+    );
+  }
+
   if (message.includes('Error(Contract, #3112)')) {
     hints.push('WebAuthn clientDataJSON could not be parsed (JsonParseError).');
   }

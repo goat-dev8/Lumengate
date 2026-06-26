@@ -96,6 +96,7 @@ export function VerifyPage() {
     proverReady,
     proverWarmupMessage,
     proverWarmupError,
+    passkeyBusy,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
@@ -209,7 +210,7 @@ export function VerifyPage() {
   };
 
   const handleAuthorizePasskey = async () => {
-    if (!activeProof) return;
+    if (!activeProof || bindLoading || passkeyBusy) return;
     setBindLoading(true);
     setError(null);
     try {
@@ -468,7 +469,7 @@ export function VerifyPage() {
                       (proverWarmupError
                         ? proverWarmupError
                         : proverReady
-                          ? 'Ready to confirm eligibility — proof runs locally (~30s), then your passkey authorizes on-chain binding.'
+                          ? 'Ready to confirm eligibility — proof runs locally (~30s). You will authorize with passkey on the next step.'
                           : 'Private proofs are unavailable in this browser context.')}
                   </p>
                   {proverWarmupError ? (
@@ -495,7 +496,12 @@ export function VerifyPage() {
                       <p className="text-sm text-slate-muted">
                         Your browser generated the proof locally. Authorize once with your passkey to bind it on-chain for settlement.
                       </p>
-                      <Button className="mt-2" loading={bindLoading} onClick={handleAuthorizePasskey}>
+                      <Button
+                        className="mt-2"
+                        loading={bindLoading || passkeyBusy}
+                        disabled={passkeyBusy && !bindLoading}
+                        onClick={handleAuthorizePasskey}
+                      >
                         Authorize with passkey
                       </Button>
                     </>

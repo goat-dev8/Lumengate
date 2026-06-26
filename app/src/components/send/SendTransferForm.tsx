@@ -32,6 +32,7 @@ type Props = {
   loading: boolean;
   disabled: boolean;
   error: string | null;
+  statusMessage?: string | null;
   onSubmit: () => void;
   showTreasuryOption?: boolean;
 };
@@ -69,6 +70,7 @@ export function SendTransferForm({
   loading,
   disabled,
   error,
+  statusMessage,
   onSubmit,
   showTreasuryOption = true,
 }: Props) {
@@ -162,9 +164,12 @@ export function SendTransferForm({
             onClick={onSubmit}
           >
             <Fingerprint className="h-4 w-4" />
-            Authorize with passkey
+            {loading ? 'Processing…' : 'Send privately'}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Button>
+          {statusMessage ? (
+            <p className="mt-3 text-sm text-[#007dfc]">{statusMessage}</p>
+          ) : null}
           {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
         </div>
 

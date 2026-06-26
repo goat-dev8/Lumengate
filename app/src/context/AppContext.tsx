@@ -23,6 +23,12 @@ import type { ProofBundle } from '../lib/contracts';
 import { appendActivity, loadActivity, type ActivityEntry } from '../lib/activity';
 import { walletFieldFromAddress } from '../lib/utils';
 import { generateProof, getProverEnvironmentStatus } from '../lib/prover';
+import { subscribePasskeyBusy } from '../lib/passkeyCeremony';
+import {
+  clearLocalProofBindCache,
+  isProofBoundLocally,
+  markProofBoundLocally,
+} from '../lib/proofBindCache';
 import {
   buildTransferTransaction,
   buildBindSessionProofTransaction,
@@ -104,7 +110,10 @@ type AppContextValue = {
   smartAccountStale: boolean;
   createSmartAccount: () => Promise<SmartAccountState>;
   replaceSmartAccount: () => Promise<SmartAccountState>;
-  ensureProofForAsset: (asset: SettlementAsset) => Promise<{
+  ensureProofForAsset: (
+    asset: SettlementAsset,
+    onProgress?: (message: string) => void,
+  ) => Promise<{
     proof: ProofBundle;
     credential: IssuerCredentialResponse;
   }>;
@@ -114,6 +123,7 @@ type AppContextValue = {
     onProgress?: (message: string) => void,
   ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
+  passkeyBusy: boolean;
   proverReady: boolean;
   proverWarmupMessage: string | null;
   proverWarmupError: string | null;
@@ -161,6 +171,7 @@ type AppContextValue = {
     settlementFrom: string,
     proof: ProofBundle,
     tx: SmartAccountAssembledTransaction,
+    onPasskeyStep?: (step: 'bind' | 'settle', index: number, total: number) => void,
   ) => Promise<string>;
   passportActivated: boolean;
   setPassportActivated: (active: boolean) => void;
@@ -213,6 +224,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
   const [proverWarmupError, setProverWarmupError] = useState<string | null>(null);
@@ -230,6 +242,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [config, settlementAddress, proof],
   );
+
+  useEffect(() => {
+    return subscribePasskeyBusy(setPasskeyBusy);
+  }, []);
 
   useEffect(() => {
     if (!proof || !settlementAddress) {
@@ -1035,6 +1051,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProofDurationSec(duration);
       const nextLifecycle = p ? deriveProofLifecycle(proofCredential, p, null) : proofLifecycle;
       if (p) {
+        clearLocalProofBindCache();
+        setSessionProofBound(false);
         setReceiptTransactions(emptyReceiptTxs);
         setTransferResult(null);
         setReplayBlocked(false);
@@ -1109,9 +1127,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!isContractAddress(settlementAddress)) {
         throw new Error('Session proof bind requires a smart account address.');
       }
-      const alreadyBound = await isSessionProofBoundOnChain(config, settlementAddress, proofBundle);
+      const alreadyBound =
+        isProofBoundLocally(proofBundle) ||
+        (await isSessionProofBoundOnChain(config, settlementAddress, proofBundle));
       if (alreadyBound) {
         setSessionProofBound(true);
+        markProofBoundLocally(proofBundle);
         return null;
       }
       const bindSource = resolvePasskeySimulationSource(address);
@@ -1123,6 +1144,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
       setSessionProofBound(true);
+      markProofBoundLocally(proofBundle);
       setReceiptTransactions((prev) => {
         const txs = { ...prev, sessionBind: bindHash };
         if (address && walletField) {
@@ -1174,19 +1196,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onProgress?.(p.message);
       });
       setProof(bundle, durationSec, scopedCredential);
-      onProgress?.('Authorize with your passkey to bind the proof on-chain…');
-      const bindHash = await bindSessionProofIfNeeded(bundle);
-      await refreshSessionProofBound(bundle);
+      clearLocalProofBindCache();
+      setSessionProofBound(false);
       pushActivity({
         kind: 'proof',
         title: `${asset === 'rwa' ? 'Eligibility' : asset.toUpperCase()} confirmed`,
-        detail: bindHash
-          ? 'Private passport bound on-chain for settlement'
-          : 'Session proof already bound for this passport',
-        txHash: bindHash ?? undefined,
+        detail: 'Private passport generated locally — authorize with passkey when ready',
         status: 'success',
       });
-      return { proof: bundle, credential: scopedCredential, bindHash };
+      return { proof: bundle, credential: scopedCredential, bindHash: null };
     },
     [
       credential,
@@ -1194,8 +1212,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settlementAddress,
       config,
       setProof,
-      bindSessionProofIfNeeded,
-      refreshSessionProofBound,
       pushActivity,
     ],
   );
@@ -1203,11 +1219,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const ensureProofForAsset = useCallback(
     async (
       asset: SettlementAsset,
+      onProgress?: (message: string) => void,
     ): Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse }> => {
       const scope = ASSET_SCOPES[asset];
       if (proof && credential && proofMatchesCredential(proof, credential) && proofScopeMatches(proof, scope)) {
-        await bindSessionProofIfNeeded(proof);
-        return { proof, credential };
+        return { proof, credential: credentialForScope(credential, scope) };
       }
       if (!credential) throw new Error('Request a passport before settlement');
       const rootsReady = await credentialRootMatchesChain(config, credential.credential.root);
@@ -1217,18 +1233,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
       const scopedCredential = credentialForScope(credential, scope);
-      const { bundle, durationSec } = await generateProof(scopedCredential);
+      onProgress?.('Generating private proof in your browser…');
+      const { bundle, durationSec } = await generateProof(scopedCredential, (p) => {
+        onProgress?.(p.message);
+      });
       setProof(bundle, durationSec, scopedCredential);
-      await bindSessionProofIfNeeded(bundle);
+      clearLocalProofBindCache();
+      setSessionProofBound(false);
       pushActivity({
         kind: 'proof',
-        title: `${asset.toUpperCase()} eligibility confirmed`,
-        detail: `Asset scope ${scope.assetId}, action scope ${scope.actionId}`,
+        title: `${asset.toUpperCase()} eligibility prepared`,
+        detail: `Asset scope ${scope.assetId} — proof stays on your device until you authorize`,
         status: 'success',
       });
       return { proof: bundle, credential: scopedCredential };
     },
-    [credential, proof, setProof, pushActivity, bindSessionProofIfNeeded, config],
+    [credential, proof, setProof, pushActivity, config],
   );
 
   const setPofProof = useCallback(
@@ -1498,6 +1518,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settlementFrom: string,
       proof: ProofBundle,
       tx: SmartAccountAssembledTransaction,
+      onPasskeyStep?: (step: 'bind' | 'settle', index: number, total: number) => void,
     ): Promise<string> => {
       if (!smartAccount) {
         throw new Error('Create and fund your smart account before settlement.');
@@ -1509,40 +1530,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
       const bindSource = resolvePasskeySimulationSource(address);
-      if (config.sessionStoreId && isContractAddress(settlementFrom)) {
+      const needsBind =
+        config.sessionStoreId &&
+        isContractAddress(settlementFrom) &&
+        !isProofBoundLocally(proof);
+      let boundOnChain = false;
+      if (needsBind) {
         const bound = await readSessionProofBound(config, settlementFrom);
-        const alreadyBound = bound && sessionProofMatchesBound(bound, proof);
-        if (!alreadyBound) {
-          try {
-            const bindTx = await buildBindSessionProofTransaction(
-              config,
-              bindSource,
-              settlementFrom,
-              proof,
-            );
-            const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
-            setSessionProofBound(true);
-            setReceiptTransactions((prev) => {
-              const txs = { ...prev, sessionBind: bindHash };
-              if (address && walletField) {
-                persistSession({ address, walletField, receiptTransactions: txs });
-              } else if (smartAccount && walletField) {
-                persistPasskeySession({
-                  smartAccountAddress: smartAccount.smartAccountAddress,
-                  walletField,
-                  smartAccount,
-                  receiptTransactions: txs,
-                });
-              }
-              return txs;
-            });
-          } catch (err) {
-            const raw = err instanceof Error ? err.message : String(err);
-            throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
-          }
+        boundOnChain = Boolean(bound && sessionProofMatchesBound(bound, proof));
+      }
+      const passkeySteps = needsBind && !boundOnChain ? 2 : 1;
+      let passkeyIndex = 0;
+
+      if (config.sessionStoreId && isContractAddress(settlementFrom) && !boundOnChain && !isProofBoundLocally(proof)) {
+        try {
+          passkeyIndex += 1;
+          onPasskeyStep?.('bind', passkeyIndex, passkeySteps);
+          const bindTx = await buildBindSessionProofTransaction(
+            config,
+            bindSource,
+            settlementFrom,
+            proof,
+          );
+          const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+          setSessionProofBound(true);
+          markProofBoundLocally(proof);
+          setReceiptTransactions((prev) => {
+            const txs = { ...prev, sessionBind: bindHash };
+            if (address && walletField) {
+              persistSession({ address, walletField, receiptTransactions: txs });
+            } else if (smartAccount && walletField) {
+              persistPasskeySession({
+                smartAccountAddress: smartAccount.smartAccountAddress,
+                walletField,
+                smartAccount,
+                receiptTransactions: txs,
+              });
+            }
+            return txs;
+          });
+        } catch (err) {
+          const raw = err instanceof Error ? err.message : String(err);
+          throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
         }
+      } else if (boundOnChain || isProofBoundLocally(proof)) {
+        setSessionProofBound(true);
+        markProofBoundLocally(proof);
       }
       try {
+        passkeyIndex += 1;
+        onPasskeyStep?.('settle', passkeyIndex, passkeySteps);
         return await submitWithSmartAccount(config, smartAccount, tx);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
@@ -1647,6 +1684,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bindSessionProofIfNeeded,
     confirmPassportEligibility,
     sessionProofBound,
+    passkeyBusy,
     refreshSessionProofBound,
     proverReady,
     proverWarmupMessage,

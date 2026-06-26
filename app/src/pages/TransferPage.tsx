@@ -68,7 +68,7 @@ export function TransferPage() {
     createSmartAccount,
     replaceSmartAccount,
     ensureProofForAsset,
-    refreshSessionProofBound,
+    passkeyBusy,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
@@ -87,9 +87,9 @@ export function TransferPage() {
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-  const [confirmingEligibility, setConfirmingEligibility] = useState(false);
   const [balanceRefresh, setBalanceRefresh] = useState(0);
   useEffect(() => {
     const prefilled = searchParams.get('to');
@@ -197,11 +197,13 @@ export function TransferPage() {
 
     setLoading(true);
     setError(null);
+    setStatusMessage(null);
     try {
       let scopedCredential = credential;
       let scopedProof = activeProof;
       if (!scopedProof) {
-        const ensured = await ensureProofForAsset(asset);
+        setStatusMessage(`Preparing private ${friendlyAssetName(asset)} eligibility on your device…`);
+        const ensured = await ensureProofForAsset(asset, (message) => setStatusMessage(message));
         scopedProof = ensured.proof;
         scopedCredential = ensured.credential;
       }
@@ -229,7 +231,13 @@ export function TransferPage() {
             ? await buildEurcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
             : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
 
-      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx);
+      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+        setStatusMessage(
+          step === 'bind'
+            ? `Passkey step ${index} of ${total}: authorize eligibility binding…`
+            : `Passkey step ${index} of ${total}: confirm ${friendlyAssetName(asset)} send…`,
+        );
+      });
 
       setTxHash(hash);
 
@@ -281,38 +289,12 @@ export function TransferPage() {
       });
 
     } finally {
-
       setLoading(false);
-
-    }
-
-  };
-
-
-
-  const sendReady = proofLifecycle.lifecycle === 'ready' && Boolean(activeProof);
-
-  const handleConfirmForAsset = async () => {
-    if (!credential) {
-      handleRecovery();
-      return;
-    }
-    if (!smartAccount || !settlementAddress) {
-      setError('Create your passkey smart account before confirming eligibility.');
-      return;
-    }
-    setConfirmingEligibility(true);
-    setError(null);
-    try {
-      await ensureProofForAsset(asset);
-      await syncProofLifecycle();
-      await refreshSessionProofBound();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setConfirmingEligibility(false);
+      setStatusMessage(null);
     }
   };
+
+  const assetProofReady = Boolean(activeProof);
 
   const balanceLabel =
     asset === 'usdc'
@@ -331,8 +313,8 @@ export function TransferPage() {
   const complianceLines = [
     {
       label: 'Passport eligibility',
-      status: sendReady && credential ? 'Cleared' : credential ? 'Confirm for asset' : 'Passport needed',
-      ok: Boolean(sendReady && credential),
+      status: assetProofReady ? 'Ready' : credential ? 'Prepared on send' : 'Passport needed',
+      ok: Boolean(assetProofReady || credential),
     },
     {
       label: 'Sanctions screening',
@@ -346,8 +328,8 @@ export function TransferPage() {
     },
     {
       label: 'Receipt generation',
-      status: sendReady ? 'Ready' : 'Pending eligibility',
-      ok: Boolean(sendReady),
+      status: assetProofReady ? 'Ready' : credential ? 'After send' : 'Pending eligibility',
+      ok: Boolean(assetProofReady),
     },
   ];
 
@@ -425,21 +407,14 @@ export function TransferPage() {
 
         {sendAccountReady ? (
           <>
-            {!sendReady && credential ? (
+            {!assetProofReady && credential ? (
               <Card className="border-brand-200 bg-brand-50/40">
-                <CardHeader title="Private confirmation required" badge={<Badge tone="brand">Action needed</Badge>} />
+                <CardHeader title="One-click private send" badge={<Badge tone="brand">Simple</Badge>} />
                 <p className="text-sm text-slate-muted">
-                  Each asset type needs its own private confirmation. Confirm eligibility for{' '}
-                  {friendlyAssetName(asset)} before sending — this runs locally in your browser (~30s).
+                  {asset === 'usdc' || asset === 'eurc'
+                    ? `${friendlyAssetName(asset)} uses its own eligibility scope (separate from treasury units). Click Send once — your browser prepares the proof locally, then your passkey confirms in at most two short steps.`
+                    : 'Click Send once — private eligibility runs locally, then your passkey confirms the transfer.'}
                 </p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Button loading={confirmingEligibility} onClick={handleConfirmForAsset}>
-                    Confirm eligibility for {friendlyAssetName(asset)}
-                  </Button>
-                  <Button variant="secondary" onClick={handleRecovery}>
-                    Renew passport
-                  </Button>
-                </div>
               </Card>
             ) : null}
 
@@ -470,16 +445,17 @@ export function TransferPage() {
                 balanceLabel={balanceLabel}
                 fromLabel={settlementAddress ? 'Your Lumengate account' : 'Smart account'}
                 fromAddress={settlementAddress}
-                loading={loading}
+                loading={loading || passkeyBusy}
                 disabled={
                   !credential ||
                   !smartAccount ||
                   !to ||
                   !amount ||
-                  !sendReady ||
-                  recipientValid === false
+                  recipientValid === false ||
+                  (passkeyBusy && !loading)
                 }
                 error={error}
+                statusMessage={statusMessage}
                 onSubmit={handleTransfer}
                 showTreasuryOption={advanced}
               />

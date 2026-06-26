@@ -23,6 +23,7 @@ import {
 } from './onChainContextRules';
 import { passkeyUserName } from './passkeyUserHandle';
 import { extractRegistrationPublicKey } from './webauthnPublicKey';
+import { runPasskeyCeremony } from './passkeyCeremony';
 
 export { passkeyUserName } from './passkeyUserHandle';
 
@@ -82,6 +83,19 @@ export type SmartAccountAssembledTransaction = {
 export type SignableTransaction = string | SmartAccountAssembledTransaction;
 
 const storage = new IndexedDBStorage();
+
+let connectedKitCache: {
+  key: string;
+  kit: SmartAccountKit;
+} | null = null;
+
+function kitCacheKey(state: SmartAccountState): string {
+  return `${state.smartAccountAddress}:${state.credentialId}`;
+}
+
+export function invalidateSmartAccountKitCache(): void {
+  connectedKitCache = null;
+}
 
 function clampRegistrationUserId(optionsJSON: { user?: { id?: string } }): void {
   const id = optionsJSON.user?.id;
@@ -144,7 +158,9 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
       }) => {
         const optionsJSON = requireUserVerificationOnRegister(options.optionsJSON);
         clampRegistrationUserId(optionsJSON);
-        const response = await startRegistration({ ...options, optionsJSON });
+        const response = await runPasskeyCeremony('register', () =>
+          startRegistration({ ...options, optionsJSON }),
+        );
         const publicKey = extractRegistrationPublicKey(response.response);
         return {
           ...response,
@@ -159,10 +175,13 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
         useBrowserAutofill?: boolean;
         verifyBrowserAutofillInput?: boolean;
       }) =>
-        startAuthentication({
-          ...options,
-          optionsJSON: requireUserVerificationOnAuth(options.optionsJSON),
-        }),
+        runPasskeyCeremony('authenticate', () =>
+          startAuthentication({
+            ...options,
+            optionsJSON: requireUserVerificationOnAuth(options.optionsJSON),
+            useBrowserAutofill: false,
+          }),
+        ),
     },
   });
 }
@@ -444,12 +463,17 @@ export async function connectPersonalSmartAccount(
   state: SmartAccountState,
 ): Promise<SmartAccountKit> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  const cacheKey = kitCacheKey(hydrated);
+  if (connectedKitCache?.key === cacheKey) {
+    return connectedKitCache.kit;
+  }
   const kit = createSmartAccountKit(config);
   await kit.connectWallet({
     contractId: hydrated.smartAccountAddress,
     credentialId: hydrated.credentialId,
   });
   await ensurePasskeyCredentialInKitStorage(kit, config, hydrated).catch(() => undefined);
+  connectedKitCache = { key: cacheKey, kit };
   return kit;
 }
 
@@ -467,10 +491,12 @@ export async function submitWithSmartAccount(
     );
   }
   const kit = await connectPersonalSmartAccount(config, hydrated);
-  const result = await kit.signAndSubmit(asKitAssembledTransaction(transaction), {
-    credentialId: hydrated.credentialId,
-    forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
-  });
+  const result = await runPasskeyCeremony('sign-and-submit', () =>
+    kit.signAndSubmit(asKitAssembledTransaction(transaction), {
+      credentialId: hydrated.credentialId,
+      forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
+    }),
+  );
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 
