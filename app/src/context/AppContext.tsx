@@ -1386,13 +1386,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const beginProofRecovery = useCallback(() => {
-    if (!address || !walletField) {
-      recoveryLog('recovery.blocked', { reason: 'wallet not connected' });
+    if (!walletField || (!address && !smartAccount)) {
+      recoveryLog('recovery.blocked', { reason: 'wallet or smart account not ready' });
       return;
     }
     const previousTx = consumedTxHash ?? proofLifecycle.consumedTxHash ?? receiptTransactions.transfer ?? null;
     recoveryLog('recovery.begin', {
       address,
+      settlementAddress,
       previousTx,
       hadCredential: Boolean(credential),
       lifecycle: proofLifecycle.lifecycle,
@@ -1405,6 +1406,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPassportActivatedState(false);
     setReplayBlocked(false);
     setReplayMessage(null);
+    clearLocalProofBindCache();
+    setSessionProofBound(false);
     setProofLifecycle({
       lifecycle: 'none',
       consumedTxHash: null,
@@ -1413,19 +1416,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         : 'Request a new passport, then confirm eligibility again.',
     });
 
-    persistSession({
-      address,
-      walletField,
+    const recoveryPartial = {
       credential: null,
       proof: null,
       pofProof: null,
       proofDurationSec: null,
       passportActivated: false,
       consumedTxHash: null,
-      proofLifecycle: 'none',
+      proofLifecycle: 'none' as const,
       replayBlocked: false,
       replayMessage: null,
-    });
+    };
+
+    if (address && walletField) {
+      persistSession({ address, walletField, ...recoveryPartial });
+    }
+    if (smartAccount && walletField) {
+      persistPasskeySession({
+        smartAccountAddress: smartAccount.smartAccountAddress,
+        walletField,
+        smartAccount,
+        ...recoveryPartial,
+      });
+    }
 
     pushActivity({
       kind: 'verify',
@@ -1436,11 +1449,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [
     address,
     walletField,
+    smartAccount,
+    settlementAddress,
     credential,
     consumedTxHash,
     proofLifecycle,
     receiptTransactions.transfer,
     persistSession,
+    persistPasskeySession,
     pushActivity,
   ]);
 

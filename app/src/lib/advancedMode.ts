@@ -15,8 +15,14 @@ export function friendlyIssuerError(raw: string): string {
   if (lower.includes('nargo: not found') || lower.includes('failed to build prover inputs')) {
     return 'Passport service is temporarily unavailable. Our team has been notified — please retry in a minute.';
   }
-  if (lower.includes('on-chain roots') || lower.includes('merkle root')) {
-    return 'Compliance registry is syncing. Wait a moment and try again.';
+  if (lower.includes('cannot sync credential root') || lower.includes('sync credential root')) {
+    return 'Issuer could not sync the eligibility registry. Retry in ~30 seconds or choose General RWA eligibility.';
+  }
+  if (lower.includes('on-chain roots') || lower.includes('merkle root') || lower.includes('does not match credential root')) {
+    return 'Compliance registry is syncing. Wait ~30 seconds and try again.';
+  }
+  if (lower.includes('503') || lower.includes('502') || lower.includes('520')) {
+    return 'Passport service is waking up (hosted issuer). Wait ~30 seconds and retry.';
   }
   if (lower.includes('failed to fetch') || lower.includes('network')) {
     return 'Could not reach the issuer service. Check your connection and try again.';

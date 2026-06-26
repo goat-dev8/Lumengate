@@ -219,19 +219,34 @@ export type IssuerCredentialResponse = {
 };
 
 async function issuerFetch<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, init);
-  } catch {
-    throw new Error(
-      `Cannot reach issuer service at ${baseUrl}. Start it with: cd issuer-service && npm start`,
-    );
+  const url = `${baseUrl.replace(/\/$/, '')}${path}`;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) {
+        const text = await res.text();
+        const retryable = res.status >= 502 && res.status <= 504;
+        if (retryable && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`${path} failed (${res.status}): ${text}`);
+      }
+      return res.json();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < 2 && lastError.message.toLowerCase().includes('fetch')) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      if (lastError.message.includes(' failed (')) throw lastError;
+      throw new Error(
+        `Cannot reach issuer service at ${baseUrl}. Start it with: cd issuer-service && npm start`,
+      );
+    }
   }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${path} failed (${res.status}): ${text}`);
-  }
-  return res.json();
+  throw lastError ?? new Error(`Cannot reach issuer service at ${baseUrl}`);
 }
 
 export async function fetchIssuerHealth(baseUrl: string) {

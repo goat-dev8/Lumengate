@@ -101,6 +101,7 @@ export function VerifyPage() {
   const [credLoading, setCredLoading] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
   const [bindLoading, setBindLoading] = useState(false);
+  const [bindStatus, setBindStatus] = useState<string | null>(null);
   const [proveProgress, setProveProgress] = useState<ProveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const advanced = useAdvancedMode();
@@ -212,11 +213,15 @@ export function VerifyPage() {
   const handleAuthorizePasskey = async () => {
     if (!activeProof || bindLoading || passkeyBusy) return;
     setBindLoading(true);
+    setBindStatus('Opening passkey — confirm with Face ID, fingerprint, or device PIN…');
     setError(null);
     try {
-      await bindSessionProofIfNeeded(activeProof);
+      const bindHash = await bindSessionProofIfNeeded(activeProof);
+      setBindStatus(bindHash ? 'Passkey authorized on-chain.' : 'Passkey already authorized for this proof.');
       await refreshSessionProofBound(activeProof);
+      setError(null);
     } catch (err) {
+      setBindStatus(null);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBindLoading(false);
@@ -425,6 +430,11 @@ export function VerifyPage() {
                   ? 'Your previous passport was used. Request a new one for your next settlement.'
                   : 'Choose your eligibility type. The issuer confirms you meet the policy without publishing personal data.'}
               </p>
+              {needsNewPassport && (proofConsumed || recoveryHint) ? (
+                <p className="mt-2 text-xs text-slate-muted">
+                  After a USDC send, renew here first — then Confirm eligibility and Authorize with passkey on the steps below.
+                </p>
+              ) : null}
               <label className="mt-4 block text-sm">
                 <span className="text-slate-muted">Eligibility type</span>
                 <select
@@ -504,6 +514,11 @@ export function VerifyPage() {
                       >
                         Authorize with passkey
                       </Button>
+                      {bindStatus ? (
+                        <p className="text-sm text-slate-muted" role="status">
+                          {bindStatus}
+                        </p>
+                      ) : null}
                     </>
                   ) : sessionProofBound ? (
                     <p className="text-sm text-brand">

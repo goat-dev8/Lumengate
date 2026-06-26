@@ -31,7 +31,8 @@ function buildCredentialMaterial(walletField, env = process.env, policyKey = 'ge
   const sanctionsClear = true;
   const jurisdictionCode = '840';
   const dobTimestamp = '631152000';
-  const salt = fieldFromHash(['lumengate-credential-v1', walletField, policy.key, issuerId]);
+  // One commitment per wallet — policy affects prover inputs (min/max jurisdiction), not the Merkle leaf.
+  const salt = fieldFromHash(['lumengate-credential-v1', walletField, issuerId]);
 
   const attrsHash = hash3Fields(
     hash2Fields(accredited ? 1 : 0, jurisdictionCode),

@@ -491,12 +491,12 @@ export async function submitWithSmartAccount(
     );
   }
   const kit = await connectPersonalSmartAccount(config, hydrated);
-  const result = await runPasskeyCeremony('sign-and-submit', () =>
-    kit.signAndSubmit(asKitAssembledTransaction(transaction), {
-      credentialId: hydrated.credentialId,
-      forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
-    }),
-  );
+  // Do NOT wrap signAndSubmit in runPasskeyCeremony — webAuthn callbacks already use it.
+  // Nesting ceremonies deadlocks before the passkey prompt (infinite loading on Authorize).
+  const result = await kit.signAndSubmit(asKitAssembledTransaction(transaction), {
+    credentialId: hydrated.credentialId,
+    forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
+  });
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 

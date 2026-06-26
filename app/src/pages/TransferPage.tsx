@@ -489,6 +489,7 @@ export function TransferPage() {
                   !to ||
                   !amount ||
                   recipientValid === false ||
+                  scopeBlocked?.lifecycle === 'consumed' ||
                   (passkeyBusy && !loading)
                 }
                 error={error}
