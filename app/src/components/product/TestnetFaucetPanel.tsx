@@ -17,6 +17,8 @@ type Props = {
   onClaimed?: () => void;
   /** Onboarding — highlight USDC claim and expand panel */
   prominent?: boolean;
+  /** Render without outer Card — for floating drawer */
+  embedded?: boolean;
 };
 
 function formatCountdown(nextClaimAt: number | null): string {
@@ -27,7 +29,7 @@ function formatCountdown(nextClaimAt: number | null): string {
   return `Next claim in ~${hours}h`;
 }
 
-export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, prominent = false }: Props) {
+export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, prominent = false, embedded = false }: Props) {
   const [assets, setAssets] = useState<Record<string, FaucetAssetStatus>>({});
   const [loadingAsset, setLoadingAsset] = useState<AssetKey | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,28 +62,33 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, pro
 
   if (config.network !== 'testnet') return null;
 
-  return (
-    <div id={prominent ? 'onboarding-faucet' : undefined}>
-    <Card
-      className={prominent ? 'border-[#007dfc]/40 bg-gradient-to-br from-[#007dfc]/10 to-white ring-1 ring-[#007dfc]/20' : 'border-brand-200/60 bg-brand-50/30'}
-    >
-      <CardHeader
-        title={prominent ? 'Claim free testnet funds' : 'Testnet faucet'}
-        badge={<Badge tone="brand">{prominent ? 'Recommended next step' : 'Once per 24h'}</Badge>}
-      />
-      <p className="text-sm text-slate-muted">
-        {prominent
-          ? 'Start with demo USDC on your new smart account — real on-chain testnet tokens, no wallet required.'
-          : 'Real on-chain testnet funds from the Lumengate treasury admin — one claim per asset every 24 hours.'}{' '}
-        {!prominent ? (
-          <>
-            EURC is Lumengate testnet SAC (issuer {config.eurcIssuer?.slice(0, 8)}…), not Circle mainnet EURC.
-            Treasury units here are for trying Send; marketplace investments still mint production-position units.
-          </>
-        ) : null}
-      </p>
+  const inner = (
+    <>
+      {!embedded ? (
+        <CardHeader
+          title={prominent ? 'Claim free testnet funds' : 'Testnet faucet'}
+          badge={<Badge tone="brand">{prominent ? 'Recommended next step' : 'Once per 24h'}</Badge>}
+        />
+      ) : null}
+      {!embedded ? (
+        <p className="text-sm text-slate-muted">
+          {prominent
+            ? 'Start with demo USDC on your new smart account — real on-chain testnet tokens, no wallet required.'
+            : 'Real on-chain testnet funds from the Lumengate treasury admin — one claim per asset every 24 hours.'}{' '}
+          {!prominent ? (
+            <>
+              EURC is Lumengate testnet SAC (issuer {config.eurcIssuer?.slice(0, 8)}…), not Circle mainnet EURC.
+              Treasury units here are for trying Send; marketplace investments still mint production-position units.
+            </>
+          ) : null}
+        </p>
+      ) : (
+        <p className="px-4 pt-3 text-sm text-slate-muted">
+          Real on-chain testnet funds — one claim per asset every 24 hours.
+        </p>
+      )}
       {prominent ? (
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className={`flex flex-wrap gap-3 ${embedded ? 'px-4' : ''} mt-4`}>
           <Button
             loading={loadingAsset === 'usdc'}
             disabled={!assets.usdc?.available || loadingAsset !== null}
@@ -95,7 +102,7 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, pro
           </p>
         </div>
       ) : null}
-      <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${prominent ? 'border-t border-[var(--lg-border)] pt-4' : ''}`}>
+      <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${prominent ? 'border-t border-[var(--lg-border)] pt-4' : ''} ${embedded ? 'px-4 pb-4' : ''}`}>
         {(prominent ? ASSET_ORDER.filter((a) => a !== 'usdc') : ASSET_ORDER).map((asset) => {
           const row = assets[asset];
           const disabled = !row?.available || loadingAsset !== null;
@@ -133,8 +140,21 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, pro
           View last claim on Stellar Expert
         </a>
       ) : null}
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-    </Card>
+      {error ? <p className={`mt-3 text-sm text-red-600 ${embedded ? 'px-4 pb-2' : ''}`}>{error}</p> : null}
+    </>
+  );
+
+  if (embedded) {
+    return <div id={prominent ? 'onboarding-faucet' : undefined}>{inner}</div>;
+  }
+
+  return (
+    <div id={prominent ? 'onboarding-faucet' : undefined}>
+      <Card
+        className={prominent ? 'border-[#007dfc]/40 bg-gradient-to-br from-[#007dfc]/10 to-white ring-1 ring-[#007dfc]/20' : 'border-brand-200/60 bg-brand-50/30'}
+      >
+        {inner}
+      </Card>
     </div>
   );
 }

@@ -14,7 +14,6 @@ import { useOfferings } from '../hooks/useOfferings';
 import { readBalance, readComplianceAdminUsdcBalance } from '../lib/contracts';
 import { derivePassportPhase, phaseLabel } from '../lib/passportLifecycle';
 import { formatHeroPortfolio, formatSettledLabel } from '../lib/dashboardPortfolio';
-import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { LiveOnStellarStrip } from '../components/product/LiveOnStellarStrip';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
@@ -26,7 +25,10 @@ import { currentSettlementOwner } from '../lib/settlementOwner';
 import { DashboardHoldings } from '../components/dashboard/DashboardHoldings';
 import { DashboardActivityFeed } from '../components/dashboard/DashboardActivityFeed';
 import { DashboardHero } from '../components/dashboard/DashboardHero';
-import { ReadinessBanner } from '../components/product/ReadinessBanner';
+import { HomeJourneyProgress } from '../components/dashboard/HomeJourneyProgress';
+import { HomeQuickActions } from '../components/dashboard/HomeQuickActions';
+import { RecentSettlements } from '../components/dashboard/RecentSettlements';
+import { FloatingTestnetFaucet } from '../components/product/FloatingTestnetFaucet';
 import { getOnboardingPath } from '../components/product/OnboardingPathPicker';
 
 export function DashboardPage() {
@@ -41,9 +43,6 @@ export function DashboardPage() {
     policyKey,
     beginProofRecovery,
     settlementAddress,
-    fundSmartAccountUsdc,
-    fundSmartAccountEurc,
-    fundSmartAccountXlm,
   } = useApp();
   const navigate = useNavigate();
   const { offerings } = useOfferings();
@@ -123,21 +122,27 @@ export function DashboardPage() {
 
   const settledTotalLabel = useMemo(() => formatSettledLabel(activity), [activity]);
 
+  const showStoryHero = !readyToInvest && (portfolio.main === '—' || !settlementOwner);
+
   const topSubtitle = readyToInvest
     ? "You're verified and cleared for private investing and settlement."
     : proofSpent
       ? 'Your last settlement succeeded. Renew your passport to invest or send again.'
-      : phase === 'passport-issued'
-        ? 'Confirm eligibility on your device to activate your private passport.'
-        : settlementAddress
-          ? 'Request your passport to prove eligibility without revealing private data.'
-          : 'Create your secure account with a passkey — no seed phrase required.';
+      : showStoryHero
+        ? 'Passkey accounts, zero-knowledge passports, and private settlements on Stellar.'
+        : phase === 'passport-issued'
+          ? 'Confirm eligibility on your device to activate your private passport.'
+          : settlementAddress
+            ? 'Request your passport to prove eligibility without revealing private data.'
+            : 'Create your secure account with a passkey — no seed phrase required.';
 
   const dashboardTitle = readyToInvest
     ? 'Welcome back'
-    : settlementAddress
-      ? 'Your dashboard'
-      : readiness.title;
+    : showStoryHero
+      ? 'Private investing, privately proven'
+      : settlementAddress
+        ? 'Your dashboard'
+        : readiness.title;
 
   const quickActions = [
     {
@@ -173,65 +178,70 @@ export function DashboardPage() {
   ];
 
   return (
-    
-      <AppPageLayout title={dashboardTitle} subtitle={topSubtitle}>
-        {advanced ? (
-          <div className="mb-6 space-y-4">
-            <LiveOnStellarStrip config={config} />
-            <AdvancedModeToggle />
-            <ProductProgress steps={productSteps} />
-          </div>
-        ) : null}
+    <AppPageLayout title={dashboardTitle} subtitle={topSubtitle}>
+      {advanced ? (
+        <div className="mb-8 space-y-4">
+          <LiveOnStellarStrip config={config} />
+          <AdvancedModeToggle />
+          <ProductProgress steps={productSteps} />
+        </div>
+      ) : null}
 
-        {proofSpent ? (
-          <div className="mb-6">
-            <ProofLifecyclePanel
-              state={proofLifecycle}
+      {proofSpent ? (
+        <div className="mb-8">
+          <ProofLifecyclePanel
+            state={proofLifecycle}
+            config={config}
+            onBeginRecovery={() => {
+              beginProofRecovery();
+              navigate('/app/verify#recovery-credential');
+            }}
+          />
+        </div>
+      ) : null}
+
+      <DashboardHero
+        phase={phase}
+        readyToInvest={readyToInvest}
+        policyKey={policyKey}
+        hasCredential={Boolean(credential)}
+        portfolioMain={portfolio.main}
+        portfolioSub={portfolio.sub}
+        settledTotalLabel={settledTotalLabel}
+        readinessHref={readiness.href}
+        readinessCta={readiness.cta}
+        activity={activity}
+        showStory={showStoryHero}
+      />
+
+      <div className="mt-10 space-y-12">
+        <HomeJourneyProgress steps={productSteps} />
+
+        <div className="grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <DashboardHoldings
               config={config}
-              onBeginRecovery={() => {
-                beginProofRecovery();
-                navigate('/app/verify#recovery-credential');
-              }}
+              settlementOwner={settlementOwner}
+              activity={activity}
+              offerings={offerings}
             />
           </div>
-        ) : null}
+          <DashboardActivityFeed activity={activity} />
+        </div>
 
-        {!readyToInvest ? (
+        <RecentSettlements activity={activity} />
+
+        <section aria-labelledby="home-quick-actions">
           <div className="mb-6">
-            <ReadinessBanner
-              readiness={readiness}
-              phase={phase}
-              readyToInvest={readyToInvest}
-            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Next steps</p>
+            <h2 id="home-quick-actions" className="mt-1 lg-font-display text-2xl tracking-tight text-[#012b54] md:text-3xl">
+              Quick actions
+            </h2>
           </div>
-        ) : null}
+          <HomeQuickActions readiness={readiness} readyToInvest={readyToInvest} />
+        </section>
 
-        {settlementAddress && !readyToInvest && !address ? (
-          <div className="mb-6">
-            <FundSmartAccountPanel
-              config={config}
-              smartAccountAddress={settlementAddress}
-              onFundUsdc={fundSmartAccountUsdc}
-              onFundEurc={fundSmartAccountEurc}
-              onFundXlm={fundSmartAccountXlm}
-            />
-          </div>
-        ) : null}
-
-        <DashboardHero
-          phase={phase}
-          readyToInvest={readyToInvest}
-          policyKey={policyKey}
-          hasCredential={Boolean(credential)}
-          portfolioMain={portfolio.main}
-          portfolioSub={portfolio.sub}
-          settledTotalLabel={settledTotalLabel}
-          readinessHref={readiness.href}
-          readinessCta={readiness.cta}
-          activity={activity}
-        />
-
-        <Stagger className="mt-8 grid gap-4 md:grid-cols-4">
+        <Stagger className="grid gap-4 md:grid-cols-4">
           {quickActions.map(({ icon: Icon, label, desc, to, tone }) => (
             <StaggerItem key={label}>
               <Link
@@ -254,27 +264,18 @@ export function DashboardPage() {
             </StaggerItem>
           ))}
         </Stagger>
+      </div>
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <DashboardHoldings
-              config={config}
-              settlementOwner={settlementOwner}
-              activity={activity}
-              offerings={offerings}
-            />
-          </div>
-
-          <DashboardActivityFeed activity={activity} />
+      {advanced ? (
+        <div className="mt-12 grid gap-8 xl:grid-cols-2">
+          <AssetPolicyMatrix />
+          <UsdcCompliancePanel config={config} walletAddress={settlementOwner} />
         </div>
+      ) : null}
 
-        {advanced ? (
-          <div className="mt-10 grid gap-8 xl:grid-cols-2">
-            <AssetPolicyMatrix />
-            <UsdcCompliancePanel config={config} walletAddress={settlementOwner} />
-          </div>
-        ) : null}
-      </AppPageLayout>
-    
+      {settlementAddress && config.network === 'testnet' ? (
+        <FloatingTestnetFaucet config={config} smartAccountAddress={settlementAddress} />
+      ) : null}
+    </AppPageLayout>
   );
 }

@@ -7,6 +7,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
+import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { useApp } from '../context/AppContext';
@@ -44,7 +45,17 @@ function TabBar({ tab, onTab }: { tab: SettingsTab; onTab: (t: SettingsTab) => v
 }
 
 export function SettingsPage() {
-  const { config, address, settlementAddress, connect, connecting, disconnect } = useApp();
+  const {
+    config,
+    address,
+    settlementAddress,
+    connect,
+    connecting,
+    disconnect,
+    fundSmartAccountUsdc,
+    fundSmartAccountEurc,
+    fundSmartAccountXlm,
+  } = useApp();
   const [ledger, setLedger] = useState<number | null>(null);
   const [tab, setTab] = useState<SettingsTab>('account');
   const advanced = useAdvancedMode();
@@ -144,6 +155,16 @@ export function SettingsPage() {
               </Button>
             )}
           </Card>
+
+          {settlementAddress ? (
+            <FundSmartAccountPanel
+              config={config}
+              smartAccountAddress={settlementAddress}
+              onFundUsdc={fundSmartAccountUsdc}
+              onFundEurc={fundSmartAccountEurc}
+              onFundXlm={fundSmartAccountXlm}
+            />
+          ) : null}
 
           <Card>
             <CardHeader title="Passkey recovery" badge={<Badge tone="warn">No key recovery</Badge>} />

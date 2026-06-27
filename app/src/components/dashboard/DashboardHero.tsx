@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowRight, Fingerprint, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { Pill } from '../design/Primitives';
 import type { ActivityEntry } from '../../lib/activity';
 import type { PassportPhase } from '../../lib/passportLifecycle';
@@ -19,7 +19,26 @@ type Props = {
   readinessHref: string;
   readinessCta: string;
   activity: ActivityEntry[];
+  showStory?: boolean;
 };
+
+const STORY_FEATURES = [
+  {
+    icon: Fingerprint,
+    title: 'Passkey smart accounts',
+    desc: 'No seed phrase — WebAuthn signs every settlement locally.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Zero-knowledge passport',
+    desc: 'Prove eligibility without revealing who you are.',
+  },
+  {
+    icon: Zap,
+    title: 'Private settlements on Stellar',
+    desc: 'Compliant transfers with auditor-grade receipts.',
+  },
+] as const;
 
 function buildMonthlyActivityCounts(activity: ActivityEntry[], months = 8) {
   const now = new Date();
@@ -86,6 +105,7 @@ export function DashboardHero({
   readinessHref,
   readinessCta,
   activity,
+  showStory = false,
 }: Props) {
   const badge = readyToInvest
     ? `Verified · ${policyByKey(policyKey).claims.slice(0, 2).join(' · ')}`
@@ -110,54 +130,96 @@ export function DashboardHero({
 
       <div className="relative grid gap-8 md:grid-cols-[1.4fr_1fr] md:items-end">
         <div>
-          <Pill tone="brand" className="border-white/20 bg-white/10 text-white">
-            <Sparkles className="h-3 w-3" />
-            <span className="uppercase tracking-[0.08em]">{badge}</span>
-          </Pill>
-          <p className="mt-5 text-sm uppercase tracking-[0.18em] text-white/60">Portfolio value</p>
-          <div className="mt-1.5 flex flex-wrap items-baseline gap-3">
-            <h2 className="lg-font-display text-5xl leading-none tracking-tight text-white md:text-6xl lg:text-7xl">
-              {portfolioMain}
-            </h2>
-            {settledTotalLabel ? (
-              <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-200">
-                {settledTotalLabel}
-              </span>
-            ) : null}
-          </div>
-          {portfolioSub ? <p className="mt-1 text-sm text-white/60">{portfolioSub}</p> : null}
-          <p className="mt-3 max-w-md text-sm text-white/70">
-            You privately prove eligibility, invest in regulated assets, and receive auditor-grade receipts on
-            Stellar.
-          </p>
-
-          <div className="mt-7 flex flex-wrap gap-3">
-            {readyToInvest ? (
-              <>
+          {showStory ? (
+            <>
+              <Pill tone="brand" className="border-white/20 bg-white/10 text-white">
+                <Sparkles className="h-3 w-3" />
+                <span className="uppercase tracking-[0.08em]">Lumengate</span>
+              </Pill>
+              <h2 className="mt-5 max-w-xl lg-font-display text-4xl leading-[1.08] tracking-tight text-white md:text-5xl lg:text-[3.25rem]">
+                Private investing without revealing your identity.
+              </h2>
+              <ul className="mt-6 space-y-3">
+                {STORY_FEATURES.map(({ icon: Icon, title, desc }, i) => (
+                  <motion.li
+                    key={title}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.45, delay: 0.15 + i * 0.08 }}
+                    className="flex gap-3 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm"
+                  >
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10 text-[#5eb0ff]">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{title}</p>
+                      <p className="mt-0.5 text-xs text-white/65">{desc}</p>
+                    </div>
+                  </motion.li>
+                ))}
+              </ul>
+              <div className="mt-7">
                 <Link
-                  to="/app/marketplace"
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
+                  to={readinessHref}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95 hover:shadow-lg"
                 >
-                  Explore investments
+                  {readinessCta}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link
-                  to="/app/send"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
-                >
-                  Send funds
-                </Link>
-              </>
-            ) : (
-              <Link
-                to={readinessHref}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
-              >
-                {readinessCta}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            )}
-          </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <Pill tone="brand" className="border-white/20 bg-white/10 text-white">
+                <Sparkles className="h-3 w-3" />
+                <span className="uppercase tracking-[0.08em]">{badge}</span>
+              </Pill>
+              <p className="mt-5 text-sm uppercase tracking-[0.18em] text-white/60">Portfolio value</p>
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-3">
+                <h2 className="lg-font-display text-5xl leading-none tracking-tight text-white md:text-6xl lg:text-7xl">
+                  {portfolioMain}
+                </h2>
+                {settledTotalLabel ? (
+                  <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-200">
+                    {settledTotalLabel}
+                  </span>
+                ) : null}
+              </div>
+              {portfolioSub ? <p className="mt-1 text-sm text-white/60">{portfolioSub}</p> : null}
+              <p className="mt-3 max-w-md text-sm text-white/70">
+                You privately prove eligibility, invest in regulated assets, and receive auditor-grade receipts on
+                Stellar.
+              </p>
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                {readyToInvest ? (
+                  <>
+                    <Link
+                      to="/app/marketplace"
+                      className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
+                    >
+                      Explore investments
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      to="/app/send"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+                    >
+                      Send funds
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    to={readinessHref}
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
+                  >
+                    {readinessCta}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <ActivityTimeline activity={activity} />

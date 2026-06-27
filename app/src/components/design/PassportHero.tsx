@@ -1,27 +1,11 @@
 import { motion } from 'framer-motion';
-import { Check, Eye, EyeOff, Fingerprint, ShieldCheck } from 'lucide-react';
+import { Fingerprint, ShieldCheck } from 'lucide-react';
 import { Pill } from './Primitives';
 import type { IssuerCredentialResponse } from '../../lib/config';
 import { phaseLabel, type PassportPhase } from '../../lib/passportLifecycle';
 import { policyByKey, type PolicyKey } from '../../lib/policies';
 import { credentialExpiryMs } from '../../lib/passport';
 import { issuerDisplayLabel } from '../../lib/issuer';
-
-const PRIVATE_ITEMS = [
-  'Legal name & address',
-  'Date of birth',
-  'Government ID number',
-  'Source-of-funds documents',
-  'Email & phone number',
-];
-
-const AUDITOR_ITEMS = [
-  'Eligibility category',
-  'Region attestation',
-  'Sanctions-clear status',
-  'Settlement amounts & timestamps',
-  'Linked smart account address',
-];
 
 function formatRelativeTime(ts?: number): string {
   if (!ts) return '—';
@@ -65,16 +49,15 @@ export function PassportHero({
   const issuer = credential ? issuerDisplayLabel(credential) : '—';
 
   return (
-    <>
-      <motion.section
-        initial={{ y: 14 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="relative overflow-hidden rounded-3xl lg-gradient-passport p-8 lg-shadow-lift md:p-10"
-        style={{
-          backgroundImage: 'linear-gradient(140deg, #012b54 0%, #0d253d 50%, #1a4a8a 100%)',
-        }}
-      >
+    <motion.section
+      initial={{ y: 14 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.6 }}
+      className="relative overflow-hidden rounded-3xl lg-gradient-passport p-8 lg-shadow-lift md:p-10"
+      style={{
+        backgroundImage: 'linear-gradient(140deg, #012b54 0%, #0d253d 50%, #1a4a8a 100%)',
+      }}
+    >
         <div className="pointer-events-none absolute inset-0 lg-grid-bg opacity-10" />
         <div className="relative grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
           <div>
@@ -127,46 +110,8 @@ export function PassportHero({
               </div>
               <p className="mt-1 text-white/60">Signs every settlement locally</p>
             </motion.div>
-          </div>
-        </div>
-      </motion.section>
-
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <div className="lg-surface-card p-6">
-          <div className="flex items-center gap-2">
-            <EyeOff className="h-4 w-4 text-[#007dfc]" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#007dfc]">Stays private</p>
-          </div>
-          <h3 className="mt-2 text-xl font-semibold text-[#012b54]">What never reaches the ledger</h3>
-          <ul className="mt-4 space-y-3 text-sm">
-            {PRIVATE_ITEMS.map((item) => (
-              <li key={item} className="flex items-center gap-2.5 text-[#475569]">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-[var(--lg-muted-bg)]">
-                  <Check className="h-3 w-3" />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="lg-surface-card p-6">
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4 text-emerald-600" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-600">Auditor can verify</p>
-          </div>
-          <h3 className="mt-2 text-xl font-semibold text-[#012b54]">What a viewing key unlocks</h3>
-          <ul className="mt-4 space-y-3 text-sm">
-            {AUDITOR_ITEMS.map((item) => (
-              <li key={item} className="flex items-center gap-2.5 text-[#475569]">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-50 text-emerald-600">
-                  <Check className="h-3 w-3" />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
         </div>
       </div>
-    </>
+    </motion.section>
   );
 }

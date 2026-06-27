@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Circle, Fingerprint, Sparkles, Wallet } from 'lucide-react';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { PassportHero } from '../components/design/PassportHero';
+import { PassportPrivacySection } from '../components/design/PassportPrivacySection';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -27,7 +28,7 @@ import { StageProgress, PASSPORT_PROVE_STAGES } from '../components/design/Stage
 import { PassportScopePanel } from '../components/product/PassportScopePanel';
 import { PassportRequestProgress, type PassportRequestStage } from '../components/product/PassportRequestProgress';
 import { OnboardingNextStepBanner } from '../components/product/OnboardingNextStepBanner';
-import { TestnetFaucetPanel } from '../components/product/TestnetFaucetPanel';
+import { FloatingTestnetFaucet } from '../components/product/FloatingTestnetFaucet';
 import { resolveOnboardingNextStep } from '../lib/onboardingGuide';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { microcopy } from '../lib/microcopy';
@@ -347,7 +348,7 @@ export function VerifyPage() {
           message={credentialProgressMessage}
           startedAt={credentialStartedAt}
         />
-        <div className="mt-10 space-y-6">
+        <div className="mt-8 space-y-10">
         <PassportHero
           phase={phase}
           credential={credential}
@@ -362,17 +363,34 @@ export function VerifyPage() {
           />
         ) : null}
 
-        {passkeyFirst &&
-        smartAccount &&
-        settlementAddress &&
-        !smartAccountStale &&
-        config.network === 'testnet' ? (
-          <TestnetFaucetPanel
-            config={config}
-            smartAccountAddress={settlementAddress}
-            prominent={!credential || isNewOnboarding}
-          />
-        ) : null}
+        <nav aria-label="Verification progress" className="grid gap-3 sm:grid-cols-4">
+          {stepMeta.map((step) => {
+            const state = stepState(step.id, flags, stepOrder);
+            return (
+              <div
+                key={step.id}
+                className={`rounded-2xl border px-4 py-4 text-left transition-shadow ${
+                  state === 'complete'
+                    ? 'border-emerald-200 bg-emerald-50/70 shadow-sm'
+                    : state === 'current'
+                      ? 'border-brand-300 bg-brand-50/60 shadow-[0_8px_30px_rgba(0,125,252,0.12)] ring-1 ring-brand-200'
+                      : 'border-slate-100 bg-slate-50/80 opacity-75'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {state === 'complete' ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Circle className={`h-4 w-4 ${state === 'current' ? 'text-brand' : 'text-slate-300'}`} />
+                  )}
+                  <span className="text-xs font-semibold text-navy">{step.label}</span>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-snug text-slate-muted">{step.hint}</p>
+              </div>
+            );
+          })}
+        </nav>
+
         {advanced && (!smartAccount || !settlementAddress) ? <OnboardingPathPicker compact /> : null}
 
         {advanced ? (
@@ -382,17 +400,6 @@ export function VerifyPage() {
         ) : null}
 
         {advanced ? <WalletSigningNotice compact /> : null}
-        <PrivacySplitCard compact className="mt-2" />
-
-        {credential ? (
-          <PassportScopePanel
-            rows={scopeRows}
-            loading={scopeLoading}
-            onRefresh={() => refreshScopeStatuses()}
-            onRenew={scrollToRenew}
-            onRequestNew={handleRequestNewPassport}
-          />
-        ) : null}
 
         {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
           <ProofLifecyclePanel
@@ -409,34 +416,6 @@ export function VerifyPage() {
             {proofLifecycle.reason}
           </div>
         ) : null}
-
-        <nav aria-label="Verification steps" className="grid gap-2 sm:grid-cols-4">
-          {stepMeta.map((step) => {
-            const state = stepState(step.id, flags, stepOrder);
-            return (
-              <div
-                key={step.id}
-                className={`rounded-xl border px-3 py-3 text-left ${
-                  state === 'complete'
-                    ? 'border-emerald-200 bg-emerald-50/70'
-                    : state === 'current'
-                      ? 'border-brand-300 bg-brand-50/60 ring-1 ring-brand-200'
-                      : 'border-slate-100 bg-slate-50/80 opacity-75'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {state === 'complete' ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Circle className={`h-4 w-4 ${state === 'current' ? 'text-brand' : 'text-slate-300'}`} />
-                  )}
-                  <span className="text-xs font-semibold text-navy">{step.label}</span>
-                </div>
-                <p className="mt-1 text-[11px] text-slate-muted">{step.hint}</p>
-              </div>
-            );
-          })}
-        </nav>
 
         {passkeyFirst && showWizardStep('passkey') && (currentStep === 'passkey' || !smartAccount) ? (
           <Card>
@@ -719,7 +698,7 @@ export function VerifyPage() {
               </Link>
             </div>
             <p className="mt-3 text-xs text-slate-muted">
-              Need test funds? Claim demo USDC from the faucet above before your first send.
+              Need test funds? Use the floating testnet faucet on the right to claim demo USDC.
             </p>
           </Card>
           </div>
@@ -731,7 +710,28 @@ export function VerifyPage() {
             <p className="mt-1">{error}</p>
           </div>
         ) : null}
+
+        <PassportPrivacySection />
+        <PrivacySplitCard compact className="mt-2" />
+
+        {credential ? (
+          <PassportScopePanel
+            rows={scopeRows}
+            loading={scopeLoading}
+            onRefresh={() => refreshScopeStatuses()}
+            onRenew={scrollToRenew}
+            onRequestNew={handleRequestNewPassport}
+          />
+        ) : null}
         </div>
+
+        {passkeyFirst &&
+        smartAccount &&
+        settlementAddress &&
+        !smartAccountStale &&
+        config.network === 'testnet' ? (
+          <FloatingTestnetFaucet config={config} smartAccountAddress={settlementAddress} />
+        ) : null}
       </AppPageLayout>
     
   );
