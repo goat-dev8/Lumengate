@@ -31,6 +31,8 @@ import { ASSET_SCOPES } from '../lib/assetScope';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
+import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
+import { microcopy } from '../lib/microcopy';
 import { isProofUsable } from '../lib/proofLifecycle';
 import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
 
@@ -64,10 +66,6 @@ export function MarketplacePage() {
 
     address,
 
-    connect,
-
-    connecting,
-
     credential,
 
     proof,
@@ -78,11 +76,7 @@ export function MarketplacePage() {
 
     selectedOfferingId,
 
-    setPolicyKey,
-
     setSelectedOfferingId,
-
-    requestCredential,
 
     generatePofProofForWallet,
 
@@ -106,6 +100,7 @@ export function MarketplacePage() {
     ensureProofForAsset,
   } = useApp();
 
+  const advanced = useAdvancedMode();
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -213,33 +208,6 @@ export function MarketplacePage() {
     }
 
   }, [address, settlementAddress, config, txHash, pofTxHash]);
-
-
-
-  const prepareOffering = async (offering: LiveOffering) => {
-    setSelectedOfferingId(offering.id);
-    setPolicyKey(offering.requiredPolicy);
-    setError(null);
-
-    if (!settlementAddress) {
-      navigate('/app/verify');
-      return;
-    }
-
-    if (!credential) {
-      try {
-        await requestCredential(offering.requiredPolicy);
-        navigate('/app/verify');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-      return;
-    }
-
-    navigate('/app/verify');
-  };
-
-
 
   const fundsThreshold = (offering: LiveOffering): bigint | null => {
 
@@ -624,8 +592,8 @@ export function MarketplacePage() {
   return (
     
       <AppPageLayout
-        title="Marketplace"
-        subtitle="Regulated, tokenized, settlement-ready offerings on Stellar."
+        title={microcopy.marketplace.title}
+        subtitle={microcopy.marketplace.subtitle}
       >
         <SectionHeader
           eyebrow="Offerings"
@@ -640,9 +608,12 @@ export function MarketplacePage() {
                   : 'Every offering is permissioned. Your passport unlocks eligibility automatically.'
           }
           action={
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--lg-border)] bg-white px-3 py-1.5 text-xs text-[#64748b]">
-              <ShieldCheck className="h-3.5 w-3.5 text-[#007dfc]" />
-              Eligible offerings shown first
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--lg-border)] bg-white px-3 py-1.5 text-xs text-[#64748b]">
+                <ShieldCheck className="h-3.5 w-3.5 text-[#007dfc]" />
+                Eligible offerings shown first
+              </div>
+              <AdvancedModeToggle />
             </div>
           }
         />
@@ -758,40 +729,68 @@ export function MarketplacePage() {
           return (
             <StaggerItem key={offering.id}>
             <MarketplaceProductCard offering={offering} selected={isSelected}>
-                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--lg-border)] pt-4 text-sm">
-                  <div>
-                    <span className="text-[#64748b]">Settles in</span>
-                    <p className="font-medium text-[#012b54]">
-                      {offering.settlementAsset.toUpperCase()}
-                      {offering.settlementRoute && offering.settlementRoute !== 'rwa'
-                        ? ` · ${offering.settlementRoute}`
-                        : ''}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[#64748b]">Who can invest</span>
-                    <p className="font-medium text-[#012b54]">{policy.title}</p>
-                  </div>
-                </div>
+                {advanced ? (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--lg-border)] pt-4 text-sm">
+                      <div>
+                        <span className="text-[#64748b]">Settles in</span>
+                        <p className="font-medium text-[#012b54]">
+                          {offering.settlementAsset.toUpperCase()}
+                          {offering.settlementRoute && offering.settlementRoute !== 'rwa'
+                            ? ` · ${offering.settlementRoute}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[#64748b]">Who can invest</span>
+                        <p className="font-medium text-[#012b54]">{policy.title}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {policy.claims.slice(0, 3).map((c) => (
+                        <span
+                          key={c}
+                          className="rounded-md bg-[var(--lg-muted-bg)] px-2 py-0.5 text-[10.5px] font-medium text-[#64748b]"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-4 border-t border-[var(--lg-border)] pt-4 text-xs text-[#64748b]">
+                    {microcopy.marketplace.privacyLine} · {policy.title}
+                  </p>
+                )}
 
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {policy.claims.slice(0, 3).map((c) => (
-                    <span
-                      key={c}
-                      className="rounded-md bg-[var(--lg-muted-bg)] px-2 py-0.5 text-[10.5px] font-medium text-[#64748b]"
+                <div className="mt-6">
+                  {block && !block.includes('passport') ? (
+                    <p className="mb-3 text-xs text-[#64748b]">{block}</p>
+                  ) : null}
+                  {block?.includes('passport') ? (
+                    <Link to="/app/verify">
+                      <Button className="w-full">
+                        {microcopy.marketplace.getPassport}
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      loading={settling && isSelected}
+                      disabled={Boolean(block)}
+                      onClick={() => {
+                        setSelectedOfferingId(offering.id);
+                        handleSettle(offering);
+                      }}
                     >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="mt-6 flex flex-col gap-2">
-                  <Button variant="secondary" onClick={() => prepareOffering(offering)}>
-                    Get ready to invest
-                  </Button>
-                  {threshold ? (
+                      <ArrowRightLeft className="h-4 w-4" />
+                      {microcopy.marketplace.invest}
+                    </Button>
+                  )}
+                  {advanced && threshold ? (
                     <Button
                       variant="secondary"
+                      className="mt-2 w-full"
                       loading={pofLoading && isSelected}
                       onClick={() => {
                         setSelectedOfferingId(offering.id);
@@ -802,18 +801,6 @@ export function MarketplacePage() {
                       Confirm balance privately
                     </Button>
                   ) : null}
-                  <Button
-                    loading={settling && isSelected}
-                    disabled={Boolean(block)}
-                    onClick={() => {
-                      setSelectedOfferingId(offering.id);
-                      handleSettle(offering);
-                    }}
-                  >
-                    <ArrowRightLeft className="h-4 w-4" />
-                    Invest now
-                  </Button>
-                  {block && address ? <p className="text-xs text-[#64748b]">{block}</p> : null}
                 </div>
             </MarketplaceProductCard>
             </StaggerItem>
@@ -828,26 +815,16 @@ export function MarketplacePage() {
         </div>
       ) : null}
 
-      {!address ? (
-
+      {!settlementAddress ? (
         <EmptyState
-
-          title="Connect to invest"
-
-          description="Connect your account to unlock passport-gated investments."
-
+          title="Create your account to invest"
+          description="Get your Private Financial Passport, then browse regulated offerings."
           action={
-
-            <Button loading={connecting} onClick={() => connect()}>
-
-              Connect wallet
-
-            </Button>
-
+            <Link to="/app/welcome">
+              <Button>Create secure account</Button>
+            </Link>
           }
-
         />
-
       ) : null}
 
 

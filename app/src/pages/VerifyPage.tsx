@@ -19,11 +19,13 @@ import { AdvancedModeToggle, useAdvancedMode } from '../components/product/Advan
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
-import { PrivacyJourney } from '../components/product/PrivacyJourney';
-import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { OnboardingPathPicker, getOnboardingPath, setOnboardingPath, type OnboardingPath } from '../components/product/OnboardingPathPicker';
+import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { recoveryLog, verifyStepFlags, type VerifyStepId } from '../lib/proofRecovery';
 import { derivePassportPhase } from '../lib/passportLifecycle';
+import { PrivacySplitCard } from '../components/design/PrivacySplitCard';
+import { StageProgress, PASSPORT_PROVE_STAGES } from '../components/design/StageProgress';
+import { microcopy } from '../lib/microcopy';
 
 const PASSKEY_STEP_META: { id: VerifyStepId | 'passkey'; label: string; hint: string }[] = [
   { id: 'passkey', label: 'Passkey account', hint: 'Create your smart account' },
@@ -58,9 +60,12 @@ export function VerifyPage() {
   );
 
   useEffect(() => {
-    if (pathParam === 'wallet' || pathParam === 'passkey') {
-      setOnboardingPath(pathParam);
-      setOnboardingPathState(pathParam);
+    if (pathParam === 'wallet') {
+      setOnboardingPath('wallet');
+      setOnboardingPathState('wallet');
+    } else {
+      setOnboardingPath('passkey');
+      setOnboardingPathState('passkey');
     }
   }, [pathParam]);
 
@@ -242,11 +247,15 @@ export function VerifyPage() {
     lifecycle: proofLifecycle,
   });
 
+  const wizardMode = !advanced;
+  const showWizardStep = (stepId: VerifyStepId | 'passkey') =>
+    !wizardMode || currentStep === stepId || (stepId === 'credential' && proofConsumed);
+
   return (
     
       <AppPageLayout
-        title="Passport"
-        subtitle="Prove who you are. Reveal nothing else."
+        title={microcopy.passport.title}
+        subtitle={microcopy.passport.subtitle}
       >
         <PassportHero
           phase={phase}
@@ -256,7 +265,7 @@ export function VerifyPage() {
         />
 
         <div className="mt-10 space-y-6">
-        {!smartAccount || !settlementAddress ? <OnboardingPathPicker compact /> : null}
+        {advanced && (!smartAccount || !settlementAddress) ? <OnboardingPathPicker compact /> : null}
 
         {advanced ? (
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -264,8 +273,8 @@ export function VerifyPage() {
           </div>
         ) : null}
 
-        <WalletSigningNotice compact />
-        <PrivacyJourney compact />
+        {advanced ? <WalletSigningNotice compact /> : null}
+        <PrivacySplitCard compact className="mt-2" />
 
         {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
           <ProofLifecyclePanel
@@ -310,15 +319,14 @@ export function VerifyPage() {
           })}
         </nav>
 
-        {passkeyFirst && (currentStep === 'passkey' || !smartAccount) ? (
+        {passkeyFirst && showWizardStep('passkey') && (currentStep === 'passkey' || !smartAccount) ? (
           <Card>
             <CardHeader
-              title="Step 1 — Create passkey smart account"
+              title="Step 1 — Create secure account"
               badge={<Badge tone="brand">Passkey</Badge>}
             />
             <p className="text-sm text-slate-muted">
-              Your passkey authorizes every settlement. Deployment uses the OpenZeppelin relayer — no wallet required
-              for this step when relayer is configured.
+              {microcopy.account.passkeyPrompt}. Your passkey authorizes every settlement — no seed phrase.
             </p>
             {!address && !config.openZeppelinRelayerUrl ? (
               <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -344,7 +352,7 @@ export function VerifyPage() {
                 onClick={() => createSmartAccount()}
               >
                 <Fingerprint className="h-4 w-4" />
-                Create passkey smart account
+                {microcopy.welcome.createAccount}
               </Button>
             ) : null}
             {smartAccount && settlementAddress && !smartAccountStale ? (
@@ -395,7 +403,7 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {passkeyFirst && smartAccount && settlementAddress && !smartAccountStale && !address ? (
+        {passkeyFirst && smartAccount && settlementAddress && !smartAccountStale && !address && advanced ? (
           <Card>
             <CardHeader title="Add funds when ready" badge={<Badge tone="brand">Optional</Badge>} />
             <p className="text-sm text-slate-muted">
@@ -407,7 +415,7 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {address && smartAccount && settlementAddress && !smartAccountStale ? (
+        {address && smartAccount && settlementAddress && !smartAccountStale && advanced ? (
           <FundSmartAccountPanel
             config={config}
             smartAccountAddress={settlementAddress}
@@ -418,17 +426,17 @@ export function VerifyPage() {
           />
         ) : null}
 
-        {showCredentialStep ? (
+        {showCredentialStep && showWizardStep('credential') ? (
           <div id="recovery-credential">
             <Card>
               <CardHeader
-                title="Step 2 — Verify eligibility"
+                title="Step 2 — Request passport"
                 badge={<Badge>{advanced ? 'Issuer attestation' : 'Private'}</Badge>}
               />
               <p className="text-sm text-slate-muted">
                 {needsNewPassport && (proofConsumed || recoveryHint)
-                  ? 'Your previous passport was used. Request a new one for your next settlement.'
-                  : 'Choose your eligibility type. The issuer confirms you meet the policy without publishing personal data.'}
+                  ? microcopy.passport.renewBody
+                  : 'Request your Private Financial Passport. The issuer confirms you meet the policy without publishing personal data.'}
               </p>
               {needsNewPassport && (proofConsumed || recoveryHint) ? (
                 <p className="mt-2 text-xs text-slate-muted">
@@ -464,13 +472,27 @@ export function VerifyPage() {
           </div>
         ) : null}
 
-        {showProofStep ? (
+        {showProofStep && showWizardStep('proof') ? (
           <div id="recovery-proof">
             <Card>
-              <CardHeader title="Step 3 — Generate private passport" badge={<Badge tone="brand">Private</Badge>} />
+              <CardHeader title="Step 3 — Verify eligibility privately" badge={<Badge tone="brand">Private</Badge>} />
               <p className="text-sm text-slate-muted">
-                Lumengate confirms you are allowed without revealing your identity. This runs locally in your browser.
+                {microcopy.prove.proofHint}
               </p>
+              {proveLoading ? (
+                <div className="mt-4">
+                  <StageProgress
+                    stages={PASSPORT_PROVE_STAGES}
+                    currentStageId={
+                      proveProgress?.message?.toLowerCase().includes('witness')
+                        ? 'witness'
+                        : proveProgress?.message?.toLowerCase().includes('proof')
+                          ? 'proof'
+                          : 'preparing'
+                    }
+                  />
+                </div>
+              ) : null}
               {!activeProof ? (
                 <>
                   <p className="mt-3 text-sm text-slate-muted">
@@ -494,7 +516,7 @@ export function VerifyPage() {
                     onClick={handleProve}
                   >
                     <Sparkles className="h-4 w-4" />
-                    Confirm eligibility
+                    {microcopy.passport.verify}
                   </Button>
                 </>
               ) : null}
@@ -512,7 +534,7 @@ export function VerifyPage() {
                         disabled={passkeyBusy && !bindLoading}
                         onClick={handleAuthorizePasskey}
                       >
-                        Authorize with passkey
+                        {microcopy.passport.authorize}
                       </Button>
                       {bindStatus ? (
                         <p className="text-sm text-slate-muted" role="status">
@@ -547,21 +569,21 @@ export function VerifyPage() {
           </div>
         ) : null}
 
-        {(currentStep === 'ready' || flags.ready) && activeProof ? (
+        {(currentStep === 'ready' || flags.ready) && activeProof && showWizardStep('ready') ? (
           <Card>
-            <CardHeader title="Step 4 — Unlock investments" badge={<Badge tone="ok">Ready</Badge>} />
+            <CardHeader title="You're verified" badge={<Badge tone="ok">Ready</Badge>} />
             <p className="text-sm text-slate-muted">
-              Your private passport is active for one compliant settlement per asset (treasury, USDC, EURC each have their own slot). After a send, renew your passport before the next one.
+              Your private passport is active. Invest in regulated offerings or send funds privately.
             </p>
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-4">
               <Link to="/app/marketplace">
-                <Button>
+                <Button className="w-full sm:w-auto">
                   Browse investments
                   <Sparkles className="h-4 w-4" />
                 </Button>
               </Link>
-              <Link to="/app/send">
-                <Button variant="secondary">Send privately</Button>
+              <Link to="/app/send" className="mt-3 block text-center text-sm font-medium text-[#007dfc] hover:underline sm:mt-2 sm:inline sm:ml-4">
+                Send privately instead
               </Link>
             </div>
           </Card>

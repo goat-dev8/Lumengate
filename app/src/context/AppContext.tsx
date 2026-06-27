@@ -86,6 +86,7 @@ import {
   waitForCredentialRootsReady,
 } from '../lib/registrySync';
 import {
+  connectPersonalSmartAccount,
   createPersonalSmartAccount,
   hydrateSmartAccountPasskeyMetadata,
   isAssembledTransaction,
@@ -139,6 +140,8 @@ type AppContextValue = {
   fundSmartAccountXlm: (amountXlm: string) => Promise<string>;
   connecting: boolean;
   connect: () => Promise<void>;
+  /** Re-authenticate stored passkey session (presentation — calls connectPersonalSmartAccount). */
+  signInWithPasskey: () => Promise<void>;
   disconnect: () => void;
   kit: StellarWalletsKit | null;
   credential: IssuerCredentialResponse | null;
@@ -831,6 +834,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConnecting(false);
     }
   }, [kit, pushActivity, restoreSession, persistSession, persistPasskeySession, applySession]);
+
+  const signInWithPasskey = useCallback(async () => {
+    const saved = loadPasskeySession();
+    if (!saved?.smartAccount) {
+      throw new Error('No saved Lumengate account on this device.');
+    }
+    setConnecting(true);
+    try {
+      await connectPersonalSmartAccount(config, saved.smartAccount);
+      applyPasskeySession(saved);
+      pushActivity({
+        kind: 'verify',
+        title: 'Signed in',
+        detail: `${saved.smartAccountAddress.slice(0, 8)}…`,
+        status: 'success',
+      });
+    } finally {
+      setConnecting(false);
+    }
+  }, [config, applyPasskeySession, pushActivity]);
 
   const disconnect = useCallback(() => {
     kit.disconnect().catch(() => undefined);
@@ -1739,6 +1762,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     replaceSmartAccount,
     connecting,
     connect,
+    signInWithPasskey,
     disconnect,
     kit,
     credential,

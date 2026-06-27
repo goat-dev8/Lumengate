@@ -87,9 +87,15 @@ export function DashboardHero({
   readinessCta,
   activity,
 }: Props) {
-  const badge = hasCredential
-    ? `Passport active · ${policyByKey(policyKey).claims.slice(0, 2).join(' · ')}`
-    : phaseLabel(phase);
+  const badge = readyToInvest
+    ? `Verified · ${policyByKey(policyKey).claims.slice(0, 2).join(' · ')}`
+    : phase === 'passport-issued'
+      ? 'Passport issued · Confirm eligibility'
+      : phase === 'proof-spent' || phase === 'expired'
+        ? 'Renew access'
+        : hasCredential
+          ? `Passport · ${policyByKey(policyKey).claims.slice(0, 2).join(' · ')}`
+          : phaseLabel(phase);
 
   return (
     <motion.section
@@ -126,27 +132,31 @@ export function DashboardHero({
           </p>
 
           <div className="mt-7 flex flex-wrap gap-3">
-            <Link
-              to="/app/marketplace"
-              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
-            >
-              Explore investments
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/app/send"
-              className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              Send funds
-            </Link>
-            {!readyToInvest ? (
+            {readyToInvest ? (
+              <>
+                <Link
+                  to="/app/marketplace"
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
+                >
+                  Explore investments
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to="/app/send"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+                >
+                  Send funds
+                </Link>
+              </>
+            ) : (
               <Link
                 to={readinessHref}
-                className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#012b54] transition hover:bg-white/95"
               >
                 {readinessCta}
+                <ArrowRight className="h-4 w-4" />
               </Link>
-            ) : null}
+            )}
           </div>
         </div>
 

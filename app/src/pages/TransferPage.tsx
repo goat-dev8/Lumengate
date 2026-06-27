@@ -6,6 +6,10 @@ import { ExternalLink } from 'lucide-react';
 
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { SendTransferForm } from '../components/send/SendTransferForm';
+import {
+  SettlementProgressOverlay,
+  type SettlementPhase,
+} from '../components/send/SettlementProgress';
 
 import { Card, CardHeader } from '../components/ui/Card';
 
@@ -15,8 +19,7 @@ import { Badge } from '../components/ui/Badge';
 
 import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
-import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
-import { TestnetFaucetPanel } from '../components/product/TestnetFaucetPanel';
+import { FundsDrawer } from '../components/product/FundsDrawer';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
@@ -53,6 +56,8 @@ type AssetKind = 'rwa' | 'usdc' | 'eurc';
 export function TransferPage() {
   const {
     address,
+    connect,
+    connecting,
     credential,
     proof,
     config,
@@ -70,7 +75,6 @@ export function TransferPage() {
     createSmartAccount,
     replaceSmartAccount,
     ensureProofForAsset,
-    passkeyBusy,
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
@@ -89,6 +93,7 @@ export function TransferPage() {
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [settlementPhase, setSettlementPhase] = useState<SettlementPhase>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -233,12 +238,26 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     setStatusMessage(null);
+    setSettlementPhase('preparing');
+    let completed = false;
     try {
       let scopedCredential = credential;
       let scopedProof = activeProof;
       if (!scopedProof) {
+        setSettlementPhase('preparing');
         setStatusMessage(`Preparing private ${friendlyAssetName(asset)} eligibility on your device…`);
-        const ensured = await ensureProofForAsset(asset, (message) => setStatusMessage(message));
+        const ensured = await ensureProofForAsset(asset, (message) => {
+          setStatusMessage(message);
+          const lower = message.toLowerCase();
+          if (
+            lower.includes('proof') ||
+            lower.includes('witness') ||
+            lower.includes('prover') ||
+            lower.includes('registry')
+          ) {
+            setSettlementPhase('proving');
+          }
+        });
         scopedProof = ensured.proof;
         scopedCredential = ensured.credential;
       }
@@ -266,15 +285,19 @@ export function TransferPage() {
             ? await buildEurcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
             : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
 
+      setSettlementPhase('submitting');
       const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+        setSettlementPhase(step === 'bind' ? 'authorizing-bind' : 'authorizing-settle');
         setStatusMessage(
           step === 'bind'
-            ? `Passkey step ${index} of ${total}: authorize eligibility binding…`
-            : `Passkey step ${index} of ${total}: confirm ${friendlyAssetName(asset)} send…`,
+            ? `Authorize with passkey (${index} of ${total}) — eligibility binding`
+            : `Confirm with passkey (${index} of ${total}) — ${friendlyAssetName(asset)} settlement`,
         );
       });
 
+      setSettlementPhase('complete');
       setTxHash(hash);
+      completed = true;
 
       await recordTransferTx(hash, {
 
@@ -302,6 +325,7 @@ export function TransferPage() {
         status: 'success',
       });
 
+      await new Promise((resolve) => setTimeout(resolve, 900));
       navigate('/app/compliance');
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
@@ -325,7 +349,10 @@ export function TransferPage() {
 
     } finally {
       setLoading(false);
-      setStatusMessage(null);
+      if (!completed) {
+        setSettlementPhase('idle');
+        setStatusMessage(null);
+      }
     }
   };
 
@@ -375,6 +402,11 @@ export function TransferPage() {
         subtitle="Safer than banking. Settles in seconds on Stellar."
         width="5xl"
       >
+      <SettlementProgressOverlay
+        phase={settlementPhase}
+        statusMessage={statusMessage}
+        assetLabel={friendlyAssetName(asset)}
+      />
       <div className="space-y-6">
         <div className="flex justify-end">
           <AdvancedModeToggle />
@@ -412,47 +444,17 @@ export function TransferPage() {
           </>
         ) : null}
 
-        {sendAccountReady && settlementAddress ? (
-          <TestnetFaucetPanel
-            config={config}
-            smartAccountAddress={settlementAddress}
-            onClaimed={() => setBalanceRefresh((n: number) => n + 1)}
-          />
-        ) : null}
-
-        {sendAccountReady && address && settlementAddress ? (
-          <FundSmartAccountPanel
-            config={config}
-            smartAccountAddress={settlementAddress}
-            onFundUsdc={fundSmartAccountUsdc}
-            onFundEurc={fundSmartAccountEurc}
-            onFundXlm={fundSmartAccountXlm}
-            onFunded={() => setBalanceRefresh((n: number) => n + 1)}
-          />
-        ) : null}
-
-        {proofLifecycle.lifecycle === 'invalid' ||
-        proofLifecycle.lifecycle === 'consumed' ||
-        scopeBlocked?.lifecycle === 'consumed' ? (
-          <ProofLifecyclePanel
-            state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
-            config={config}
-            onBeginRecovery={handleRecovery}
-            onRefreshProof={() => syncProofLifecycle()}
-          />
-        ) : null}
-
         {sendAccountReady ? (
           <>
-            {!assetProofReady && credential ? (
-              <Card className="border-brand-200 bg-brand-50/40">
-                <CardHeader title="One-click private send" badge={<Badge tone="brand">Simple</Badge>} />
-                <p className="text-sm text-slate-muted">
-                  {asset === 'usdc' || asset === 'eurc'
-                    ? `${friendlyAssetName(asset)} uses its own eligibility scope (separate from treasury units). Click Send once — your browser prepares the proof locally, then your passkey confirms in at most two short steps.`
-                    : 'Click Send once — private eligibility runs locally, then your passkey confirms the transfer.'}
-                </p>
-              </Card>
+            {proofLifecycle.lifecycle === 'invalid' ||
+            proofLifecycle.lifecycle === 'consumed' ||
+            scopeBlocked?.lifecycle === 'consumed' ? (
+              <ProofLifecyclePanel
+                state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
+                config={config}
+                onBeginRecovery={handleRecovery}
+                onRefreshProof={() => syncProofLifecycle()}
+              />
             ) : null}
 
             {asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
@@ -482,7 +484,7 @@ export function TransferPage() {
                 balanceLabel={balanceLabel}
                 fromLabel={settlementAddress ? 'Your Lumengate account' : 'Smart account'}
                 fromAddress={settlementAddress}
-                loading={loading || passkeyBusy}
+                loading={loading}
                 disabled={
                   !credential ||
                   !smartAccount ||
@@ -490,7 +492,7 @@ export function TransferPage() {
                   !amount ||
                   recipientValid === false ||
                   scopeBlocked?.lifecycle === 'consumed' ||
-                  (passkeyBusy && !loading)
+                  loading
                 }
                 error={error}
                 statusMessage={statusMessage}
@@ -498,6 +500,22 @@ export function TransferPage() {
                 showTreasuryOption={advanced}
               />
             )}
+
+            {settlementAddress ? (
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                <FundsDrawer
+                  config={config}
+                  smartAccountAddress={settlementAddress}
+                  hasFundingWallet={Boolean(address)}
+                  onConnectWallet={() => connect()}
+                  connectingWallet={connecting}
+                  onFundUsdc={fundSmartAccountUsdc}
+                  onFundEurc={fundSmartAccountEurc}
+                  onFundXlm={fundSmartAccountXlm}
+                  onFunded={() => setBalanceRefresh((n: number) => n + 1)}
+                />
+              </div>
+            ) : null}
 
             {txHash ? (
 
@@ -531,12 +549,12 @@ export function TransferPage() {
           </>
         ) : !smartAccount ? (
           <Card>
-            <CardHeader title="Passkey smart account required" badge={<Badge tone="warn">Setup</Badge>} />
+            <CardHeader title="Secure account required" badge={<Badge tone="warn">Setup</Badge>} />
             <p className="text-sm text-slate-muted">
-              Create your passkey smart account on Passport, then return here to send privately.
+              Create your secure Lumengate account with a passkey, then return here to send privately.
             </p>
-            <Button className="mt-4" variant="secondary" onClick={() => navigate('/app/verify')}>
-              Go to Passport
+            <Button className="mt-4" variant="secondary" onClick={() => navigate('/app/welcome?intent=new')}>
+              Create secure account
             </Button>
           </Card>
         ) : null}

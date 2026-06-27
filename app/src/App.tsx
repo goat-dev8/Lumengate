@@ -25,14 +25,11 @@ const CompliancePage = lazy(() =>
 const MarketplacePage = lazy(() =>
   import('./pages/MarketplacePage').then((mod) => ({ default: mod.MarketplacePage })),
 );
-const PortfolioPage = lazy(() =>
-  import('./pages/PortfolioPage').then((mod) => ({ default: mod.PortfolioPage })),
+const WelcomePage = lazy(() =>
+  import('./pages/WelcomePage').then((mod) => ({ default: mod.WelcomePage })),
 );
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((mod) => ({ default: mod.SettingsPage })),
-);
-const ActivityPage = lazy(() =>
-  import('./pages/ActivityPage').then((mod) => ({ default: mod.ActivityPage })),
 );
 const OfferingDetailRoute = lazy(() =>
   import('./pages/OfferingDetailPage').then((mod) => ({ default: mod.OfferingDetailRoute })),
@@ -49,7 +46,8 @@ function AppRoutes() {
       <Route path="/receipt" element={<Navigate to="/app/compliance" replace />} />
       <Route path="/audit" element={<Navigate to="/app/auditor" replace />} />
       <Route path="/operators" element={<Navigate to="/app/admin" replace />} />
-      <Route path="/app" element={<Navigate to="/app/home" replace />} />
+      <Route path="/app" element={<Navigate to="/app/welcome" replace />} />
+      <Route path="/app/welcome" element={<WelcomePage />} />
       <Route path="/app" element={<AppLayout />}>
         <Route path="home" element={<DashboardPage />} />
         <Route path="dashboard" element={<Navigate to="/app/home" replace />} />
@@ -60,10 +58,10 @@ function AppRoutes() {
         <Route path="passport" element={<Navigate to="/app/verify" replace />} />
         <Route path="marketplace" element={<MarketplacePage />} />
         <Route path="marketplace/:offeringId" element={<OfferingDetailRoute />} />
-        <Route path="portfolio" element={<PortfolioPage />} />
+        <Route path="portfolio" element={<Navigate to="/app/home" replace />} />
         <Route path="compliance" element={<CompliancePage />} />
         <Route path="receipt" element={<Navigate to="/app/compliance" replace />} />
-        <Route path="activity" element={<ActivityPage />} />
+        <Route path="activity" element={<Navigate to="/app/compliance?tab=activity" replace />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="credential" element={<Navigate to="/app/verify" replace />} />
         <Route path="prove" element={<Navigate to="/app/verify" replace />} />

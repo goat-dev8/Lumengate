@@ -9,45 +9,24 @@ import {
   Store,
   Send,
   FileText,
-  Search,
   Settings2,
-  ListChecks,
-  SlidersHorizontal,
   ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { ConnectWalletButton } from '../fintech/ConnectWalletButton';
-import { ConnectedWalletChip } from '../fintech/ConnectedWalletChip';
-import { FreighterInstallHint } from '../fintech/FreighterInstallHint';
 import { StatusDot } from '../design/Primitives';
 import { cn } from '../../lib/cn';
 import { fetchLatestLedger } from '../../lib/horizonLedger';
+import { derivePassportPhase } from '../../lib/passportLifecycle';
+import { getProductReadiness } from '../../lib/productState';
+import { getOnboardingPath } from '../product/OnboardingPathPicker';
 
-const navGroups = [
-  {
-    group: 'Workspace',
-    items: [
-      { to: '/app/home', label: 'Home', icon: Home, end: true },
-      { to: '/app/verify', label: 'Passport', icon: ShieldCheck },
-      { to: '/app/marketplace', label: 'Marketplace', icon: Store },
-      { to: '/app/activity', label: 'Activity', icon: ListChecks },
-    ],
-  },
-  {
-    group: 'Treasury',
-    items: [
-      { to: '/app/send', label: 'Send', icon: Send },
-      { to: '/app/compliance', label: 'Receipts', icon: FileText },
-    ],
-  },
-  {
-    group: 'Compliance',
-    items: [
-      { to: '/app/auditor', label: 'Audit', icon: Search },
-      { to: '/app/admin', label: 'Operators', icon: Settings2 },
-      { to: '/app/settings', label: 'Settings', icon: SlidersHorizontal },
-    ],
-  },
+const mainNav = [
+  { to: '/app/home', label: 'Home', icon: Home, end: true },
+  { to: '/app/verify', label: 'Passport', icon: ShieldCheck },
+  { to: '/app/marketplace', label: 'Marketplace', icon: Store },
+  { to: '/app/send', label: 'Send', icon: Send },
+  { to: '/app/compliance', label: 'Receipts', icon: FileText },
+  { to: '/app/settings', label: 'Settings', icon: Settings2 },
 ];
 
 function truncateAddress(addr: string): string {
@@ -72,71 +51,93 @@ function SidebarBrand() {
   );
 }
 
-function AccountChip({
-  settlementAddress,
-  walletAddress,
-}: {
-  settlementAddress: string | null;
-  walletAddress: string | null;
-}) {
-  const display = settlementAddress ?? walletAddress;
-  if (!display) {
-    return <p className="text-xs text-[#64748b]">Create a passkey account to begin</p>;
+function AccountChip({ settlementAddress }: { settlementAddress: string | null }) {
+  if (!settlementAddress) {
+    return (
+      <Link
+        to="/app/welcome"
+        className="block rounded-xl border border-dashed border-[var(--lg-sidebar-border)] bg-white/60 p-3 text-center text-xs font-medium text-[#007dfc] hover:bg-white"
+      >
+        Create your secure account
+      </Link>
+    );
   }
   return (
-    <div className="rounded-xl border border-[var(--lg-sidebar-border)] bg-white/60 p-3 shadow-sm">
+    <Link
+      to="/app/settings"
+      className="block rounded-xl border border-[var(--lg-sidebar-border)] bg-white/60 p-3 shadow-sm transition hover:bg-white"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Smart account</p>
-          <p className="mt-0.5 truncate text-sm font-medium text-[#012b54]">
-            {settlementAddress ? 'Lumengate account' : 'Funding wallet'}
-          </p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Your account</p>
+          <p className="mt-0.5 truncate text-sm font-medium text-[#012b54]">Lumengate account</p>
         </div>
         <ChevronDown className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden />
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
         <span className="rounded-md bg-[var(--lg-muted-bg)] px-1.5 py-0.5 font-mono text-[10px] text-[#64748b]">
-          {truncateAddress(display)}
+          {truncateAddress(settlementAddress)}
         </span>
         <span className="inline-flex items-center gap-1.5 text-emerald-600">
           <StatusDot />
-          {settlementAddress ? 'Live' : 'Connected'}
+          Active
         </span>
       </div>
-    </div>
+    </Link>
+  );
+}
+
+function ReadinessCta() {
+  const { address, settlementAddress, credential, proof, proofLifecycle } = useApp();
+  const phase = derivePassportPhase({
+    address,
+    credential,
+    proof,
+    lifecycle: proofLifecycle,
+  });
+  const ready = phase === 'proof-generated';
+  const readiness = getProductReadiness({
+    address,
+    settlementAddress,
+    credential,
+    proof: proofLifecycle.lifecycle === 'ready' ? proof : null,
+    lifecycle: proofLifecycle.lifecycle,
+    passkeyFirst: getOnboardingPath() === 'passkey',
+  });
+  if (ready) return null;
+  return (
+    <Link
+      to={readiness.href}
+      className="mx-3 mb-2 block rounded-xl bg-gradient-to-r from-[#007dfc] to-[#0056b3] px-4 py-2.5 text-center text-xs font-semibold text-white shadow-sm transition hover:opacity-95"
+    >
+      {readiness.cta}
+    </Link>
   );
 }
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex-1 overflow-y-auto px-2.5 pb-4">
-      {navGroups.map((group) => (
-        <div key={group.group} className="mb-4">
-          <p className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-            {group.group}
-          </p>
-          <ul className="space-y-0.5">
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.end}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      cn('lg-sidebar-link-v2', isActive && 'lg-sidebar-link-v2-active')
-                    }
-                  >
-                    <Icon className="h-[18px] w-[18px]" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+      <ul className="space-y-0.5">
+        {mainNav.map((item) => {
+          const Icon = item.icon;
+          return (
+            <li key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  cn('lg-sidebar-link-v2', isActive && 'lg-sidebar-link-v2-active')
+                }
+              >
+                <Icon className="h-[18px] w-[18px]" />
+                <span>{item.label}</span>
+              </NavLink>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }
@@ -169,43 +170,20 @@ function NetworkFooter() {
 
 function SidebarPanel({
   settlementAddress,
-  address,
-  walletName,
-  disconnect,
-  connect,
-  connecting,
   onNavigate,
 }: {
   settlementAddress: string | null;
-  address: string | null;
-  walletName?: string | null;
-  disconnect: () => void;
-  connect: () => void;
-  connecting: boolean;
   onNavigate?: () => void;
 }) {
   return (
     <>
       <SidebarBrand />
       <div className="mx-3 mb-3">
-        <AccountChip settlementAddress={settlementAddress} walletAddress={address} />
+        <AccountChip settlementAddress={settlementAddress} />
       </div>
+      <ReadinessCta />
       <SidebarNav onNavigate={onNavigate} />
       <div className="mt-auto space-y-2 border-t border-[var(--lg-sidebar-border)] p-3">
-        {address ? (
-          <ConnectedWalletChip
-            address={address}
-            walletName={walletName}
-            onDisconnect={disconnect}
-            variant="sidebar"
-            className="w-full"
-          />
-        ) : (
-          <>
-            <ConnectWalletButton variant="sidebar" fullWidth loading={connecting} onClick={() => connect()} />
-            <FreighterInstallHint variant="sidebar" />
-          </>
-        )}
         <NetworkFooter />
       </div>
     </>
@@ -213,20 +191,13 @@ function SidebarPanel({
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { address, connect, connecting, disconnect, walletModuleName, settlementAddress } = useApp();
+  const { settlementAddress } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="flex min-h-dvh bg-[var(--lg-background)]">
       <aside className="lg-sidebar-v2 hidden md:flex">
-        <SidebarPanel
-          settlementAddress={settlementAddress}
-          address={address}
-          walletName={walletModuleName}
-          disconnect={disconnect}
-          connect={() => connect()}
-          connecting={connecting}
-        />
+        <SidebarPanel settlementAddress={settlementAddress} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -239,17 +210,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold text-[#012b54]">Lumengate</span>
-          {address ? (
-            <ConnectedWalletChip
-              address={address}
-              walletName={walletModuleName}
-              onDisconnect={disconnect}
-              variant="topbar"
-            />
-          ) : (
-            <ConnectWalletButton variant="topbar" loading={connecting} onClick={() => connect()} />
-          )}
+          <Link to="/app/home" className="text-sm font-semibold text-[#012b54]">
+            Lumengate
+          </Link>
+          <Link
+            to="/app/settings"
+            className="text-xs font-medium text-[#007dfc]"
+          >
+            Account
+          </Link>
         </header>
 
         <AnimatePresence>
@@ -282,11 +251,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
                 <SidebarPanel
                   settlementAddress={settlementAddress}
-                  address={address}
-                  walletName={walletModuleName}
-                  disconnect={disconnect}
-                  connect={() => connect()}
-                  connecting={connecting}
                   onNavigate={() => setMobileOpen(false)}
                 />
               </motion.aside>

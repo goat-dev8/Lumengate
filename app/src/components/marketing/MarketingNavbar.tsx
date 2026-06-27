@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-import { ConnectWalletButton } from '../fintech/ConnectWalletButton';
-import { ConnectedWalletChip } from '../fintech/ConnectedWalletChip';
-import { FreighterInstallHint } from '../fintech/FreighterInstallHint';
 
 const links = [
   { href: '#architecture', label: 'Architecture' },
@@ -15,7 +11,6 @@ const links = [
 ];
 
 export function MarketingNavbar() {
-  const { address, connect, connecting, disconnect } = useApp();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -44,17 +39,11 @@ export function MarketingNavbar() {
           ))}
         </nav>
         <div className="hidden items-center gap-3 lg:flex">
-          {address ? (
-            <ConnectedWalletChip address={address} onDisconnect={disconnect} variant="navbar" />
-          ) : (
-            <ConnectWalletButton
-              variant="navbar"
-              loading={connecting}
-              onClick={() => connect()}
-            />
-          )}
-          <Link to="/app/verify" className="lg-btn-nav">
-            Open app
+          <Link to="/app/welcome?intent=new" className="lg-btn-nav">
+            Start now
+          </Link>
+          <Link to="/app/welcome?intent=return" className="text-sm font-medium text-[#31485f] hover:text-[#007dfc]">
+            Sign in
           </Link>
         </div>
         <button type="button" className="lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu">
@@ -71,27 +60,15 @@ export function MarketingNavbar() {
               {l.label}
             </a>
           ))}
-          {!address ? (
-            <>
-              <ConnectWalletButton
-                variant="navbar"
-                fullWidth
-                loading={connecting}
-                onClick={() => connect()}
-                className="mt-3"
-              />
-              <FreighterInstallHint variant="navbar" className="mt-2" />
-            </>
-          ) : (
-            <ConnectedWalletChip
-              address={address}
-              onDisconnect={disconnect}
-              variant="navbar"
-              className="mt-3"
-            />
-          )}
-          <Link to="/app/verify" className="lg-btn-nav mt-3 inline-flex" onClick={() => setOpen(false)}>
-            Open app
+          <Link to="/app/welcome?intent=new" className="lg-btn-nav mt-3 inline-flex" onClick={() => setOpen(false)}>
+            Start now
+          </Link>
+          <Link
+            to="/app/welcome?intent=return"
+            className="mt-2 block py-2 text-sm font-medium text-[#007dfc]"
+            onClick={() => setOpen(false)}
+          >
+            Sign in
           </Link>
         </div>
       ) : null}

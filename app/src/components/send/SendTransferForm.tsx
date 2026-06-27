@@ -164,7 +164,7 @@ export function SendTransferForm({
             onClick={onSubmit}
           >
             <Fingerprint className="h-4 w-4" />
-            {loading ? 'Processing…' : 'Send privately'}
+            {loading ? (statusMessage ? 'Working…' : 'Processing…') : 'Send privately'}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Button>
           {statusMessage ? (

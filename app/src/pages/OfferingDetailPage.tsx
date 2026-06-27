@@ -6,7 +6,6 @@ import { Button } from '../components/ui/Button';
 import { EmptyState, Skeleton } from '../components/ui/States';
 import { PageHeader } from '../components/fintech/PageHeader';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
-import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { useApp } from '../context/AppContext';
 import { useOffering } from '../hooks/useOfferings';
@@ -14,29 +13,28 @@ import type { LiveOffering } from '../lib/offerings';
 import { policyByKey } from '../lib/policies';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { OfferingIllustration } from '../components/fintech/OfferingIllustration';
+import { microcopy } from '../lib/microcopy';
 import { truncateMiddle } from '../lib/utils';
 
 function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
   const {
-    address,
-    connect,
-    connecting,
     credential,
     proof,
     config,
     requestCredential,
     setPolicyKey,
     setSelectedOfferingId,
+    settlementAddress,
   } = useApp();
   const navigate = useNavigate();
   const advanced = useAdvancedMode();
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
   const policy = policyByKey(offering.requiredPolicy);
-  const canInvest = Boolean(address && activeProof);
+  const canInvest = Boolean(settlementAddress && activeProof);
 
   const prepare = async () => {
-    if (!address) {
-      await connect();
+    if (!settlementAddress) {
+      navigate('/app/welcome');
       return;
     }
     setSelectedOfferingId(offering.id);
@@ -56,41 +54,43 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
       <div className="grid gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-6">
           <OfferingIllustration offering={offering} className="h-48 rounded-2xl" variant="card" />
-          <Card>
-            <CardHeader title="Offering facts" badge={<Badge tone="brand">{offering.offeringStatus}</Badge>} />
-            <dl className="grid gap-4 sm:grid-cols-2 text-sm">
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Access</dt>
-                <dd className="font-medium text-[#012b54]">Passport required</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Settlement asset</dt>
-                <dd>{offering.settlementAsset.toUpperCase()}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Minimum</dt>
-                <dd>
-                  {offering.minimumAmount} {offering.unitLabel}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Risk</dt>
-                <dd>{offering.riskLevel}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Settlement account</dt>
-                <dd className="font-mono text-xs">
-                  {offering.settlementAddress
-                    ? truncateMiddle(offering.settlementAddress, 8, 6)
-                    : 'From deployment config'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-[#64748b]">Review path</dt>
-                <dd>{offering.verificationRoute}</dd>
-              </div>
-            </dl>
-          </Card>
+          {advanced ? (
+            <Card>
+              <CardHeader title="Offering facts" badge={<Badge tone="brand">{offering.offeringStatus}</Badge>} />
+              <dl className="grid gap-4 sm:grid-cols-2 text-sm">
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Access</dt>
+                  <dd className="font-medium text-[#012b54]">Passport required</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Settlement asset</dt>
+                  <dd>{offering.settlementAsset.toUpperCase()}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Minimum</dt>
+                  <dd>
+                    {offering.minimumAmount} {offering.unitLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Risk</dt>
+                  <dd>{offering.riskLevel}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Settlement account</dt>
+                  <dd className="font-mono text-xs">
+                    {offering.settlementAddress
+                      ? truncateMiddle(offering.settlementAddress, 8, 6)
+                      : 'From deployment config'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-[#64748b]">Review path</dt>
+                  <dd>{offering.verificationRoute}</dd>
+                </div>
+              </dl>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader title="Why passport access is required" />
@@ -106,46 +106,48 @@ function OfferingDetailContent({ offering }: { offering: LiveOffering }) {
           </Card>
 
           {advanced ? (
-            <UsdcCompliancePanel config={config} walletAddress={address} variant="compact" />
+            <UsdcCompliancePanel config={config} walletAddress={settlementAddress} variant="compact" />
           ) : null}
         </div>
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Eligibility" description="Private access requirements" />
+            <CardHeader title="Eligibility" description={microcopy.marketplace.privacyLine} />
             <p className="text-sm font-medium text-[#012b54]">{policy.title}</p>
             <p className="mt-1 text-sm text-[#64748b]">{offering.eligibilityPolicy}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {policy.claims.map((c) => (
-                <Badge key={c} tone="ok">
-                  {c}
-                </Badge>
-              ))}
-            </div>
-            <p className="mt-4 text-xs text-[#64748b]">Settlement: {offering.settlementPolicy}</p>
+            {!advanced ? (
+              <p className="mt-4 text-xs text-[#64748b]">Settlement: {offering.settlementPolicy}</p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {policy.claims.map((c) => (
+                  <Badge key={c} tone="ok">
+                    {c}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </Card>
 
           <Card>
             <CardHeader title="Invest" />
             <div className="space-y-3">
-              <WalletSigningNotice compact />
-              {!address ? (
-                <Button loading={connecting} className="w-full" onClick={() => connect()}>
-                  Connect account
-                </Button>
+              {!settlementAddress ? (
+                <Link to="/app/welcome" className="block">
+                  <Button className="w-full">{microcopy.welcome.createAccount}</Button>
+                </Link>
               ) : !credential || !activeProof ? (
                 <Button className="w-full" onClick={() => prepare()}>
-                  Get ready to invest
+                  {microcopy.marketplace.getPassport}
                 </Button>
-              ) : null}
-              {canInvest ? (
+              ) : (
                 <Link to="/app/marketplace" className="block">
                   <Button className="w-full">
-                    Invest
+                    {microcopy.marketplace.invest}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-              ) : (
+              )}
+              {canInvest ? null : (
                 <p className="text-xs text-[#64748b]">
                   Complete your passport for this investment before settlement.
                 </p>

@@ -59,15 +59,15 @@ export function LandingPage() {
             </p>
             <div className="flex flex-wrap justify-center gap-3 lg:justify-start lg-fade-up lg-fade-up-d3">
               <Link
-                to="/app/verify"
+                to="/app/welcome?intent=new"
                 className="lg-btn-primary"
                 onClick={() => setOnboardingPath('passkey')}
               >
-                Create passport
+                Start now
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link to="/app/marketplace" className="lg-btn-white">
-                Browse investments
+              <Link to="/app/welcome?intent=return" className="lg-btn-white">
+                Sign in
               </Link>
             </div>
             <div className="lg-hero-pipeline lg-fade-up lg-fade-up-d4">

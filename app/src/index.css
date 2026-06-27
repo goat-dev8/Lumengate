@@ -36,3 +36,31 @@
     scroll-behavior: auto !important;
   }
 }
+
+@media print {
+  aside,
+  nav[aria-label],
+  [data-shell-sidebar],
+  [role='tablist'],
+  .no-print,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #012b54 !important;
+  }
+
+  .lg-surface-card,
+  [class*='rounded-3xl'],
+  [class*='rounded-2xl'] {
+    box-shadow: none !important;
+    border: 1px solid #e3e8ee !important;
+  }
+
+  .compliance-print-root {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+}

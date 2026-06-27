@@ -26,6 +26,7 @@ import { currentSettlementOwner } from '../lib/settlementOwner';
 import { DashboardHoldings } from '../components/dashboard/DashboardHoldings';
 import { DashboardActivityFeed } from '../components/dashboard/DashboardActivityFeed';
 import { DashboardHero } from '../components/dashboard/DashboardHero';
+import { ReadinessBanner } from '../components/product/ReadinessBanner';
 import { getOnboardingPath } from '../components/product/OnboardingPathPicker';
 
 export function DashboardPage() {
@@ -123,14 +124,14 @@ export function DashboardPage() {
   const settledTotalLabel = useMemo(() => formatSettledLabel(activity), [activity]);
 
   const topSubtitle = readyToInvest
-    ? "Your passport is live and you're cleared to subscribe."
+    ? "You're verified and cleared for private investing and settlement."
     : proofSpent
-      ? 'Your proof was used. Recover your passport to invest again.'
-      : credential
-        ? 'Finish proving eligibility to unlock the marketplace.'
+      ? 'Your last settlement succeeded. Renew your passport to invest or send again.'
+      : phase === 'passport-issued'
+        ? 'Confirm eligibility on your device to activate your private passport.'
         : settlementAddress
-          ? 'Create your passport to prove eligibility without revealing private data.'
-          : 'Start with a passkey, then connect a wallet only when you need to fund.';
+          ? 'Request your passport to prove eligibility without revealing private data.'
+          : 'Create your secure account with a passkey — no seed phrase required.';
 
   const dashboardTitle = readyToInvest
     ? 'Welcome back'
@@ -191,6 +192,16 @@ export function DashboardPage() {
                 beginProofRecovery();
                 navigate('/app/verify#recovery-credential');
               }}
+            />
+          </div>
+        ) : null}
+
+        {!readyToInvest ? (
+          <div className="mb-6">
+            <ReadinessBanner
+              readiness={readiness}
+              phase={phase}
+              readyToInvest={readyToInvest}
             />
           </div>
         ) : null}

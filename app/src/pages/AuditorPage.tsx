@@ -111,8 +111,8 @@ export function AuditorPage() {
   return (
     
       <AppPageLayout
-        title="Audit"
-        subtitle="Selective disclosure for regulators and auditors"
+        title="Auditor verification"
+        subtitle="Verify compliant settlements without seeing private identity data"
         actions={<AdvancedModeToggle />}
       >
         <motion.section
