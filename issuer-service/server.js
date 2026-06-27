@@ -83,20 +83,32 @@ try {
 
 const allowedOrigins = parseAllowedOrigins();
 
+/** smart-account-kit RelayerClient sends X-Client-Name + X-Client-Version on /relayer/submit. */
+const CORS_ALLOW_HEADERS = 'Content-Type, X-Client-Name, X-Client-Version, x-client-name, x-client-version';
+
 app.use(express.json());
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+  const originAllowed =
+    !origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin);
+  if (originAllowed) {
     if (origin && allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     } else if (allowedOrigins.length === 0) {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    const requestedHeaders = req.headers['access-control-request-headers'];
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      typeof requestedHeaders === 'string' && requestedHeaders.trim()
+        ? requestedHeaders
+        : CORS_ALLOW_HEADERS,
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
   }
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
+    return res.sendStatus(originAllowed ? 204 : 403);
   }
   next();
 });

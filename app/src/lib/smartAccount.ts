@@ -115,8 +115,14 @@ function requireUserVerificationOnAuth(
 function requireUserVerificationOnRegister(
   optionsJSON: PublicKeyCredentialCreationOptionsJSON,
 ): PublicKeyCredentialCreationOptionsJSON {
+  const params = optionsJSON.pubKeyCredParams ?? [];
+  const algs = new Set(params.map((p) => p.alg));
+  const pubKeyCredParams = [...params];
+  if (!algs.has(-7)) pubKeyCredParams.push({ alg: -7, type: 'public-key' });
+  if (!algs.has(-257)) pubKeyCredParams.push({ alg: -257, type: 'public-key' });
   return {
     ...optionsJSON,
+    pubKeyCredParams,
     authenticatorSelection: {
       ...optionsJSON.authenticatorSelection,
       residentKey: optionsJSON.authenticatorSelection?.residentKey ?? 'required',
