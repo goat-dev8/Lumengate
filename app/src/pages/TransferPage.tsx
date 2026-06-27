@@ -102,6 +102,7 @@ export function TransferPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [balanceRefresh, setBalanceRefresh] = useState(0);
   const [scopeBlocked, setScopeBlocked] = useState<ProofLifecycleState | null>(null);
+  const [passkeyStep, setPasskeyStep] = useState<{ index: number; total: number } | null>(null);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -293,6 +294,7 @@ export function TransferPage() {
       setSettlementPhase('submitting');
       setStatusMessage('Submitting settlement…');
       const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+        setPasskeyStep({ index, total });
         if (step === 'bind') {
           setSettlementPhase('authorizing-bind');
           setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
@@ -370,6 +372,7 @@ export function TransferPage() {
         setSettlementPhase('idle');
         setStatusMessage(null);
         setSettlementStartedAt(null);
+        setPasskeyStep(null);
       }
     }
   };
@@ -424,6 +427,7 @@ export function TransferPage() {
         phase={settlementPhase}
         statusMessage={statusMessage}
         assetLabel={friendlyAssetName(asset)}
+        passkeyStep={passkeyStep}
         startedAt={settlementStartedAt}
       />
       <div className="space-y-8">

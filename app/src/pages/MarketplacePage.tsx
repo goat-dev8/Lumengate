@@ -37,8 +37,13 @@ import { microcopy } from '../lib/microcopy';
 import { resolveMarketplaceAction } from '../lib/marketplaceActions';
 import { offeringSettlementAsset } from '../lib/passportScopeStatus';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
-import { isProofUsable } from '../lib/proofLifecycle';
+import { isProofUsable, syncProofLifecycleOnChain } from '../lib/proofLifecycle';
 import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
+import {
+  SettlementProgressOverlay,
+  type SettlementPhase,
+} from '../components/send/SettlementProgress';
+import { friendlyAssetName } from '../lib/productState';
 
 import {
 
@@ -96,6 +101,8 @@ export function MarketplacePage() {
     recordVerifyTx,
     proofLifecycle,
     beginProofRecovery,
+    syncProofLifecycle,
+    consumedTxHash,
     smartAccount,
     settlementAddress,
     smartAccountCreating,
@@ -149,7 +156,13 @@ export function MarketplacePage() {
   const [eurcBalanceRaw, setEurcBalanceRaw] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
-  const [settling, setSettling] = useState(false);
+  const [settlementPhase, setSettlementPhase] = useState<SettlementPhase>('idle');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [settlementStartedAt, setSettlementStartedAt] = useState<number | null>(null);
+  const [passkeyStep, setPasskeyStep] = useState<{ index: number; total: number } | null>(null);
+  const [investingOffering, setInvestingOffering] = useState<LiveOffering | null>(null);
+
+  const settling = settlementPhase !== 'idle' && settlementPhase !== 'complete';
 
   const [pofLoading, setPofLoading] = useState(false);
 
@@ -343,9 +356,13 @@ export function MarketplacePage() {
 
     }
 
-    setSettling(true);
-
+    setInvestingOffering(offering);
     setError(null);
+    setSettlementStartedAt(Date.now());
+    setSettlementPhase('preparing');
+    setStatusMessage(`Preparing investment in ${offering.title}…`);
+    setPasskeyStep(null);
+    let completed = false;
 
     try {
 
@@ -354,8 +371,38 @@ export function MarketplacePage() {
           ? offering.settlementAsset
           : 'rwa';
       const scope = ASSET_SCOPES[settlementAsset];
-      const scopedProof =
-        activeProof ?? (await ensureProofForAsset(settlementAsset)).proof;
+
+      let scopedProof = activeProof;
+      if (!scopedProof) {
+        setSettlementPhase('preparing');
+        setStatusMessage(`Preparing private eligibility for ${friendlyAssetName(settlementAsset)}…`);
+        const ensured = await ensureProofForAsset(settlementAsset, (message) => {
+          setStatusMessage(message);
+          const lower = message.toLowerCase();
+          if (
+            lower.includes('proof') ||
+            lower.includes('witness') ||
+            lower.includes('prover') ||
+            lower.includes('registry')
+          ) {
+            setSettlementPhase('proving');
+          }
+        });
+        scopedProof = ensured.proof;
+      }
+
+      const freshLifecycle = await syncProofLifecycleOnChain(
+        config,
+        credential,
+        scopedProof,
+        consumedTxHash,
+      );
+      if (freshLifecycle.lifecycle !== 'ready') {
+        await syncProofLifecycle();
+        setError(freshLifecycle.reason ?? 'Your passport is not ready for settlement.');
+        return;
+      }
+
       const pid = Number(scopedProof.publicInputs.policyId);
 
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(scopedProof), pid, scope);
@@ -372,6 +419,8 @@ export function MarketplacePage() {
       const threshold = fundsThreshold(offering);
 
       if (threshold && pofProof) {
+        setSettlementPhase('preparing');
+        setStatusMessage('Confirming private balance threshold…');
 
         const pofSpent = await readNullifierSpent(
 
@@ -423,6 +472,10 @@ export function MarketplacePage() {
         offering.settlementRoute ??
         (offering.settlementAsset === 'usdc' || offering.settlementAsset === 'eurc' ? 'sac' : 'rwa');
       const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
+
+      setSettlementPhase('preparing');
+      setStatusMessage('Building compliant settlement transaction…');
+
       let tx: Parameters<typeof signAndSubmit>[0];
       if (route === 'dex') {
         tx = await buildSwapCompliantTransaction(
@@ -474,9 +527,33 @@ export function MarketplacePage() {
         );
       }
 
-      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx);
+      setSettlementPhase('submitting');
+      setStatusMessage('Submitting investment to Stellar…');
 
+      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+        setPasskeyStep({ index, total });
+        if (step === 'bind') {
+          setSettlementPhase('authorizing-bind');
+          setStatusMessage(`Passkey confirmation (${index} of ${total}) — bind eligibility to your account`);
+        } else {
+          setSettlementPhase('waiting-passkey');
+          setStatusMessage('Approve the passkey prompt, then the settlement prompt will appear automatically.');
+          window.setTimeout(() => {
+            setSettlementPhase('authorizing-settle');
+            setStatusMessage(`Passkey confirmation (${index} of ${total}) — authorize investment settlement`);
+          }, 500);
+        }
+      });
+
+      setSettlementPhase('confirming');
+      setStatusMessage('Waiting for Stellar ledger confirmation…');
+
+      setSettlementPhase('receipt');
+      setStatusMessage('Sealing your settlement receipt…');
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      setSettlementPhase('complete');
       setTxHash(hash);
+      completed = true;
 
       await recordTransferTx(hash, {
 
@@ -506,6 +583,7 @@ export function MarketplacePage() {
 
       });
 
+      await new Promise((resolve) => setTimeout(resolve, 900));
       navigate('/app/compliance');
 
     } catch (err) {
@@ -516,7 +594,13 @@ export function MarketplacePage() {
 
     } finally {
 
-      setSettling(false);
+      if (!completed) {
+        setSettlementPhase('idle');
+        setStatusMessage(null);
+        setSettlementStartedAt(null);
+        setPasskeyStep(null);
+        setInvestingOffering(null);
+      }
 
     }
 
@@ -799,7 +883,7 @@ export function MarketplacePage() {
                   ) : (
                     <Button
                       className="w-full"
-                      loading={settling && isSelected}
+                      loading={settling && investingOffering?.id === offering.id}
                       onClick={() => {
                         setSelectedOfferingId(offering.id);
                         handleSettle(offering);
@@ -908,6 +992,36 @@ export function MarketplacePage() {
         </Card>
 
       ) : null}
+
+      <SettlementProgressOverlay
+        phase={settlementPhase}
+        statusMessage={statusMessage}
+        assetLabel={
+          investingOffering
+            ? `${investingOffering.minimumAmount} ${
+                investingOffering.settlementAsset === 'usdc'
+                  ? 'USDC'
+                  : investingOffering.settlementAsset === 'eurc'
+                    ? 'EURC'
+                    : investingOffering.unitLabel ?? 'units'
+              }`
+            : 'investment'
+        }
+        headline={
+          investingOffering
+            ? settlementPhase === 'complete'
+              ? 'Investment confirmed'
+              : `Investing in ${investingOffering.title}`
+            : undefined
+        }
+        subtitle={
+          investingOffering && settlementPhase !== 'complete'
+            ? 'You may see two passkey prompts — we guide you through binding eligibility, then authorizing settlement.'
+            : undefined
+        }
+        passkeyStep={passkeyStep}
+        startedAt={settlementStartedAt}
+      />
       </AppPageLayout>
     
   );

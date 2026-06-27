@@ -22,6 +22,12 @@ type Props = {
   statusMessage?: string | null;
   assetLabel?: string;
   startedAt?: number | null;
+  /** Override default dialog title */
+  headline?: string;
+  /** Override default subtitle under title */
+  subtitle?: string;
+  /** Passkey step indicator e.g. 1 of 2 */
+  passkeyStep?: { index: number; total: number } | null;
 };
 
 const PHASE_MESSAGES: Record<Exclude<SettlementPhase, 'idle' | 'complete'>, string[]> = {
@@ -95,7 +101,15 @@ function useRotatingMessage(phase: SettlementPhase, statusMessage?: string | nul
   }, [phase, statusMessage, tick]);
 }
 
-export function SettlementProgressOverlay({ phase, statusMessage, assetLabel = 'USDC', startedAt }: Props) {
+export function SettlementProgressOverlay({
+  phase,
+  statusMessage,
+  assetLabel = 'USDC',
+  startedAt,
+  headline,
+  subtitle,
+  passkeyStep,
+}: Props) {
   const reduceMotion = useReducedMotion();
   const [elapsedMs, setElapsedMs] = useState(0);
   const displayMessage = useRotatingMessage(phase, statusMessage);
@@ -133,6 +147,8 @@ export function SettlementProgressOverlay({ phase, statusMessage, assetLabel = '
   const showLongWait = isActive && elapsedMs >= 12_000;
   const currentStageId =
     phase === 'waiting-passkey' ? 'authorizing-bind' : phase === 'confirming' ? 'submitting' : phase === 'receipt' ? 'submitting' : phase;
+  const isPasskeyPhase =
+    phase === 'authorizing-bind' || phase === 'authorizing-settle' || phase === 'waiting-passkey';
 
   return (
     <motion.div
@@ -163,13 +179,25 @@ export function SettlementProgressOverlay({ phase, statusMessage, assetLabel = '
           )}
           <div className="min-w-0">
             <h2 id="settlement-progress-title" className="text-lg font-semibold text-[#012b54]">
-              {isComplete ? 'Settlement confirmed' : `Sending ${assetLabel} privately`}
+              {headline ??
+                (isComplete ? 'Settlement confirmed' : `Sending ${assetLabel} privately`)}
             </h2>
             <p className="mt-1 text-sm text-[#64748b]">
-              {isComplete
-                ? 'Your institutional receipt is ready.'
-                : 'Your identity stays off-chain. Only the settlement reaches Stellar.'}
+              {subtitle ??
+                (isComplete
+                  ? 'Your institutional receipt is ready.'
+                  : 'Your identity stays off-chain. Only the settlement reaches Stellar.')}
             </p>
+            {passkeyStep && isPasskeyPhase && !isComplete ? (
+              <motion.span
+                initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#007dfc]/25 bg-[#007dfc]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#007dfc]"
+              >
+                <Fingerprint className="h-3 w-3" />
+                Passkey {passkeyStep.index} of {passkeyStep.total}
+              </motion.span>
+            ) : null}
           </div>
         </div>
 
@@ -177,7 +205,6 @@ export function SettlementProgressOverlay({ phase, statusMessage, assetLabel = '
           <StageProgress
             stages={SETTLEMENT_STAGES}
             currentStageId={currentStageId}
-            compact
             indeterminate={isActive && (phase === 'proving' || phase === 'waiting-passkey')}
           />
           {displayMessage && !isComplete ? (
