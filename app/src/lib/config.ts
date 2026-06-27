@@ -30,6 +30,9 @@ export type DeploymentConfig = {
   lumengateSmartAccountWasmHash?: string;
   webauthnVerifierId?: string;
   openZeppelinRelayerUrl?: string;
+  /** When true + relayer URL set, passkey-only smart account deploy is allowed. */
+  relayerEnabled: boolean;
+  passkeyOnlyDeployEnabled: boolean;
   passkeyRpId?: string;
   nativeSacId?: string;
   sessionKeyPolicyId?: string;
@@ -164,6 +167,9 @@ export function loadDeploymentConfig(): DeploymentConfig {
       CANONICAL.webauthn_verifier,
     ),
     openZeppelinRelayerUrl: optionalViteEnv('VITE_OPENZEPPELIN_RELAYER_URL'),
+    relayerEnabled: viteFlagEnabled('VITE_RELAYER_ENABLED'),
+    passkeyOnlyDeployEnabled:
+      viteFlagEnabled('VITE_RELAYER_ENABLED') && Boolean(optionalViteEnv('VITE_OPENZEPPELIN_RELAYER_URL')),
     passkeyRpId: optionalViteEnv('VITE_PASSKEY_RP_ID'),
     nativeSacId: resolveContractId(
       'VITE_NATIVE_SAC_ID',
@@ -188,6 +194,13 @@ function optionalViteEnv(name: string): string | undefined {
   if (!value) return undefined;
   const trimmed = String(value).trim().replace(/\r$/, '');
   return trimmed || undefined;
+}
+
+function viteFlagEnabled(name: string): boolean {
+  const raw = optionalViteEnv(name);
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  return lower === '1' || lower === 'true' || lower === 'yes';
 }
 
 export type IssuerCredentialResponse = {

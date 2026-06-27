@@ -30,3 +30,9 @@ services:
         sync: false
       - key: CONTRACT_ADMIN_SECRET_KEY
         sync: false
+      - key: CHANNELS_API_KEY
+        sync: false
+      - key: CHANNELS_BASE_URL
+        sync: false
+      - key: RELAYER_ENABLED
+        sync: false

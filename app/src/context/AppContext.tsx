@@ -888,7 +888,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [kit, address, applyPasskeySession]);
 
   const createSmartAccount = useCallback(async (): Promise<SmartAccountState> => {
-    const canDeployWithoutWallet = Boolean(config.openZeppelinRelayerUrl);
+    const canDeployWithoutWallet = config.passkeyOnlyDeployEnabled;
     if (!address && !canDeployWithoutWallet) {
       throw new Error('Connect wallet first to pay deploy fees, or configure the OpenZeppelin relayer.');
     }

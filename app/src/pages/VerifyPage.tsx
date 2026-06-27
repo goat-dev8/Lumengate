@@ -160,7 +160,7 @@ export function VerifyPage() {
   }, [proofLifecycle.lifecycle, credential]);
 
   const handleCredential = async () => {
-    if (!address && !settlementAddress && !config.openZeppelinRelayerUrl) {
+    if (!address && !settlementAddress && !config.passkeyOnlyDeployEnabled) {
       await connect();
       return;
     }
@@ -366,12 +366,12 @@ export function VerifyPage() {
             <p className="text-sm text-slate-muted">
               {microcopy.account.passkeyPrompt}. Your passkey authorizes every settlement — no seed phrase.
             </p>
-            {!address && !config.openZeppelinRelayerUrl ? (
+            {!address && !config.passkeyOnlyDeployEnabled ? (
               <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 Relayer not configured — connect Freighter once to pay deploy fees, then create your passkey.
               </p>
             ) : null}
-            {!address && !config.openZeppelinRelayerUrl ? (
+            {!address && !config.passkeyOnlyDeployEnabled ? (
               <Button className="mt-4" loading={connecting} onClick={() => connect()}>
                 Connect wallet for deploy
               </Button>
@@ -383,7 +383,7 @@ export function VerifyPage() {
                 onReplace={replaceSmartAccount}
               />
             ) : null}
-            {(!smartAccount || smartAccountStale) && (address || config.openZeppelinRelayerUrl) ? (
+            {(!smartAccount || smartAccountStale) && (address || config.passkeyOnlyDeployEnabled) ? (
               <Button
                 className="mt-4"
                 loading={smartAccountCreating}

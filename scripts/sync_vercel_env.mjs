@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT_ID = 'prj_4zHHYVgvsxEbnSxvvFzOLS1bOV1R';
-const TOKEN = process.env.VERCEL_TOKEN || process.env.VITE_VERCEL_TOKEN;
+const TOKEN = process.env.VERCEL_TOKEN || process.env.VITE_VERCEL_TOKEN || process.env.vercal_token;
 if (!TOKEN) {
   console.error('Set VERCEL_TOKEN');
   process.exit(1);

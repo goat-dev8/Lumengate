@@ -18,6 +18,8 @@ const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle'
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
 const { registerPasskeySigner } = require('./lib/smartAccount');
 const { listFaucetStatus, claimTestnetFunds } = require('./lib/faucet');
+const { isRelayerEnabled, relayerStatus, submitViaChannels } = require('./lib/relayer');
+const { allowRelayerRequest } = require('./lib/relayerRateLimit');
 const {
   buildCredentialMaterial,
   normalizeHex32,
@@ -107,7 +109,41 @@ app.get('/health', (_req, res) => {
     issuerId: issuer.issuerId,
     signatureScheme: issuer.signatureScheme,
     network: process.env.STELLAR_NETWORK_NAME || 'testnet',
+    relayer: relayerStatus(),
   });
+});
+
+app.get('/relayer/status', (_req, res) => {
+  res.json(relayerStatus());
+});
+
+app.post('/relayer/submit', express.json({ limit: '512kb' }), async (req, res) => {
+  if (!isRelayerEnabled()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Relayer is disabled',
+      errorCode: 'RELAYER_DISABLED',
+    });
+  }
+  if (!allowRelayerRequest(req)) {
+    return res.status(429).json({
+      success: false,
+      error: 'Too many relayer requests. Try again shortly.',
+      errorCode: 'RATE_LIMITED',
+    });
+  }
+  try {
+    const result = await submitViaChannels(req.body ?? {});
+    return res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code = err?.errorDetails?.code || err?.code || 'RELAYER_ERROR';
+    return res.status(503).json({
+      success: false,
+      error: message,
+      errorCode: code,
+    });
+  }
 });
 
 app.get('/faucet/status', (req, res) => {

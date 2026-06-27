@@ -145,7 +145,7 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     networkPassphrase: config.networkPassphrase,
     accountWasmHash: config.lumengateSmartAccountWasmHash,
     webauthnVerifierAddress: config.webauthnVerifierId,
-    relayerUrl: config.openZeppelinRelayerUrl,
+    relayerUrl: config.relayerEnabled ? config.openZeppelinRelayerUrl : undefined,
     storage,
     rpName: 'Lumengate',
     rpId:
@@ -423,7 +423,7 @@ export async function createPersonalSmartAccount(
     passkeyUserName(walletAddress),
     {
       autoSubmit: true,
-      forceMethod: config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
+      forceMethod: config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
       authenticatorSelection: {
         residentKey: 'required',
         userVerification: 'required',
@@ -495,7 +495,7 @@ export async function submitWithSmartAccount(
   // Nesting ceremonies deadlocks before the passkey prompt (infinite loading on Authorize).
   const result = await kit.signAndSubmit(asKitAssembledTransaction(transaction), {
     credentialId: hydrated.credentialId,
-    forceMethod: options?.forceMethod ?? (config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
+    forceMethod: options?.forceMethod ?? (config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
   });
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }

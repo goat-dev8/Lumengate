@@ -441,7 +441,7 @@ export function TransferPage() {
                 <p className="text-sm text-slate-muted">
                   Create your personal smart account and fund this deposit address before sending.
                 </p>
-                {!address && !config.openZeppelinRelayerUrl ? (
+                {!address && !config.passkeyOnlyDeployEnabled ? (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     Connect Freighter once to pay deploy fees, or configure the OpenZeppelin relayer for passkey-only
                     setup.
