@@ -23,6 +23,7 @@ export type WalletSession = {
   replayBlocked: boolean;
   replayMessage: string | null;
   proofReceipt?: ProofReceipt | null;
+  settlementProofArchive?: ProofBundle | null;
   passportActivated?: boolean;
   proofLifecycle?: 'none' | 'ready' | 'consumed' | 'invalid';
   consumedTxHash?: string | null;

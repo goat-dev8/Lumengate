@@ -20,6 +20,7 @@ export type JourneyStep = {
 
 export type JourneyInput = {
   address: string | null;
+  settlementAddress?: string | null;
   credential: IssuerCredentialResponse | null;
   proof: ProofBundle | null;
   proofMatches: boolean;
@@ -29,7 +30,7 @@ export type JourneyInput = {
 
 /** Consumer onboarding progress on the receipt page. */
 export function buildUserJourney(input: JourneyInput): JourneyStep[] {
-  const hasWallet = Boolean(input.address);
+  const hasWallet = Boolean(input.settlementAddress ?? input.address);
   const hasCredential = Boolean(input.credential);
   const hasProof = Boolean(input.proof && input.proofMatches);
   const hasTransfer =

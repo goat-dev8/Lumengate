@@ -27,6 +27,8 @@ export type PasskeySession = {
   replayBlocked: boolean;
   replayMessage: string | null;
   proofReceipt?: ProofReceipt | null;
+  /** Preserved after settlement so receipts can refresh without an active proof in memory. */
+  settlementProofArchive?: ProofBundle | null;
   passportActivated?: boolean;
   proofLifecycle?: 'none' | 'ready' | 'consumed' | 'invalid';
   consumedTxHash?: string | null;
@@ -77,6 +79,7 @@ export function linkPasskeySessionToWallet(fundingAddress: string, _fundingWalle
     replayBlocked: passkey.replayBlocked ?? existing?.replayBlocked ?? false,
     replayMessage: passkey.replayMessage ?? existing?.replayMessage ?? null,
     proofReceipt: passkey.proofReceipt ?? existing?.proofReceipt ?? null,
+    settlementProofArchive: passkey.settlementProofArchive ?? existing?.settlementProofArchive ?? null,
     passportActivated: passkey.passportActivated ?? existing?.passportActivated ?? false,
     proofLifecycle: passkey.proofLifecycle ?? existing?.proofLifecycle,
     consumedTxHash: passkey.consumedTxHash ?? existing?.consumedTxHash ?? null,
@@ -106,6 +109,7 @@ export function passkeySessionToWalletSession(
     replayBlocked: passkey.replayBlocked,
     replayMessage: passkey.replayMessage,
     proofReceipt: passkey.proofReceipt,
+    settlementProofArchive: passkey.settlementProofArchive,
     passportActivated: passkey.passportActivated,
     proofLifecycle: passkey.proofLifecycle,
     consumedTxHash: passkey.consumedTxHash,
@@ -132,6 +136,8 @@ export function migrateWalletSessionToPasskey(session: WalletSession): PasskeySe
     replayBlocked: session.replayBlocked ?? existing?.replayBlocked ?? false,
     replayMessage: session.replayMessage ?? existing?.replayMessage ?? null,
     proofReceipt: session.proofReceipt ?? existing?.proofReceipt ?? null,
+    settlementProofArchive:
+      session.settlementProofArchive ?? existing?.settlementProofArchive ?? null,
     passportActivated: session.passportActivated ?? existing?.passportActivated ?? false,
     proofLifecycle: session.proofLifecycle ?? existing?.proofLifecycle,
     consumedTxHash: session.consumedTxHash ?? existing?.consumedTxHash ?? null,

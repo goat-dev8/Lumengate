@@ -100,6 +100,8 @@ export function CompliancePage() {
     refreshProofReceipt,
     verifyDuplicateBlock,
     address,
+    settlementAddress,
+    smartAccount,
     proof,
     credential,
     activity,
@@ -115,11 +117,18 @@ export function CompliancePage() {
   const [storeError, setStoreError] = useState<string | null>(null);
   const [viewingKey, setViewingKey] = useState('');
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
-  const settlementTx = proofReceipt?.transactions.transfer ?? receiptTransactions.transfer;
-  const hasReceipt = Boolean(settlementTx || transferResult);
+  const settlementOwner = currentSettlementOwner(config, address, settlementAddress);
+  const hasAccount = Boolean(settlementOwner || smartAccount);
+  const activityTransfer = activity.find(
+    (e) => e.kind === 'transfer' && e.status === 'success' && e.txHash,
+  );
+  const settlementTx =
+    proofReceipt?.transactions.transfer ?? receiptTransactions.transfer ?? activityTransfer?.txHash;
+  const hasReceipt = Boolean(settlementTx || transferResult || activityTransfer);
   const timeline = buildUnifiedTimeline(activity, proofReceipt);
   const journey = buildUserJourney({
     address,
+    settlementAddress,
     credential,
     proof: activeProof,
     proofMatches: Boolean(activeProof),
@@ -128,10 +137,19 @@ export function CompliancePage() {
   });
 
   useEffect(() => {
-    if (address && (proofReceipt || settlementTx || (credential && proof))) {
+    if (!hasAccount) return;
+    if (proofReceipt || settlementTx || transferResult || (credential && proof)) {
       refreshProofReceipt().catch(() => undefined);
     }
-  }, [address, credential, proof, proofReceipt, settlementTx, refreshProofReceipt]);
+  }, [
+    hasAccount,
+    credential,
+    proof,
+    proofReceipt,
+    settlementTx,
+    transferResult,
+    refreshProofReceipt,
+  ]);
 
   const setTab = (next: ReceiptTab) => {
     if (next === 'receipt') {
@@ -143,7 +161,7 @@ export function CompliancePage() {
   };
 
   const handleReplay = async () => {
-    if (!address) return;
+    if (!settlementOwner) return;
     setReplayLoading(true);
     try {
       const recipient = config.marketplaceSettlementAddress;
@@ -160,12 +178,12 @@ export function CompliancePage() {
 
   const handleDownloadDisclosure = () => {
     const pack = buildDisclosure();
-    if (!pack || !address) return;
+    if (!pack || !settlementOwner) return;
     const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = disclosurePackFilename(address);
+    a.download = disclosurePackFilename(settlementOwner);
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -214,7 +232,7 @@ export function CompliancePage() {
               description={microcopy.receipt.empty}
               action={
                 <div className="flex flex-wrap justify-center gap-3">
-                  {!address ? (
+                  {!hasAccount ? (
                     <Link to="/app/welcome">
                       <Button>Create account</Button>
                     </Link>

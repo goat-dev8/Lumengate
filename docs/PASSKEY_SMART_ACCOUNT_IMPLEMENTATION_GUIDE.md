@@ -2713,3 +2713,49 @@ Issuer endpoints: `GET /faucet/status`, `POST /faucet/claim` (unchanged).
 - `app/src/pages/WelcomePage.tsx` — post-create redirect
 
 ---
+
+## 38. Passkey receipt persistence — settlement owner + proof archive — 2026-06-27
+
+**Problem:** Passkey-first users completed Send/Marketplace settlement but **Receipts** showed **No receipt yet** with **Create account**, while Freighter-linked accounts worked. Root cause: receipt logic gated on Freighter `address` instead of smart-account `settlementAddress`, and passkey session was not persisted after transfer.
+
+### 38.1 Root cause
+
+| Location | Bug |
+|----------|-----|
+| `refreshProofReceipt` | Required Freighter `address`; cleared receipt when no wallet linked |
+| `recordTransferTx` | Built/froze receipt only when `address && walletField`; never called passkey persist |
+| Session init | `restoreSession(lastWallet)` could overwrite passkey receipt state |
+| Persist effect | Only `persistSession` when `address`; passkey receipt lost on reload |
+| `CompliancePage` | Empty-state CTA checked `!address` → **Create account** for passkey users |
+
+After settlement the active ZK proof is consumed; the frozen receipt must be built and archived at transfer time.
+
+### 38.2 Fix
+
+| Piece | Behavior |
+|-------|----------|
+| `currentSettlementOwner` | Single owner for receipt/disclosure: `settlementAddress ?? address` |
+| `settlementProofArchive` (PasskeySession) | Proof snapshot kept after consumption for receipt refresh |
+| `persistReceiptState` | Writes receipt fields to wallet session **and** passkey session |
+| `recordTransferTx` | Builds receipt with settlement owner; archives proof; persists passkey session |
+| `refreshProofReceipt` | Uses settlement owner + archived proof when active proof is null |
+| Session init | Always `applyPasskeySession` when saved; wallet restore no longer clobbers passkey receipt |
+| Activity recovery | Rebuilds `transferResult` from successful transfer activity if session lost |
+| `CompliancePage` | `hasAccount` from smart account; refresh on mount for passkey users |
+
+### 38.3 Code anchors
+
+- `app/src/context/AppContext.tsx` — `persistReceiptState`, session init, `recordTransferTx`, recovery effect
+- `app/src/lib/passkeySession.ts` — `settlementProofArchive`
+- `app/src/lib/session.ts` — optional archive on `WalletSession` for wallet+passkey merge
+- `app/src/pages/CompliancePage.tsx` — passkey-aware empty state and refresh
+- `app/src/lib/journey.ts` — `settlementAddress` for onboarding rail
+
+### 38.4 Verification
+
+1. Fresh passkey account → passport → prove → Send USDC.
+2. Receipts shows full `ProofReceiptHero` with real amount, ledger, proof hash, compliance badges.
+3. Reload page — receipt still present (passkey session persisted).
+4. Sidebar shows **Active**; empty state never shows **Create account** for passkey-only users.
+
+---

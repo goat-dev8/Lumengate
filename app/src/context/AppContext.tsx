@@ -24,6 +24,7 @@ import {
 import type { ProofBundle } from '../lib/contracts';
 import { appendActivity, loadActivity, type ActivityEntry } from '../lib/activity';
 import { walletFieldFromAddress } from '../lib/utils';
+import { currentSettlementOwner } from '../lib/settlementOwner';
 import { generateProof, getProverEnvironmentStatus } from '../lib/prover';
 import { subscribePasskeyBusy } from '../lib/passkeyCeremony';
 import {
@@ -384,6 +385,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           partial.proofReceipt !== undefined
             ? partial.proofReceipt
             : (existing?.proofReceipt ?? null),
+        settlementProofArchive:
+          partial.settlementProofArchive !== undefined
+            ? partial.settlementProofArchive
+            : (existing?.settlementProofArchive ?? null),
         passportActivated:
           partial.passportActivated !== undefined
             ? partial.passportActivated
@@ -399,6 +404,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savePasskeySession(next);
     },
     [],
+  );
+
+  const persistReceiptState = useCallback(
+    (partial: {
+      receiptTransactions?: ProofReceiptTransactions;
+      transferResult?: ProofReceiptTransferResult | null;
+      proofReceipt?: ProofReceipt | null;
+      settlementProofArchive?: ProofBundle | null;
+      proof?: ProofBundle | null;
+      consumedTxHash?: string | null;
+      proofLifecycle?: PasskeySession['proofLifecycle'];
+      passportActivated?: boolean;
+    }) => {
+      if (address && walletField) {
+        persistSession({ address, walletField, ...partial });
+      }
+      if (smartAccount && walletField) {
+        persistPasskeySession({
+          smartAccountAddress: smartAccount.smartAccountAddress,
+          walletField,
+          smartAccount,
+          ...partial,
+        });
+      }
+    },
+    [address, walletField, smartAccount, persistSession, persistPasskeySession],
   );
 
   const applySession = useCallback((saved: WalletSession) => {
@@ -553,7 +584,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       const passkeySaved = loadPasskeySession();
-      if (passkeySaved && !loadLastWalletConnection()) {
+      if (passkeySaved) {
         applyPasskeySession(passkeySaved);
       }
 
@@ -562,12 +593,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAddress(last.address);
         if (!passkeySaved) {
           setWalletField(last.walletField);
-        }
-        setWalletModuleId(last.walletModuleId ?? null);
-        setWalletModuleName(last.walletModuleName ?? null);
-        restoreSession(last.address);
-        if (last.walletModuleId) {
-          kit.setWallet(last.walletModuleId);
+          restoreSession(last.address);
+        } else {
+          const walletSaved = loadWalletSession(last.address);
+          if (walletSaved?.walletModuleId) {
+            setWalletModuleId(walletSaved.walletModuleId);
+            setWalletModuleName(walletSaved.walletModuleName ?? null);
+            kit.setWallet(walletSaved.walletModuleId);
+          }
         }
         return;
       }
@@ -578,8 +611,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAddress(addr);
         if (!passkeySaved) {
           setWalletField(wf);
+          restoreSession(addr);
         }
-        restoreSession(addr);
         saveLastWalletConnection({
           address: addr,
           walletField: passkeySaved?.walletField ?? wf,
@@ -632,103 +665,203 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshProofReceipt = useCallback(
     async (overrides?: RefreshProofReceiptOptions): Promise<ProofReceipt | null> => {
-    if (!address || !walletField || !credential) {
-      setProofReceipt(null);
-      return null;
-    }
-    if (!proof) {
-      if (proofReceipt?.transactions.transfer) return proofReceipt;
-      setProofReceipt(null);
-      return null;
-    }
-    if (!proofMatchesCredential(proof, credential)) {
-      setProofReceipt(null);
-      return null;
-    }
-    setReceiptLoading(true);
-    try {
-      const receipt = await buildProofReceipt({
-        config,
-        address,
-        walletField,
-        walletModuleId: walletModuleId ?? undefined,
-        walletModuleName: walletModuleName ?? undefined,
-        policyKey,
-        credential,
-        proof,
-        transactions: overrides?.transactions ?? receiptTransactions,
-        transferResult: overrides?.transferResult ?? transferResult ?? undefined,
-        replayBlocked: overrides?.replayBlocked ?? replayBlocked,
-        replayMessage: overrides?.replayMessage ?? replayMessage ?? undefined,
-      });
-      setProofReceipt(receipt);
-      if (receipt && address && walletField) {
-        persistSession({ address, walletField, proofReceipt: receipt });
+      const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+      if (!ownerAddress || !walletField || !credential) {
+        if (!proofReceipt?.transactions.transfer) {
+          setProofReceipt(null);
+        }
+        return proofReceipt?.transactions.transfer ? proofReceipt : null;
       }
-      return receipt;
-    } finally {
-      setReceiptLoading(false);
-    }
-  },
-  [
-    address,
-    walletField,
-    walletModuleId,
-    walletModuleName,
-    credential,
-    proof,
-    proofReceipt,
-    policyKey,
-    config,
-    receiptTransactions,
-    transferResult,
-    replayBlocked,
-    replayMessage,
-    persistSession,
-  ],
+
+      const archivedProof = loadPasskeySession()?.settlementProofArchive ?? null;
+      const effectiveProof =
+        proof && proofMatchesCredential(proof, credential)
+          ? proof
+          : archivedProof && proofMatchesCredential(archivedProof, credential)
+            ? archivedProof
+            : null;
+
+      if (!effectiveProof) {
+        if (proofReceipt?.transactions.transfer) {
+          return proofReceipt;
+        }
+        setProofReceipt(null);
+        return null;
+      }
+
+      setReceiptLoading(true);
+      try {
+        const receipt = await buildProofReceipt({
+          config,
+          address: ownerAddress,
+          walletField,
+          walletModuleId: walletModuleId ?? undefined,
+          walletModuleName: walletModuleName ?? undefined,
+          policyKey,
+          credential,
+          proof: effectiveProof,
+          transactions: overrides?.transactions ?? receiptTransactions,
+          transferResult: overrides?.transferResult ?? transferResult ?? undefined,
+          replayBlocked: overrides?.replayBlocked ?? replayBlocked,
+          replayMessage: overrides?.replayMessage ?? replayMessage ?? undefined,
+        });
+        setProofReceipt(receipt);
+        if (receipt) {
+          persistReceiptState({ proofReceipt: receipt });
+        }
+        return receipt;
+      } finally {
+        setReceiptLoading(false);
+      }
+    },
+    [
+      address,
+      settlementAddress,
+      walletField,
+      walletModuleId,
+      walletModuleName,
+      credential,
+      proof,
+      proofReceipt,
+      policyKey,
+      config,
+      receiptTransactions,
+      transferResult,
+      replayBlocked,
+      replayMessage,
+      persistReceiptState,
+    ],
   );
 
   useEffect(() => {
-    if (!address || !proof || !credential) {
+    const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+    if (!ownerAddress || !credential) {
       return;
     }
-    refreshProofReceipt().catch(() => undefined);
+    if (proofReceipt?.transactions.transfer) {
+      return;
+    }
+    const hasTransferData = Boolean(receiptTransactions.transfer || transferResult);
+    const hasProof = Boolean(
+      proof ||
+        (loadPasskeySession()?.settlementProofArchive &&
+          proofMatchesCredential(loadPasskeySession()!.settlementProofArchive!, credential)),
+    );
+    if (hasTransferData && hasProof) {
+      refreshProofReceipt().catch(() => undefined);
+      return;
+    }
+    if (proof && proofMatchesCredential(proof, credential)) {
+      refreshProofReceipt().catch(() => undefined);
+    }
   }, [
     address,
+    settlementAddress,
     proof,
     credential,
     receiptTransactions,
     transferResult,
-    replayBlocked,
-    replayMessage,
+    proofReceipt,
+    refreshProofReceipt,
+    config,
+  ]);
+
+  useEffect(() => {
+    if (transferResult || receiptTransactions.transfer || proofReceipt?.transactions.transfer) {
+      return;
+    }
+    const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+    if (!ownerAddress || !walletField) return;
+
+    const entry = activity.find((e) => e.kind === 'transfer' && e.status === 'success' && e.txHash);
+    if (!entry?.txHash) return;
+
+    const amountMatch = entry.title.match(/:\s*([\d.]+)/);
+    const detailMatch = entry.detail?.match(/^([\d.]+)\s+(\S+)\s+→\s*(.+)$/);
+    const amount = amountMatch?.[1] ?? detailMatch?.[1] ?? '';
+    const to = detailMatch?.[3]?.trim() ?? config.marketplaceSettlementAddress;
+    const recovered: ProofReceiptTransferResult = {
+      from: ownerAddress,
+      to,
+      amount,
+      success: true,
+    };
+    const txs = { ...receiptTransactions, transfer: entry.txHash };
+    setReceiptTransactions(txs);
+    setTransferResult(recovered);
+    persistReceiptState({
+      receiptTransactions: txs,
+      transferResult: recovered,
+    });
+    refreshProofReceipt({
+      transactions: txs,
+      transferResult: recovered,
+    }).catch(() => undefined);
+  }, [
+    activity,
+    address,
+    settlementAddress,
+    walletField,
+    transferResult,
+    receiptTransactions,
+    proofReceipt,
+    config,
+    persistReceiptState,
     refreshProofReceipt,
   ]);
 
   useEffect(() => {
-    if (!address || !walletField) return;
-    persistSession({
-      address,
-      walletField,
-      credential,
-      proof,
-      pofProof,
-      proofDurationSec,
-      policyKey,
-      selectedOfferingId,
-      walletModuleId: walletModuleId ?? undefined,
-      walletModuleName: walletModuleName ?? undefined,
-      smartAccount,
-      receiptTransactions,
-      transferResult,
-      proofReceipt,
-      replayBlocked,
-      replayMessage,
-      passportActivated,
-      consumedTxHash,
-      proofLifecycle: proofLifecycle.lifecycle,
-    });
+    if (!walletField) return;
+    const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+    if (!ownerAddress) return;
+
+    if (address && walletField) {
+      persistSession({
+        address,
+        walletField,
+        credential,
+        proof,
+        pofProof,
+        proofDurationSec,
+        policyKey,
+        selectedOfferingId,
+        walletModuleId: walletModuleId ?? undefined,
+        walletModuleName: walletModuleName ?? undefined,
+        smartAccount,
+        receiptTransactions,
+        transferResult,
+        proofReceipt,
+        replayBlocked,
+        replayMessage,
+        passportActivated,
+        consumedTxHash,
+        proofLifecycle: proofLifecycle.lifecycle,
+      });
+    }
+    if (smartAccount && walletField) {
+      persistPasskeySession({
+        smartAccountAddress: smartAccount.smartAccountAddress,
+        walletField,
+        smartAccount,
+        credential,
+        proof,
+        pofProof,
+        proofDurationSec,
+        policyKey,
+        selectedOfferingId,
+        receiptTransactions,
+        transferResult,
+        proofReceipt,
+        replayBlocked,
+        replayMessage,
+        passportActivated,
+        consumedTxHash,
+        proofLifecycle: proofLifecycle.lifecycle,
+      });
+    }
   }, [
     address,
+    settlementAddress,
     walletField,
     credential,
     proof,
@@ -748,6 +881,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     consumedTxHash,
     proofLifecycle,
     persistSession,
+    persistPasskeySession,
+    config,
   ]);
 
   const pushActivity = useCallback((entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => {
@@ -1408,17 +1543,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (hash: string, result: ProofReceiptTransferResult) => {
       recoveryLog('transfer.consumed', { hash, from: result.from, to: result.to });
       const txs = { ...receiptTransactions, transfer: hash };
+      const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+      const archivedProof =
+        proof && credential && proofMatchesCredential(proof, credential) ? proof : null;
       const frozenReceipt =
-        address && walletField && credential && proof && proofMatchesCredential(proof, credential)
+        ownerAddress && walletField && credential && archivedProof
           ? await buildProofReceipt({
               config,
-              address,
+              address: ownerAddress,
               walletField,
               walletModuleId: walletModuleId ?? undefined,
               walletModuleName: walletModuleName ?? undefined,
               policyKey,
               credential,
-              proof,
+              proof: archivedProof,
               transactions: txs,
               transferResult: result,
               replayBlocked,
@@ -1436,24 +1574,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         consumedTxHash: hash,
         reason: 'Settlement completed. Generate a new asset-scoped proof for the next action.',
       });
-      if (address && walletField) {
-        persistSession({
-          address,
-          walletField,
-          proof: null,
-          passportActivated: false,
-          receiptTransactions: txs,
-          transferResult: result,
-          proofReceipt: frozenReceipt,
-          consumedTxHash: hash,
-          proofLifecycle: 'none',
-        });
-      }
+      persistReceiptState({
+        proof: null,
+        passportActivated: false,
+        receiptTransactions: txs,
+        transferResult: result,
+        proofReceipt: frozenReceipt,
+        settlementProofArchive: archivedProof,
+        consumedTxHash: hash,
+        proofLifecycle: 'none',
+      });
       return frozenReceipt;
     },
     [
       receiptTransactions,
       address,
+      settlementAddress,
       walletField,
       credential,
       proof,
@@ -1463,7 +1599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       policyKey,
       replayBlocked,
       replayMessage,
-      persistSession,
+      persistReceiptState,
     ],
   );
 
@@ -1586,7 +1722,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const buildDisclosure = useCallback(
     (txHash?: string): DisclosurePack | null => {
-      if (!address || !walletField || !credential) return null;
+      const ownerAddress = currentSettlementOwner(config, address, settlementAddress);
+      if (!ownerAddress || !walletField || !credential) return null;
       if (proofReceipt) {
         return buildDisclosurePackFromReceipt({
           credential,
@@ -1594,18 +1731,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           txHash: txHash ?? receiptTransactions.transfer,
         });
       }
-      if (!proof) return null;
-      if (!proofMatchesCredential(proof, credential)) return null;
+      const archivedProof = loadPasskeySession()?.settlementProofArchive ?? null;
+      const effectiveProof =
+        proof && proofMatchesCredential(proof, credential)
+          ? proof
+          : archivedProof && proofMatchesCredential(archivedProof, credential)
+            ? archivedProof
+            : null;
+      if (!effectiveProof) return null;
       return buildDisclosurePack({
-        walletAddress: address,
+        walletAddress: ownerAddress,
         walletField,
         policyKey,
         credential,
-        proof,
+        proof: effectiveProof,
         txHash: txHash ?? receiptTransactions.transfer,
       });
     },
-    [address, walletField, credential, proof, proofReceipt, policyKey, receiptTransactions.transfer],
+    [address, settlementAddress, walletField, credential, proof, proofReceipt, policyKey, receiptTransactions.transfer, config],
   );
 
   const setPassportActivated = useCallback(
