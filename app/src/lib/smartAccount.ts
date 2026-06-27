@@ -1,4 +1,4 @@
-import { Address, hash, Keypair, xdr } from '@stellar/stellar-sdk';
+import { Address, hash, Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
 import {
   startAuthentication,
   startRegistration,
@@ -299,15 +299,24 @@ async function readContextRule0(
   return rules.find((rule) => rule.id === 0) ?? rules[0] ?? null;
 }
 
+function normalizeContractId(contractId: string | undefined): string | null {
+  const trimmed = contractId?.trim();
+  if (!trimmed || !StrKey.isValidContract(trimmed)) return null;
+  return Address.fromString(trimmed).toString();
+}
+
 /** Compare on-chain context rule 0 to deployment config (never trust session metadata alone). */
 export async function isSmartAccountPolicyStaleOnChain(
   config: DeploymentConfig,
   state: SmartAccountState,
 ): Promise<boolean> {
   if (!config.compliancePolicyId || !config.webauthnVerifierId) return false;
+  const expectedPolicyId = normalizeContractId(config.compliancePolicyId);
+  if (!expectedPolicyId) return true;
   const rule0 = await readContextRule0(config, state.smartAccountAddress);
   if (!rule0?.policies?.length) return true;
-  if (rule0.policies[0] !== config.compliancePolicyId) return true;
+  const onChainPolicyId = normalizeContractId(rule0.policies[0]);
+  if (!onChainPolicyId || onChainPolicyId !== expectedPolicyId) return true;
   const signer = findPasskeySignerInRules(rule0 ? [rule0] : [], config.webauthnVerifierId, state.credentialId);
   if (!signer) return true;
   const keyData = coerceKeyDataBuffer(signer.values[1]);
@@ -404,7 +413,32 @@ async function submitResultOrThrow(
       result.hash && rpcUrl ? await readFailedTransactionDiagnostics(rpcUrl, result.hash) : '';
     throw new Error([result.error || fallback, detail].filter(Boolean).join(' — '));
   }
+  if (rpcUrl) {
+    await waitForTransactionStatus(rpcUrl, result.hash, 45, 2000);
+  }
   return result.hash;
+}
+
+/** Soroban RPC can lag behind getTransaction SUCCESS; probe context rule 0 until it matches deploy config. */
+async function waitUntilSmartAccountPolicyReady(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  options?: { maxAttempts?: number; intervalMs?: number },
+): Promise<SmartAccountState> {
+  const maxAttempts = options?.maxAttempts ?? 20;
+  const intervalMs = options?.intervalMs ?? 1500;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+    if (!(await isSmartAccountPolicyStaleOnChain(config, hydrated))) {
+      return hydrated;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  throw new Error('Deployed smart account policy does not match deployment configuration.');
 }
 
 type KitAssembledTransaction = Parameters<SmartAccountKit['signAndSubmit']>[0];
@@ -452,10 +486,7 @@ export async function createPersonalSmartAccount(
     compliancePolicyTxHash: deploymentHash,
   };
 
-  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, createdState);
-  if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
-    throw new Error('Deployed smart account policy does not match deployment configuration.');
-  }
+  const hydrated = await waitUntilSmartAccountPolicyReady(config, createdState);
 
   return {
     ...hydrated,

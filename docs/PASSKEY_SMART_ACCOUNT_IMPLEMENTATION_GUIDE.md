@@ -2546,3 +2546,109 @@ Sync scripts: `scripts/sync_render_env.mjs`, `scripts/sync_vercel_env.mjs`.
 - `app/src/lib/smartAccount.ts` — `relayerUrl` + `forceMethod: 'relayer'`
 
 ---
+
+## 36. Relayer production fixes — CORS, FEE_MISMATCH, policy verification — 2026-06-27
+
+**Commits:** `3503114` (CORS), `57e0b96` (first fee attempt), `9115143` (working fee normalize), app policy-read retry (this section)
+
+**Scope:** Issuer-service proxy hardening + client post-deploy verification. Still no contract, settlement, SessionStore, passkey ceremony, ZK, passport, or UI/UX changes.
+
+### 36.1 CORS — relayer client headers blocked (`3503114`)
+
+**Symptom:** Browser `fetch` to `POST /relayer/submit` failed before reaching Channels — preflight rejected `X-Client-Name` / `X-Client-Version` (smart-account-kit `RelayerClient` always sends them).
+
+**Fix:** `issuer-service/server.js` CORS middleware allows `Content-Type`, `X-Client-Name`, `X-Client-Version` and reflects requested headers on `OPTIONS`.
+
+### 36.2 FEE_MISMATCH — Channels rejects deploy XDR (`9115143`)
+
+**Symptom:** Issuer returned **503**; Channels error: *Transaction fee must be equal to the resource fee* (`FEE_MISMATCH`). smart-account-kit `assembleTransaction` sets `fee = classic + resource`; OpenZeppelin Channels requires `tx.fee === sorobanData.resourceFee` with no classic component.
+
+**Fix:** `issuer-service/lib/relayerXdrNormalize.js`:
+
+1. Detect Soroban invoke from kit deployer (`GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N`)
+2. Re-simulate on Soroban RPC
+3. Re-assemble, rebuild envelope with `fee: '0'`, fresh timebounds, preserve `invokeOp.func` + auth (constructor policies intact)
+4. Re-sign with deterministic deployer keypair
+5. Submit normalized XDR to Channels
+
+**Also:** Upgraded issuer `stellar-sdk` to `^16.0.1`; sync `STELLAR_RPC_URL` + `STELLAR_NETWORK_PASSPHRASE` via `scripts/sync_render_env.mjs`.
+
+**Production verification:** `issuer-service/scripts/test_normalize_and_submit.js` → **200 confirmed** after deploy.
+
+### 36.3 Policy mismatch after successful deploy
+
+**Symptom:** UI stuck on *Setting up your private account…*; console throws:
+
+> Deployed smart account policy does not match deployment configuration.
+
+**Root cause:** `createPersonalSmartAccount()` called `isSmartAccountPolicyStaleOnChain()` immediately after relayer submit. Two timing gaps:
+
+1. **Kit relayer path** — `submitDeploymentTx` polls RPC only **10×**; can return `success: true` before `getTransaction` is `SUCCESS`.
+2. **Soroban read lag** — even after tx `SUCCESS`, `get_context_rule(0)` simulation can briefly return empty policies or miss the passkey signer.
+
+Deploy **does** include compliance policy via `patchDeployWithCompliancePolicy()` (constructor `policies` map with `deployments.json` `compliance_policy`); the failure was verification timing, not missing on-chain install.
+
+**Fix (`app/src/lib/smartAccount.ts`):**
+
+| Change | Purpose |
+|--------|---------|
+| `submitResultOrThrow` always `waitForTransactionStatus` when hash + RPC URL | Ensure deploy ledger inclusion before policy probe |
+| `waitUntilSmartAccountPolicyReady` — up to 20× / 1.5s | Retry `isSmartAccountPolicyStaleOnChain` until rule 0 matches |
+| `normalizeContractId` via `Address.fromString` | Stable contract ID comparison |
+
+**On-chain check (unchanged semantics):** context rule 0 must have `policies[0] === config.compliancePolicyId`, WebAuthn external signer, and credential id suffix in `key_data`.
+
+### 36.4 WebAuthn algorithm warning (same deploy pass)
+
+**Symptom:** Console warning about missing ES256/RS256 in `pubKeyCredParams`.
+
+**Fix:** `requireUserVerificationOnRegister()` adds alg `-7` (ES256) and `-257` (RS256) when absent (`3503114`).
+
+### 36.5 Environment variables (complete relayer stack)
+
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `CHANNELS_API_KEY` | Render issuer | OpenZeppelin Channels auth (never in browser) |
+| `CHANNELS_BASE_URL` | Render issuer | Default `https://channels.openzeppelin.com/testnet` |
+| `RELAYER_ENABLED` | Render issuer | Server gate |
+| `STELLAR_RPC_URL` | Render issuer | Fee normalize re-simulation |
+| `STELLAR_NETWORK_PASSPHRASE` | Render issuer | XDR network |
+| `CORS_ORIGIN` | Render issuer | Allowed browser origins |
+| `VITE_RELAYER_ENABLED` | Vercel | Client feature flag |
+| `VITE_OPENZEPPELIN_RELAYER_URL` | Vercel | `https://lumengate-issuer.onrender.com/relayer/submit` |
+
+Sync: `scripts/sync_render_env.mjs`, `scripts/sync_vercel_env.mjs`.
+
+### 36.6 Testing evidence
+
+| Test | Result |
+|------|--------|
+| `issuer-service npm test` | **PASS** |
+| `app npm test` + `npm run build` | **PASS** |
+| `scripts/regression_test.sh` | **32 passed** |
+| `scripts/test_relayer_submit.mjs` (production) | **PASS** |
+| `issuer-service/scripts/test_normalize_and_submit.js` (production deploy XDR) | **200 confirmed** |
+| Passkey-only deploy + policy verify | **Fixed** — ledger wait + policy probe retry |
+
+### 36.7 Troubleshooting
+
+| Error | Likely cause | Action |
+|-------|--------------|--------|
+| CORS blocked `x-client-version` | Issuer CORS not updated | Redeploy issuer `3503114+`; verify `OPTIONS /relayer/submit` |
+| 503 `FEE_MISMATCH` | XDR not normalized | Redeploy issuer `9115143+`; confirm `relayerXdrNormalize.js` in bundle |
+| Policy mismatch right after deploy | RPC read lag | App `waitUntilSmartAccountPolicyReady` (§36.3); if persistent, inspect rule 0 on explorer |
+| `Connect wallet first…` | Relayer flags off | Set `VITE_RELAYER_ENABLED=true` + relayer URL on Vercel |
+
+### 36.8 Code anchors
+
+- `issuer-service/lib/relayerXdrNormalize.js` — Channels fee alignment
+- `issuer-service/lib/relayer.js` — calls normalize before Channels submit
+- `issuer-service/server.js` — CORS + `/relayer/submit`
+- `app/src/lib/smartAccount.ts` — `patchDeployWithCompliancePolicy`, `waitUntilSmartAccountPolicyReady`, `isSmartAccountPolicyStaleOnChain`
+- `app/scripts/test_deploy_relayer.mjs` — deploy XDR with compliance policies through issuer proxy
+
+### 36.9 Rollback
+
+Same as §35.6: disable relayer flags on Render + Vercel, redeploy — wallet-gated onboarding restored.
+
+---

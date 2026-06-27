@@ -149,7 +149,11 @@ app.post('/relayer/submit', express.json({ limit: '512kb' }), async (req, res) =
     return res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const code = err?.errorDetails?.code || err?.code || 'RELAYER_ERROR';
+    const code =
+      err?.errorDetails?.code ||
+      err?.data?.code ||
+      err?.code ||
+      'RELAYER_ERROR';
     return res.status(503).json({
       success: false,
       error: message,
