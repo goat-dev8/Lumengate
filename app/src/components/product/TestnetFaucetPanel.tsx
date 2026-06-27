@@ -15,6 +15,8 @@ type Props = {
   config: DeploymentConfig;
   smartAccountAddress: string;
   onClaimed?: () => void;
+  /** Onboarding — highlight USDC claim and expand panel */
+  prominent?: boolean;
 };
 
 function formatCountdown(nextClaimAt: number | null): string {
@@ -25,7 +27,7 @@ function formatCountdown(nextClaimAt: number | null): string {
   return `Next claim in ~${hours}h`;
 }
 
-export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed }: Props) {
+export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed, prominent = false }: Props) {
   const [assets, setAssets] = useState<Record<string, FaucetAssetStatus>>({});
   const [loadingAsset, setLoadingAsset] = useState<AssetKey | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,18 +61,42 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed }: P
   if (config.network !== 'testnet') return null;
 
   return (
-    <Card className="border-brand-200/60 bg-brand-50/30">
+    <div id={prominent ? 'onboarding-faucet' : undefined}>
+    <Card
+      className={prominent ? 'border-[#007dfc]/40 bg-gradient-to-br from-[#007dfc]/10 to-white ring-1 ring-[#007dfc]/20' : 'border-brand-200/60 bg-brand-50/30'}
+    >
       <CardHeader
-        title="Testnet faucet"
-        badge={<Badge tone="brand">Once per 24h</Badge>}
+        title={prominent ? 'Claim free testnet funds' : 'Testnet faucet'}
+        badge={<Badge tone="brand">{prominent ? 'Recommended next step' : 'Once per 24h'}</Badge>}
       />
       <p className="text-sm text-slate-muted">
-        Real on-chain testnet funds from the Lumengate treasury admin — one claim per asset every 24 hours.
-        EURC is Lumengate testnet SAC (issuer {config.eurcIssuer?.slice(0, 8)}…), not Circle mainnet EURC.
-        Treasury units here are for trying Send; marketplace investments still mint production-position units.
+        {prominent
+          ? 'Start with demo USDC on your new smart account — real on-chain testnet tokens, no wallet required.'
+          : 'Real on-chain testnet funds from the Lumengate treasury admin — one claim per asset every 24 hours.'}{' '}
+        {!prominent ? (
+          <>
+            EURC is Lumengate testnet SAC (issuer {config.eurcIssuer?.slice(0, 8)}…), not Circle mainnet EURC.
+            Treasury units here are for trying Send; marketplace investments still mint production-position units.
+          </>
+        ) : null}
       </p>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {ASSET_ORDER.map((asset) => {
+      {prominent ? (
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button
+            loading={loadingAsset === 'usdc'}
+            disabled={!assets.usdc?.available || loadingAsset !== null}
+            onClick={() => handleClaim('usdc')}
+          >
+            <Droplets className="h-4 w-4" />
+            Claim demo USDC
+          </Button>
+          <p className="self-center text-xs text-slate-muted">
+            {assets.usdc ? formatCountdown(assets.usdc.nextClaimAt) : 'Checking availability…'}
+          </p>
+        </div>
+      ) : null}
+      <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${prominent ? 'border-t border-[var(--lg-border)] pt-4' : ''}`}>
+        {(prominent ? ASSET_ORDER.filter((a) => a !== 'usdc') : ASSET_ORDER).map((asset) => {
           const row = assets[asset];
           const disabled = !row?.available || loadingAsset !== null;
           return (
@@ -109,5 +135,6 @@ export function TestnetFaucetPanel({ config, smartAccountAddress, onClaimed }: P
       ) : null}
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
     </Card>
+    </div>
   );
 }

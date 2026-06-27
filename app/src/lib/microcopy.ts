@@ -30,6 +30,7 @@ export const microcopy = {
     renewBody:
       'Only this asset scope was used on-chain. Request a fresh passport, confirm eligibility, and authorize with passkey for your next settlement.',
     scopeRenewHint: 'Other assets may still be ready — renew only what you need.',
+    leaveWarning: 'Your passport request is still running. Leaving may interrupt on-chain registry sync.',
   },
   prove: {
     preparing: 'Preparing verification…',

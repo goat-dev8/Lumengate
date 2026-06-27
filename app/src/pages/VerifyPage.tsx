@@ -7,7 +7,6 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useApp } from '../context/AppContext';
-import { fetchIssuerHealth } from '../lib/config';
 import { policyList } from '../lib/policies';
 import { credentialRootMatchesChain } from '../lib/contracts';
 import {
@@ -26,6 +25,10 @@ import { derivePassportPhase } from '../lib/passportLifecycle';
 import { PrivacySplitCard } from '../components/design/PrivacySplitCard';
 import { StageProgress, PASSPORT_PROVE_STAGES } from '../components/design/StageProgress';
 import { PassportScopePanel } from '../components/product/PassportScopePanel';
+import { PassportRequestProgress, type PassportRequestStage } from '../components/product/PassportRequestProgress';
+import { OnboardingNextStepBanner } from '../components/product/OnboardingNextStepBanner';
+import { TestnetFaucetPanel } from '../components/product/TestnetFaucetPanel';
+import { resolveOnboardingNextStep } from '../lib/onboardingGuide';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { microcopy } from '../lib/microcopy';
 
@@ -55,8 +58,9 @@ function stepState(
 }
 
 export function VerifyPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const pathParam = searchParams.get('path');
+  const isNewOnboarding = searchParams.get('new') === '1';
   const [onboardingPath, setOnboardingPathState] = useState<OnboardingPath>(() =>
     pathParam === 'wallet' ? 'wallet' : getOnboardingPath(),
   );
@@ -106,6 +110,10 @@ export function VerifyPage() {
     passkeyBusy,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
+  const [credentialStage, setCredentialStage] = useState<PassportRequestStage | null>(null);
+  const [credentialProgressMessage, setCredentialProgressMessage] = useState<string | null>(null);
+  const [credentialStartedAt, setCredentialStartedAt] = useState<number | undefined>();
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(false);
   const [proveLoading, setProveLoading] = useState(false);
   const [bindLoading, setBindLoading] = useState(false);
   const [bindStatus, setBindStatus] = useState<string | null>(null);
@@ -154,28 +162,60 @@ export function VerifyPage() {
   }, [flags, stepOrder]);
 
   useEffect(() => {
-    if (window.location.hash === '#recovery-credential') {
-      document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
+    if (window.location.hash === '#recovery-credential' || window.location.hash === '#onboarding-faucet') {
+      document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [proofLifecycle.lifecycle, credential]);
+  }, [proofLifecycle.lifecycle, credential, smartAccount]);
 
-  const handleCredential = async () => {
-    if (!address && !settlementAddress && !config.passkeyOnlyDeployEnabled) {
-      await connect();
-      return;
-    }
+  useEffect(() => {
+    if (!activeProof || sessionProofBound !== true) return;
+    if (currentStep !== 'ready' && !flags.ready) return;
+    document.getElementById('onboarding-ready')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [activeProof, sessionProofBound, currentStep, flags.ready]);
+
+  const onboardingNextStep = useMemo(
+    () =>
+      resolveOnboardingNextStep({
+        smartAccount,
+        settlementAddress,
+        credential,
+        proof,
+        lifecycle: proofLifecycle.lifecycle,
+        sessionProofBound,
+        passkeyFirst,
+      }),
+    [
+      smartAccount,
+      settlementAddress,
+      credential,
+      proof,
+      proofLifecycle.lifecycle,
+      sessionProofBound,
+      passkeyFirst,
+    ],
+  );
+
+  const runCredentialRequest = async (pk: typeof policyKey) => {
     setCredLoading(true);
     setError(null);
-    recoveryLog('credential.request', { policyKey, proofConsumed, recoveryHint });
+    setCredentialStartedAt(Date.now());
+    setCredentialStage('health');
+    setCredentialProgressMessage('Connecting to Lumengate issuer…');
+    recoveryLog('credential.request', { policyKey: pk, proofConsumed, recoveryHint });
+    let succeeded = false;
     try {
-      await fetchIssuerHealth(config.issuerServiceUrl);
-      const cred = await requestCredential(policyKey);
+      const cred = await requestCredential(pk, (stage, message) => {
+        setCredentialStage(stage);
+        setCredentialProgressMessage(message);
+      });
+      succeeded = true;
+      setCredentialStage('complete');
+      setCredentialProgressMessage('Passport issued');
       recoveryLog('credential.api.response', {
         nullifier: cred.proverInputs?.nullifier,
         policyId: cred.credential.policyId,
       });
       const synced = await credentialRootMatchesChain(config, cred.credential.root);
-      setError(null);
       pushActivity({
         kind: 'credential',
         title: recoveryHint || proofConsumed ? 'New passport issued' : 'Passport issued',
@@ -184,13 +224,43 @@ export function VerifyPage() {
           : 'Passport issued — registry still syncing on-chain; you can confirm eligibility next',
         status: 'success',
       });
+      setError(null);
+      if (isNewOnboarding) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('new');
+        setSearchParams(next, { replace: true });
+      }
+      window.setTimeout(() => {
+        document.getElementById('recovery-proof')?.scrollIntoView({ behavior: 'smooth' });
+      }, 600);
     } catch (err) {
       const msg = friendlyIssuerError(err instanceof Error ? err.message : String(err));
       recoveryLog('credential.api.error', { message: msg });
       setError(msg);
+      setCredentialStage('error');
+      setCredentialProgressMessage(msg);
     } finally {
       setCredLoading(false);
+      if (succeeded) {
+        window.setTimeout(() => {
+          setCredentialStage(null);
+          setCredentialProgressMessage(null);
+          setCredentialStartedAt(undefined);
+        }, 900);
+      } else {
+        setCredentialStage(null);
+        setCredentialProgressMessage(null);
+        setCredentialStartedAt(undefined);
+      }
     }
+  };
+
+  const handleCredential = async () => {
+    if (!address && !settlementAddress && !config.passkeyOnlyDeployEnabled) {
+      await connect();
+      return;
+    }
+    await runCredentialRequest(policyKey);
   };
 
   const handleProve = async () => {
@@ -261,21 +331,8 @@ export function VerifyPage() {
 
   const handleRequestNewPassport = async () => {
     setError(null);
-    setCredLoading(true);
-    try {
-      scrollToRenew();
-      await requestCredential(policyKey);
-      pushActivity({
-        kind: 'credential',
-        title: 'Passport renewed',
-        detail: policyKey,
-        status: 'success',
-      });
-    } catch (err) {
-      setError(friendlyIssuerError(err instanceof Error ? err.message : String(err)));
-    } finally {
-      setCredLoading(false);
-    }
+    scrollToRenew();
+    await runCredentialRequest(policyKey);
   };
 
   return (
@@ -284,6 +341,13 @@ export function VerifyPage() {
         title={microcopy.passport.title}
         subtitle={microcopy.passport.subtitle}
       >
+        <PassportRequestProgress
+          active={credLoading && credentialStage !== null}
+          stage={credentialStage ?? 'health'}
+          message={credentialProgressMessage}
+          startedAt={credentialStartedAt}
+        />
+        <div className="mt-10 space-y-6">
         <PassportHero
           phase={phase}
           credential={credential}
@@ -291,7 +355,24 @@ export function VerifyPage() {
           settlementAddress={settlementAddress}
         />
 
-        <div className="mt-10 space-y-6">
+        {!onboardingBannerDismissed && onboardingNextStep.kind !== 'none' && !advanced ? (
+          <OnboardingNextStepBanner
+            step={onboardingNextStep}
+            onDismiss={() => setOnboardingBannerDismissed(true)}
+          />
+        ) : null}
+
+        {passkeyFirst &&
+        smartAccount &&
+        settlementAddress &&
+        !smartAccountStale &&
+        config.network === 'testnet' ? (
+          <TestnetFaucetPanel
+            config={config}
+            smartAccountAddress={settlementAddress}
+            prominent={!credential || isNewOnboarding}
+          />
+        ) : null}
         {advanced && (!smartAccount || !settlementAddress) ? <OnboardingPathPicker compact /> : null}
 
         {advanced ? (
@@ -376,18 +457,25 @@ export function VerifyPage() {
                 Connect wallet for deploy
               </Button>
             ) : null}
-            {address && smartAccountStale ? (
+            {smartAccountStale && settlementAddress ? (
               <StaleSmartAccountUpgradePanel
                 legacyAddress={settlementAddress}
                 loading={smartAccountCreating}
                 onReplace={replaceSmartAccount}
               />
             ) : null}
-            {(!smartAccount || smartAccountStale) && (address || config.passkeyOnlyDeployEnabled) ? (
+            {!smartAccount && !smartAccountStale && (address || config.passkeyOnlyDeployEnabled) ? (
               <Button
                 className="mt-4"
                 loading={smartAccountCreating}
-                onClick={() => createSmartAccount()}
+                onClick={async () => {
+                  await createSmartAccount();
+                  const next = new URLSearchParams(searchParams);
+                  next.set('new', '1');
+                  setSearchParams(next, { replace: true });
+                  window.location.hash = 'onboarding-faucet';
+                  document.getElementById('onboarding-faucet')?.scrollIntoView({ behavior: 'smooth' });
+                }}
               >
                 <Fingerprint className="h-4 w-4" />
                 {microcopy.welcome.createAccount}
@@ -421,7 +509,7 @@ export function VerifyPage() {
           </Card>
         ) : null}
 
-        {!passkeyFirst && address && smartAccountStale ? (
+        {!passkeyFirst && smartAccountStale && settlementAddress ? (
           <StaleSmartAccountUpgradePanel
             legacyAddress={settlementAddress}
             loading={smartAccountCreating}
@@ -608,6 +696,7 @@ export function VerifyPage() {
         ) : null}
 
         {(currentStep === 'ready' || flags.ready) && activeProof && showWizardStep('ready') ? (
+          <div id="onboarding-ready">
           <Card>
             <CardHeader title="You're verified" badge={<Badge tone="ok">Ready</Badge>} />
             <p className="text-sm text-slate-muted">
@@ -616,18 +705,24 @@ export function VerifyPage() {
             {scopeRows?.some((r) => r.status === 'renewal_required') ? (
               <p className="mt-2 text-xs text-amber-800">{microcopy.passport.scopeRenewHint}</p>
             ) : null}
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <Link to="/app/marketplace">
                 <Button className="w-full sm:w-auto">
                   Browse investments
                   <Sparkles className="h-4 w-4" />
                 </Button>
               </Link>
-              <Link to="/app/send" className="mt-3 block text-center text-sm font-medium text-[#007dfc] hover:underline sm:mt-2 sm:inline sm:ml-4">
-                Send privately instead
+              <Link to="/app/send">
+                <Button variant="secondary" className="w-full sm:w-auto">
+                  Send privately
+                </Button>
               </Link>
             </div>
+            <p className="mt-3 text-xs text-slate-muted">
+              Need test funds? Claim demo USDC from the faucet above before your first send.
+            </p>
           </Card>
+          </div>
         ) : null}
 
         {error ? (

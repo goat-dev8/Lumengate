@@ -305,19 +305,64 @@ function normalizeContractId(contractId: string | undefined): string | null {
   return Address.fromString(trimmed).toString();
 }
 
+export type LegacySmartAccountPolicyStatus = 'legacy' | 'current' | 'unknown';
+
+/** Policy-only check for upgrade banner — unknown reads are NOT legacy. */
+export async function getLegacySmartAccountPolicyStatus(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<LegacySmartAccountPolicyStatus> {
+  if (!config.compliancePolicyId) return 'unknown';
+  const expectedPolicyId = normalizeContractId(config.compliancePolicyId);
+  if (!expectedPolicyId) return 'unknown';
+
+  const rule0 = await readContextRule0(config, state.smartAccountAddress);
+  if (!rule0?.policies?.length) return 'unknown';
+
+  const onChainPolicyId = normalizeContractId(rule0.policies[0]);
+  if (!onChainPolicyId) return 'unknown';
+  if (onChainPolicyId === expectedPolicyId) return 'current';
+  return 'legacy';
+}
+
+export async function isLegacySmartAccountPolicyOnChain(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<boolean> {
+  return (await getLegacySmartAccountPolicyStatus(config, state)) === 'legacy';
+}
+
+const LEGACY_POLICY_PROBE_ATTEMPTS = 8;
+const LEGACY_POLICY_PROBE_INTERVAL_MS = 1500;
+
+/** Retry ambiguous RPC reads before deciding legacy vs current for UI gates. */
+export async function resolveLegacySmartAccountPolicyForUi(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < LEGACY_POLICY_PROBE_ATTEMPTS; attempt += 1) {
+    const status = await getLegacySmartAccountPolicyStatus(config, state);
+    if (status === 'legacy') return true;
+    if (status === 'current') return false;
+    if (attempt < LEGACY_POLICY_PROBE_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, LEGACY_POLICY_PROBE_INTERVAL_MS));
+    }
+  }
+  return false;
+}
+
 /** Compare on-chain context rule 0 to deployment config (never trust session metadata alone). */
 export async function isSmartAccountPolicyStaleOnChain(
   config: DeploymentConfig,
   state: SmartAccountState,
 ): Promise<boolean> {
   if (!config.compliancePolicyId || !config.webauthnVerifierId) return false;
-  const expectedPolicyId = normalizeContractId(config.compliancePolicyId);
-  if (!expectedPolicyId) return true;
+  const legacy = await getLegacySmartAccountPolicyStatus(config, state);
+  if (legacy === 'legacy') return true;
+  if (legacy === 'unknown') return false;
   const rule0 = await readContextRule0(config, state.smartAccountAddress);
-  if (!rule0?.policies?.length) return true;
-  const onChainPolicyId = normalizeContractId(rule0.policies[0]);
-  if (!onChainPolicyId || onChainPolicyId !== expectedPolicyId) return true;
-  const signer = findPasskeySignerInRules(rule0 ? [rule0] : [], config.webauthnVerifierId, state.credentialId);
+  if (!rule0?.policies?.length) return false;
+  const signer = findPasskeySignerInRules([rule0], config.webauthnVerifierId, state.credentialId);
   if (!signer) return true;
   const keyData = coerceKeyDataBuffer(signer.values[1]);
   if (!keyData) return true;
@@ -326,6 +371,37 @@ export async function isSmartAccountPolicyStaleOnChain(
   const suffix = keyData.subarray(keyData.length - credBuffer.length);
   if (!suffix.equals(credBuffer)) return true;
   return false;
+}
+
+/** Settlement gate — retries ambiguous reads; blocks only on confirmed legacy or signer mismatch. */
+export async function assertSmartAccountReadyForSettlement(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+): Promise<void> {
+  const maxAttempts = 12;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const legacy = await getLegacySmartAccountPolicyStatus(config, state);
+    if (legacy === 'legacy') {
+      throw new Error(
+        'This smart account uses a superseded on-chain compliance policy. ' +
+          'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
+      );
+    }
+    if (legacy === 'current') {
+      const stale = await isSmartAccountPolicyStaleOnChain(config, state);
+      if (stale) {
+        throw new Error(
+          'This smart account passkey signer does not match on-chain configuration. ' +
+            'Create a new passkey smart account on Verify, then retry.',
+        );
+      }
+      return;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, LEGACY_POLICY_PROBE_INTERVAL_MS));
+    }
+  }
+  throw new Error('Smart account policy could not be verified on-chain yet. Wait a moment and retry.');
 }
 
 /** @deprecated Use isSmartAccountPolicyStaleOnChain — session metadata is not authoritative. */
@@ -521,12 +597,7 @@ export async function submitWithSmartAccount(
   options?: { forceMethod?: 'relayer' | 'rpc' },
 ): Promise<string> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  if (await isSmartAccountPolicyStaleOnChain(config, hydrated)) {
-    throw new Error(
-      'This smart account uses a superseded on-chain compliance policy, session store, or passkey signer. ' +
-        'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
-    );
-  }
+  await assertSmartAccountReadyForSettlement(config, hydrated);
   const kit = await connectPersonalSmartAccount(config, hydrated);
   // Do NOT wrap signAndSubmit in runPasskeyCeremony — webAuthn callbacks already use it.
   // Nesting ceremonies deadlocks before the passkey prompt (infinite loading on Authorize).

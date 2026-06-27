@@ -2652,3 +2652,64 @@ Sync: `scripts/sync_render_env.mjs`, `scripts/sync_vercel_env.mjs`.
 Same as §35.6: disable relayer flags on Render + Vercel, redeploy — wallet-gated onboarding restored.
 
 ---
+
+## 37. First-time onboarding UX — passport progress, legacy detection, faucet — 2026-06-27
+
+**Scope:** Client onboarding only — no contract, relayer, passkey ceremony, or settlement logic changes.
+
+### 37.1 Request passport progress overlay
+
+**Problem:** `POST /credential` can take 1–3 minutes when the issuer syncs Merkle roots on testnet. The button showed only a spinner with no stages.
+
+**Fix:**
+
+| Piece | Role |
+|-------|------|
+| `PassportRequestProgress` | Full-screen overlay (same pattern as `SettlementProgressOverlay`) |
+| `PASSPORT_REQUEST_STAGES` | health → registry → issuing → complete |
+| `requestCredential(pk, onProgress)` | Explicit `fetchIssuerHealth` → `fetchRegistrySyncRoot` → `fetchIssuerCredential` with stage callbacks |
+| `beforeunload` guard | Warns if user closes tab during registry sync |
+
+### 37.2 Legacy smart account false positives
+
+**Problem:** New passkey accounts showed **Upgrade smart account** on Send because `isSmartAccountPolicyStaleOnChain()` returned `true` when Soroban RPC had not yet readable `get_context_rule(0)`, and because `.catch()` in `AppContext` treated probe errors as stale.
+
+**Fix (logic, not UI hide):**
+
+| Function | Behavior |
+|----------|----------|
+| `getLegacySmartAccountPolicyStatus` | `'legacy'` only when on-chain policy ≠ canonical; `'unknown'` when unreadable |
+| `resolveLegacySmartAccountPolicyForUi` | Retries ambiguous reads; **unknown ≠ legacy** |
+| `smartAccountStale` (AppContext) | True only for confirmed legacy policy |
+| `assertSmartAccountReadyForSettlement` | Retries before blocking send/invest |
+
+True legacy accounts (old `LEGACY_COMPLIANCE_POLICY_IDS` on chain) still see the upgrade banner.
+
+### 37.3 Onboarding next-step guidance
+
+| Component | When |
+|-----------|------|
+| `OnboardingNextStepBanner` | Wizard mode on Verify — claim faucet → passport → prove → marketplace |
+| `resolveOnboardingNextStep` | Pure function from account/credential/proof state |
+| Welcome create → `/app/verify?path=passkey&new=1#onboarding-faucet` | Auto-scroll to faucet after account creation |
+| Ready card `#onboarding-ready` | Auto-scroll when proof + passkey bind complete |
+
+### 37.4 Testnet faucet in onboarding
+
+| Surface | Behavior |
+|---------|----------|
+| `TestnetFaucetPanel` `prominent` | Large **Claim demo USDC** CTA for new users |
+| Verify (passkey-first, testnet) | Faucet always visible; prominent until passport issued |
+| Send `FundsDrawer` | Existing faucet for returning users |
+
+Issuer endpoints: `GET /faucet/status`, `POST /faucet/claim` (unchanged).
+
+### 37.5 Code anchors
+
+- `app/src/components/product/PassportRequestProgress.tsx`
+- `app/src/lib/onboardingGuide.ts`
+- `app/src/lib/smartAccount.ts` — `getLegacySmartAccountPolicyStatus`, `resolveLegacySmartAccountPolicyForUi`
+- `app/src/pages/VerifyPage.tsx` — wizard + faucet + progress
+- `app/src/pages/WelcomePage.tsx` — post-create redirect
+
+---

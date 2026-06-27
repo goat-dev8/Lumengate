@@ -25,7 +25,7 @@ export function WelcomePage() {
     setOnboardingPath('passkey');
     try {
       await createSmartAccount();
-      navigate('/app/verify?path=passkey');
+      navigate('/app/verify?path=passkey&new=1#onboarding-faucet');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

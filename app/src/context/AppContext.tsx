@@ -16,6 +16,8 @@ import {
 import {
   loadDeploymentConfig,
   fetchIssuerCredential,
+  fetchIssuerHealth,
+  fetchRegistrySyncRoot,
   type DeploymentConfig,
   type IssuerCredentialResponse,
 } from '../lib/config';
@@ -87,11 +89,12 @@ import {
 } from '../lib/registrySync';
 import {
   connectPersonalSmartAccount,
+  assertSmartAccountReadyForSettlement,
   createPersonalSmartAccount,
   hydrateSmartAccountPasskeyMetadata,
   isAssembledTransaction,
   isContractAddress,
-  isSmartAccountPolicyStaleOnChain,
+  resolveLegacySmartAccountPolicyForUi,
   resolvePasskeySimulationSource,
   submitWithSmartAccount,
   type SignableTransaction,
@@ -166,7 +169,10 @@ type AppContextValue = {
   generatePofProofForWallet: (threshold: bigint) => Promise<ProofBundle>;
   setPolicyKey: (key: PolicyKey) => void;
   setSelectedOfferingId: (id: string | null) => void;
-  requestCredential: (policyKey?: PolicyKey) => Promise<IssuerCredentialResponse>;
+  requestCredential: (
+    policyKey?: PolicyKey,
+    onProgress?: (stage: 'health' | 'registry' | 'issuing', message: string) => void,
+  ) => Promise<IssuerCredentialResponse>;
   buildDisclosure: (txHash?: string) => DisclosurePack | null;
   refreshProofReceipt: (options?: RefreshProofReceiptOptions) => Promise<ProofReceipt | null>;
   recordTransferTx: (hash: string, result: ProofReceiptTransferResult) => Promise<ProofReceipt | null>;
@@ -270,12 +276,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSmartAccountStale(false);
       return;
     }
-    void isSmartAccountPolicyStaleOnChain(config, smartAccount)
-      .then((stale) => {
-        if (!cancelled) setSmartAccountStale(stale);
+    void resolveLegacySmartAccountPolicyForUi(config, smartAccount)
+      .then((legacy) => {
+        if (!cancelled) setSmartAccountStale(legacy);
       })
       .catch(() => {
-        if (!cancelled) setSmartAccountStale(true);
+        if (!cancelled) setSmartAccountStale(false);
       });
     return () => {
       cancelled = true;
@@ -1002,12 +1008,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const requestCredential = useCallback(
-    async (requestedPolicyKey?: PolicyKey) => {
+    async (
+      requestedPolicyKey?: PolicyKey,
+      onProgress?: (stage: 'health' | 'registry' | 'issuing', message: string) => void,
+    ) => {
       const issuerField =
         walletField ??
         (settlementAddress ? await walletFieldFromAddress(settlementAddress) : null);
       if (!issuerField) throw new Error('Create your passkey account first');
       const pk = requestedPolicyKey ?? policyKey;
+
+      onProgress?.('health', 'Connecting to Lumengate issuer…');
+      await fetchIssuerHealth(config.issuerServiceUrl);
+
+      onProgress?.('registry', 'Syncing eligibility registry on Stellar…');
+      await fetchRegistrySyncRoot(config.issuerServiceUrl, issuerField, pk);
+
+      onProgress?.('issuing', 'Issuing your private passport…');
       const cred = await fetchIssuerCredential(config.issuerServiceUrl, issuerField, pk);
       setPolicyKeyState(pk);
       setWalletField(issuerField);
@@ -1628,12 +1645,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!smartAccount) {
         throw new Error('Create and fund your smart account before settlement.');
       }
-      if (await isSmartAccountPolicyStaleOnChain(config, smartAccount)) {
-        throw new Error(
-          'This smart account uses a superseded on-chain compliance policy, session store, or passkey signer. ' +
-            'Create a new passkey smart account on Verify, fund the new deposit address, then retry.',
-        );
-      }
+      await assertSmartAccountReadyForSettlement(config, smartAccount);
       const bindSource = resolvePasskeySimulationSource(address);
       const needsBind =
         config.sessionStoreId &&

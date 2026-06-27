@@ -104,3 +104,10 @@ export const PASSPORT_PROVE_STAGES: StageProgressItem[] = [
   { id: 'proof', label: 'Generating proof', hint: 'Usually takes about 30 seconds' },
   { id: 'complete', label: 'Proof ready' },
 ];
+
+export const PASSPORT_REQUEST_STAGES: StageProgressItem[] = [
+  { id: 'health', label: 'Connecting to issuer', hint: 'Checking passport service' },
+  { id: 'registry', label: 'Syncing eligibility registry', hint: 'On-chain update — can take 1–3 min on testnet' },
+  { id: 'issuing', label: 'Issuing passport', hint: 'Building attestation materials' },
+  { id: 'complete', label: 'Passport ready' },
+];
