@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Download, FileCheck2, Share2, Shield, ShieldCheck, Sparkles } from 'lucide-react';
+import { FileCheck2, ShieldCheck, Sparkles } from 'lucide-react';
 import { AppPageLayout } from '../components/design/AppPageLayout';
 import { ProofReceiptHero } from '../components/compliance/ProofReceiptHero';
 import { SectionHeader, Stagger, StaggerItem } from '../components/design/Primitives';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/States';
 import { JourneyRail } from '../components/product/JourneyRail';
 import { UnifiedTimeline, buildUnifiedTimeline } from '../components/product/UnifiedTimeline';
@@ -244,11 +243,22 @@ export function CompliancePage() {
                   onRefresh={() => refreshProofReceipt()}
                   onVerifyDuplicate={proofReceipt.nullifierSpent ? handleReplay : undefined}
                   replayLoading={replayLoading}
+                  viewingKey={viewingKey}
+                  onViewingKeyChange={setViewingKey}
+                  onDownloadDisclosure={handleDownloadDisclosure}
+                  onShareWithAuditor={handleStoreDisclosure}
+                  storeLoading={storeLoading}
+                  storeMessage={storeMessage}
+                  storeError={storeError}
                 />
               ) : (
-                <Card className="border-emerald-100 bg-emerald-50/40">
-                  <CardHeader title="Settlement complete" badge={<Badge tone="ok">Compliant</Badge>} />
-                  <div className="grid gap-4 text-sm text-[#475569] md:grid-cols-3">
+                <Card className="overflow-hidden border-emerald-100">
+                  <div className="bg-[#012b54] px-6 py-8 text-white">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">Settlement receipt</p>
+                    <p className="mt-3 lg-font-display text-4xl tabular-nums">{transferResult?.amount ?? 'Completed'}</p>
+                    <p className="mt-1 text-sm text-white/70">Indexing on-chain receipt…</p>
+                  </div>
+                  <div className="grid gap-4 bg-white p-6 text-sm text-[#475569] md:grid-cols-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider">Amount</p>
                       <p className="mt-1 text-lg font-semibold text-navy">{transferResult?.amount ?? 'Completed'}</p>
@@ -264,49 +274,15 @@ export function CompliancePage() {
                   </div>
                 </Card>
               )}
-
-              <Card className="mt-8">
-                <CardHeader
-                  title="Selective disclosure"
-                  description="Share only what an auditor needs: policy satisfied, settlement reference, and timestamp."
-                  badge={<Badge tone="brand">Auditor ready</Badge>}
-                />
-                <label className="mb-4 block">
-                  <span className="text-sm text-[#64748b]">Auditor access key</span>
-                  <input
-                    type="password"
-                    className="mt-2 w-full max-w-md rounded-xl border border-[#e3e8ee] px-3 py-2 font-mono text-xs outline-none focus:border-[#007dfc]"
-                    value={viewingKey}
-                    onChange={(e) => setViewingKey(e.target.value)}
-                    aria-label="Auditor access key"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-3">
-                  <Button variant="secondary" onClick={handleDownloadDisclosure}>
-                    <Download className="h-4 w-4" />
-                    {microcopy.receipt.download}
-                  </Button>
-                  <Button loading={storeLoading} onClick={handleStoreDisclosure}>
-                    <Share2 className="h-4 w-4" />
-                    Share with auditor
-                  </Button>
-                  <Link to="/app/auditor">
-                    <Button variant="secondary">
-                      <Shield className="h-4 w-4" />
-                      Open auditor portal
-                    </Button>
-                  </Link>
-                </div>
-                {storeMessage ? <p className="mt-4 text-sm text-status-ok">{storeMessage}</p> : null}
-                {storeError ? <p className="mt-4 text-sm text-status-err">{storeError}</p> : null}
-              </Card>
             </>
           )}
 
-          <Card className="mt-8">
-            <CardHeader title="Settlement timeline" description="What happened, in plain English." />
-            <UnifiedTimeline items={timeline} />
-          </Card>
+          {!proofReceipt && hasReceipt ? (
+            <Card className="mt-8">
+              <CardHeader title="Settlement timeline" description="What happened, in plain English." />
+              <UnifiedTimeline items={timeline} />
+            </Card>
+          ) : null}
 
           <div className="mt-8">
             <JourneyRail steps={journey} compact />
