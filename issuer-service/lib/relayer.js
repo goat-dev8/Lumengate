@@ -1,4 +1,5 @@
 const { ChannelsClient } = require('@openzeppelin/relayer-plugin-channels');
+const { normalizeSignedSorobanXdr } = require('./relayerXdrNormalize');
 
 let clientCache = null;
 
@@ -51,7 +52,8 @@ async function submitViaChannels(body, env = process.env) {
   const auth = Array.isArray(body?.auth) ? body.auth.filter((a) => typeof a === 'string' && a.trim()) : [];
 
   if (xdr) {
-    const result = await client.submitTransaction({ xdr });
+    const normalizedXdr = await normalizeSignedSorobanXdr(xdr, env);
+    const result = await client.submitTransaction({ xdr: normalizedXdr });
     return {
       success: true,
       transactionId: result.transactionId,

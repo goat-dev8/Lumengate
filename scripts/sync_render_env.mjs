@@ -33,7 +33,14 @@ if (!token) {
 }
 
 const env = parseEnv(join(ROOT, '.env'));
-const keys = ['CHANNELS_API_KEY', 'CHANNELS_BASE_URL', 'RELAYER_ENABLED', 'CORS_ORIGIN'];
+const keys = [
+  'CHANNELS_API_KEY',
+  'CHANNELS_BASE_URL',
+  'RELAYER_ENABLED',
+  'CORS_ORIGIN',
+  'STELLAR_RPC_URL',
+  'STELLAR_NETWORK_PASSPHRASE',
+];
 const headers = {
   Authorization: `Bearer ${token}`,
   'Content-Type': 'application/json',
