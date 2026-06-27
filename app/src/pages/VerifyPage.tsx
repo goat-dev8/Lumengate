@@ -698,7 +698,7 @@ export function VerifyPage() {
               </Link>
             </div>
             <p className="mt-3 text-xs text-slate-muted">
-              Need test funds? Use the floating testnet faucet on the right to claim demo USDC.
+              Need test funds? Use the floating testnet faucet on the right to request USDC on Stellar testnet.
             </p>
           </Card>
           </div>

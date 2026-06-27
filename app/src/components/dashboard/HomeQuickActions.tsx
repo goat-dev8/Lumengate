@@ -1,35 +1,57 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Send, ShieldCheck, Store } from 'lucide-react';
+import { ArrowRight, FileCheck2, Send, ShieldCheck, Store } from 'lucide-react';
 import { Stagger, StaggerItem } from '../design/Primitives';
 import type { ProductReadiness } from '../../lib/productState';
 
 type Props = {
   readiness: ProductReadiness;
   readyToInvest: boolean;
+  passportDesc: string;
+  marketplaceDesc: string;
+  receiptsDesc: string;
+  sendDesc: string;
 };
 
-export function HomeQuickActions({ readiness, readyToInvest }: Props) {
+export function HomeQuickActions({
+  readiness,
+  readyToInvest,
+  passportDesc,
+  marketplaceDesc,
+  receiptsDesc,
+  sendDesc,
+}: Props) {
   const actions = readyToInvest
     ? [
         {
           icon: Store,
           label: 'Browse marketplace',
-          desc: 'Regulated offerings with private eligibility',
+          desc: marketplaceDesc,
           to: '/app/marketplace',
+          cta: 'Explore investments',
           primary: true,
         },
         {
           icon: Send,
           label: 'Send privately',
-          desc: 'USDC · EURC · Treasury on Stellar',
+          desc: sendDesc,
           to: '/app/send',
+          cta: 'Open Send',
           primary: false,
         },
         {
           icon: ShieldCheck,
-          label: 'View passport',
-          desc: 'Renew or manage scopes',
+          label: 'Passport',
+          desc: passportDesc,
           to: '/app/verify',
+          cta: 'View passport',
+          primary: false,
+        },
+        {
+          icon: FileCheck2,
+          label: 'Receipts',
+          desc: receiptsDesc,
+          to: '/app/compliance',
+          cta: 'View receipts',
           primary: false,
         },
       ]
@@ -39,27 +61,38 @@ export function HomeQuickActions({ readiness, readyToInvest }: Props) {
           label: 'Continue verification',
           desc: readiness.description,
           to: readiness.href,
+          cta: readiness.cta,
           primary: true,
         },
         {
           icon: Store,
           label: 'Browse marketplace',
-          desc: 'Preview regulated offerings',
+          desc: marketplaceDesc,
           to: '/app/marketplace',
+          cta: 'Preview offerings',
           primary: false,
         },
         {
           icon: Send,
           label: 'Send privately',
-          desc: 'Available after eligibility confirmation',
+          desc: sendDesc,
           to: '/app/send',
+          cta: 'Open Send',
+          primary: false,
+        },
+        {
+          icon: FileCheck2,
+          label: 'Receipts',
+          desc: receiptsDesc,
+          to: '/app/compliance',
+          cta: 'View receipts',
           primary: false,
         },
       ];
 
   return (
-    <Stagger className="grid gap-4 md:grid-cols-3">
-      {actions.map(({ icon: Icon, label, desc, to, primary }) => (
+    <Stagger className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {actions.map(({ icon: Icon, label, desc, to, cta, primary }) => (
         <StaggerItem key={label}>
           <Link
             to={to}
@@ -77,9 +110,9 @@ export function HomeQuickActions({ readiness, readyToInvest }: Props) {
               <Icon className="h-5 w-5" />
             </div>
             <p className="mt-4 text-base font-semibold text-[#012b54]">{label}</p>
-            <p className="mt-1 flex-1 text-sm text-[#64748b]">{desc}</p>
+            <p className="mt-1 flex-1 text-sm leading-relaxed text-[#64748b]">{desc}</p>
             <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-[#007dfc]">
-              {primary ? readiness.cta : 'Open'}
+              {cta}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Link>

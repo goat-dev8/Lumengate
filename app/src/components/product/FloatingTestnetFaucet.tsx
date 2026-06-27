@@ -126,7 +126,7 @@ export function FloatingTestnetFaucet({ config, smartAccountAddress, onClaimed }
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">Testnet</p>
-                    <p className="text-sm font-semibold leading-tight">Claim free test tokens</p>
+                    <p className="text-sm font-semibold leading-tight">Request testnet funds</p>
                   </div>
                 </div>
                 <Sparkles className="h-4 w-4 shrink-0 text-[#5eb0ff]" />
@@ -155,7 +155,7 @@ export function FloatingTestnetFaucet({ config, smartAccountAddress, onClaimed }
                   {usdcAvailable || anyAvailable ? 'Ready to claim' : countdown}
                 </span>
                 <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-white/90">
-                  Expand
+                  Open
                   <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:translate-y-0.5" />
                 </span>
               </div>

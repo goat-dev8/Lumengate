@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  ArrowUpRight,
-  FileCheck2,
-  Send,
-  ShieldCheck,
-  Store,
-} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { AppPageLayout } from '../components/design/AppPageLayout';
-import { Stagger, StaggerItem, StatusDot } from '../components/design/Primitives';
 import { useApp } from '../context/AppContext';
 import { useOfferings } from '../hooks/useOfferings';
 import { readBalance, readComplianceAdminUsdcBalance } from '../lib/contracts';
@@ -144,38 +136,12 @@ export function DashboardPage() {
         ? 'Your dashboard'
         : readiness.title;
 
-  const quickActions = [
-    {
-      icon: ShieldCheck,
-      label: 'Passport',
-      desc: readyToInvest ? 'Active' : phaseLabel(phase),
-      to: '/app/verify',
-      tone: readyToInvest ? ('success' as const) : undefined,
-    },
-    {
-      icon: Store,
-      label: 'Marketplace',
-      desc: `${offerings.length} live offering${offerings.length === 1 ? '' : 's'}`,
-      to: '/app/marketplace',
-    },
-    {
-      icon: Send,
-      label: 'Send',
-      desc: config.complianceSacAdminId ? 'USDC · EURC · Treasury' : 'Treasury units',
-      to: '/app/send',
-    },
-    {
-      icon: FileCheck2,
-      label: 'Receipts',
-      desc:
-        monthReceipts > 0
-          ? `${monthReceipts} this month`
-          : receiptCount > 0
-            ? `${receiptCount} total`
-            : 'No settlements yet',
-      to: '/app/compliance',
-    },
-  ];
+  const receiptsDesc =
+    monthReceipts > 0
+      ? `${monthReceipts} settlement${monthReceipts === 1 ? '' : 's'} this month`
+      : receiptCount > 0
+        ? `${receiptCount} sealed receipt${receiptCount === 1 ? '' : 's'} on record`
+        : 'Auditor-grade proof after your first transfer';
 
   return (
     <AppPageLayout title={dashboardTitle} subtitle={topSubtitle}>
@@ -215,6 +181,27 @@ export function DashboardPage() {
       />
 
       <div className="mt-10 space-y-12">
+        <section aria-labelledby="home-quick-actions">
+          <div className="mb-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Next steps</p>
+            <h2 id="home-quick-actions" className="mt-1 lg-font-display text-2xl tracking-tight text-[#012b54] md:text-3xl">
+              Quick actions
+            </h2>
+          </div>
+          <HomeQuickActions
+            readiness={readiness}
+            readyToInvest={readyToInvest}
+            passportDesc={readyToInvest ? 'Active · manage scopes' : phaseLabel(phase)}
+            marketplaceDesc={`${offerings.length} regulated offering${offerings.length === 1 ? '' : 's'} on Stellar testnet`}
+            receiptsDesc={receiptsDesc}
+            sendDesc={
+              config.complianceSacAdminId
+                ? 'USDC · EURC · Treasury — private settlement'
+                : 'Treasury units on Stellar'
+            }
+          />
+        </section>
+
         <HomeJourneyProgress steps={productSteps} />
 
         <div className="grid gap-8 lg:grid-cols-3">
@@ -230,40 +217,6 @@ export function DashboardPage() {
         </div>
 
         <RecentSettlements activity={activity} />
-
-        <section aria-labelledby="home-quick-actions">
-          <div className="mb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748b]">Next steps</p>
-            <h2 id="home-quick-actions" className="mt-1 lg-font-display text-2xl tracking-tight text-[#012b54] md:text-3xl">
-              Quick actions
-            </h2>
-          </div>
-          <HomeQuickActions readiness={readiness} readyToInvest={readyToInvest} />
-        </section>
-
-        <Stagger className="grid gap-4 md:grid-cols-4">
-          {quickActions.map(({ icon: Icon, label, desc, to, tone }) => (
-            <StaggerItem key={label}>
-              <Link
-                to={to}
-                className="group lg-surface-card lg-surface-card-hover flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5"
-              >
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--lg-muted-bg)] text-[#012b54]">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-[#012b54]">{label}</p>
-                  <p className="truncate text-xs text-[#64748b]">{desc}</p>
-                </div>
-                {tone === 'success' ? (
-                  <StatusDot />
-                ) : (
-                  <ArrowUpRight className="h-4 w-4 text-[#64748b] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                )}
-              </Link>
-            </StaggerItem>
-          ))}
-        </Stagger>
       </div>
 
       {advanced ? (

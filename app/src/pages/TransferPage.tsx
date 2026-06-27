@@ -426,67 +426,9 @@ export function TransferPage() {
         assetLabel={friendlyAssetName(asset)}
         startedAt={settlementStartedAt}
       />
-      <div className="space-y-6">
-        <div className="flex justify-end">
-          <AdvancedModeToggle />
-        </div>
-
-        {!sendAccountReady ? (
-          <>
-            <WalletSigningNotice compact />
-
-            {!smartAccount ? (
-              <Card>
-                <CardHeader title="Fund Smart Account" badge={<Badge>Required</Badge>} />
-                <p className="text-sm text-slate-muted">
-                  Create your personal smart account and fund this deposit address before sending.
-                </p>
-                {!address && !config.passkeyOnlyDeployEnabled ? (
-                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Connect Freighter once to pay deploy fees, or configure the OpenZeppelin relayer for passkey-only
-                    setup.
-                  </p>
-                ) : null}
-                <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
-                  Create passkey smart account
-                </Button>
-              </Card>
-            ) : null}
-
-            {smartAccountStale ? (
-              <StaleSmartAccountUpgradePanel
-                legacyAddress={settlementAddress}
-                loading={smartAccountCreating}
-                onReplace={replaceSmartAccount}
-              />
-            ) : null}
-          </>
-        ) : null}
-
+      <div className="space-y-8">
         {sendAccountReady ? (
           <>
-            {proofLifecycle.lifecycle === 'invalid' ||
-            proofLifecycle.lifecycle === 'consumed' ||
-            scopeBlocked?.lifecycle === 'consumed' ? (
-              <ProofLifecyclePanel
-                state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
-                config={config}
-                scopeRows={scopeRows}
-                onBeginRecovery={handleRecovery}
-                onRefreshProof={() => syncProofLifecycle()}
-              />
-            ) : null}
-
-            {credential ? (
-              <PassportScopePanel
-                rows={scopeRows}
-                onRefresh={() => refreshScopeStatuses()}
-                onRenew={handleRecovery}
-                showActions={false}
-                compact
-              />
-            ) : null}
-
             {asset === 'rwa' && rwaBalance !== null && BigInt(rwaBalance) === 0n ? (
               <div className="lg-surface-card p-6 text-sm text-[#64748b]">
                 Treasury units are minted when you invest on Marketplace — they are not deposited like USDC.{' '}
@@ -531,8 +473,46 @@ export function TransferPage() {
               />
             )}
 
+            {txHash ? (
+              <Card>
+                <CardHeader title="Transfer confirmed" badge={<Badge tone="ok">On-chain</Badge>} />
+                <p className="font-mono text-xs break-all text-slate-ink">{txHash}</p>
+                <a
+                  href={explorerTxUrl(config.explorerBaseUrl, txHash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
+                >
+                  View on Stellar Expert
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Card>
+            ) : null}
+
+            {proofLifecycle.lifecycle === 'invalid' ||
+            proofLifecycle.lifecycle === 'consumed' ||
+            scopeBlocked?.lifecycle === 'consumed' ? (
+              <ProofLifecyclePanel
+                state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
+                config={config}
+                scopeRows={scopeRows}
+                onBeginRecovery={handleRecovery}
+                onRefreshProof={() => syncProofLifecycle()}
+              />
+            ) : null}
+
+            {credential ? (
+              <PassportScopePanel
+                rows={scopeRows}
+                onRefresh={() => refreshScopeStatuses()}
+                onRenew={handleRecovery}
+                showActions={false}
+                compact
+              />
+            ) : null}
+
             {settlementAddress ? (
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <FundsDrawer
                   config={config}
                   smartAccountAddress={settlementAddress}
@@ -547,48 +527,61 @@ export function TransferPage() {
               </div>
             ) : null}
 
-            {txHash ? (
+            <div className="flex justify-end border-t border-[var(--lg-border)] pt-6">
+              <AdvancedModeToggle />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex justify-end">
+              <AdvancedModeToggle />
+            </div>
 
+            {!sendAccountReady ? (
+              <>
+                <WalletSigningNotice compact />
+
+                {!smartAccount ? (
+                  <Card>
+                    <CardHeader title="Fund Smart Account" badge={<Badge>Required</Badge>} />
+                    <p className="text-sm text-slate-muted">
+                      Create your personal smart account and fund this deposit address before sending.
+                    </p>
+                    {!address && !config.passkeyOnlyDeployEnabled ? (
+                      <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Connect Freighter once to pay deploy fees, or configure the OpenZeppelin relayer for passkey-only
+                        setup.
+                      </p>
+                    ) : null}
+                    <Button className="mt-4" loading={smartAccountCreating} onClick={() => createSmartAccount()}>
+                      Create passkey smart account
+                    </Button>
+                  </Card>
+                ) : null}
+
+                {smartAccountStale ? (
+                  <StaleSmartAccountUpgradePanel
+                    legacyAddress={settlementAddress}
+                    loading={smartAccountCreating}
+                    onReplace={replaceSmartAccount}
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            {!smartAccount ? (
               <Card>
-
-                <CardHeader title="Transfer confirmed" badge={<Badge tone="ok">On-chain</Badge>} />
-
-                <p className="font-mono text-xs break-all text-slate-ink">{txHash}</p>
-
-                <a
-
-                  href={explorerTxUrl(config.explorerBaseUrl, txHash)}
-
-                  target="_blank"
-
-                  rel="noreferrer"
-
-                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
-
-                >
-
-                  View on Stellar Expert
-
-                  <ExternalLink className="h-4 w-4" />
-
-                </a>
-
+                <CardHeader title="Secure account required" badge={<Badge tone="warn">Setup</Badge>} />
+                <p className="text-sm text-slate-muted">
+                  Create your secure Lumengate account with a passkey, then return here to send privately.
+                </p>
+                <Button className="mt-4" variant="secondary" onClick={() => navigate('/app/welcome?intent=new')}>
+                  Create secure account
+                </Button>
               </Card>
-
             ) : null}
           </>
-        ) : !smartAccount ? (
-          <Card>
-            <CardHeader title="Secure account required" badge={<Badge tone="warn">Setup</Badge>} />
-            <p className="text-sm text-slate-muted">
-              Create your secure Lumengate account with a passkey, then return here to send privately.
-            </p>
-            <Button className="mt-4" variant="secondary" onClick={() => navigate('/app/welcome?intent=new')}>
-              Create secure account
-            </Button>
-          </Card>
-        ) : null}
-
+        )}
       </div>
       </AppPageLayout>
     
