@@ -19,6 +19,8 @@ import { Badge } from '../components/ui/Badge';
 
 import { useApp } from '../context/AppContext';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { PassportScopePanel } from '../components/product/PassportScopePanel';
+import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { FundsDrawer } from '../components/product/FundsDrawer';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
@@ -95,6 +97,7 @@ export function TransferPage() {
   const [loading, setLoading] = useState(false);
   const [settlementPhase, setSettlementPhase] = useState<SettlementPhase>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [settlementStartedAt, setSettlementStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [balanceRefresh, setBalanceRefresh] = useState(0);
@@ -108,6 +111,7 @@ export function TransferPage() {
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
   const advanced = useAdvancedMode();
+  const { rows: scopeRows, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
   const scope = ASSET_SCOPES[asset];
   const balanceOwner = currentSettlementOwner(config, address, settlementAddress);
   const sendAccountReady = Boolean(smartAccount && settlementAddress && !smartAccountStale);
@@ -238,6 +242,7 @@ export function TransferPage() {
     setLoading(true);
     setError(null);
     setStatusMessage(null);
+    setSettlementStartedAt(Date.now());
     setSettlementPhase('preparing');
     let completed = false;
     try {
@@ -286,15 +291,27 @@ export function TransferPage() {
             : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
 
       setSettlementPhase('submitting');
+      setStatusMessage('Submitting settlement…');
       const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
-        setSettlementPhase(step === 'bind' ? 'authorizing-bind' : 'authorizing-settle');
-        setStatusMessage(
-          step === 'bind'
-            ? `Authorize with passkey (${index} of ${total}) — eligibility binding`
-            : `Confirm with passkey (${index} of ${total}) — ${friendlyAssetName(asset)} settlement`,
-        );
+        if (step === 'bind') {
+          setSettlementPhase('authorizing-bind');
+          setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
+        } else {
+          setSettlementPhase('waiting-passkey');
+          setStatusMessage('Waiting for secure confirmation… The next passkey prompt will appear automatically.');
+          window.setTimeout(() => {
+            setSettlementPhase('authorizing-settle');
+            setStatusMessage(`Passkey confirmation required (${index} of ${total}) — approve transfer`);
+          }, 500);
+        }
       });
 
+      setSettlementPhase('confirming');
+      setStatusMessage('Waiting for Stellar confirmation…');
+
+      setSettlementPhase('receipt');
+      setStatusMessage('Generating institutional receipt…');
+      await new Promise((resolve) => setTimeout(resolve, 700));
       setSettlementPhase('complete');
       setTxHash(hash);
       completed = true;
@@ -352,6 +369,7 @@ export function TransferPage() {
       if (!completed) {
         setSettlementPhase('idle');
         setStatusMessage(null);
+        setSettlementStartedAt(null);
       }
     }
   };
@@ -406,6 +424,7 @@ export function TransferPage() {
         phase={settlementPhase}
         statusMessage={statusMessage}
         assetLabel={friendlyAssetName(asset)}
+        startedAt={settlementStartedAt}
       />
       <div className="space-y-6">
         <div className="flex justify-end">
@@ -452,8 +471,19 @@ export function TransferPage() {
               <ProofLifecyclePanel
                 state={scopeBlocked?.lifecycle === 'consumed' ? scopeBlocked : proofLifecycle}
                 config={config}
+                scopeRows={scopeRows}
                 onBeginRecovery={handleRecovery}
                 onRefreshProof={() => syncProofLifecycle()}
+              />
+            ) : null}
+
+            {credential ? (
+              <PassportScopePanel
+                rows={scopeRows}
+                onRefresh={() => refreshScopeStatuses()}
+                onRenew={handleRecovery}
+                showActions={false}
+                compact
               />
             ) : null}
 

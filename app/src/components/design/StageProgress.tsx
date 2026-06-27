@@ -12,6 +12,7 @@ type Props = {
   currentStageId: string | null;
   className?: string;
   compact?: boolean;
+  indeterminate?: boolean;
   'aria-label'?: string;
 };
 
@@ -25,6 +26,7 @@ export function StageProgress({
   currentStageId,
   className,
   compact = false,
+  indeterminate = false,
   'aria-label': ariaLabel = 'Progress',
 }: Props) {
   const current = stageIndex(stages, currentStageId);
@@ -33,10 +35,13 @@ export function StageProgress({
 
   return (
     <div className={cn('w-full', className)} role="status" aria-label={ariaLabel} aria-live="polite">
-      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--lg-muted-bg)]">
+      <div className="relative h-1.5 overflow-hidden rounded-full bg-[var(--lg-muted-bg)]">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-[#007dfc] to-[#0056b3] transition-all duration-500 ease-out"
-          style={{ width: `${progressPct}%` }}
+          className={cn(
+            'h-full rounded-full bg-gradient-to-r from-[#007dfc] to-[#0056b3] transition-all duration-500 ease-out',
+            indeterminate && 'absolute inset-y-0 w-1/3 animate-[lg-indeterminate_1.4s_ease-in-out_infinite]',
+          )}
+          style={indeterminate ? undefined : { width: `${progressPct}%` }}
         />
       </div>
       {!compact ? (
@@ -84,10 +89,10 @@ export function StageProgress({
 }
 
 export const SETTLEMENT_STAGES: StageProgressItem[] = [
-  { id: 'preparing', label: 'Preparing verification', hint: 'Checking your passport eligibility' },
-  { id: 'proving', label: 'Generating proof', hint: 'This runs locally on your device (~30s)' },
-  { id: 'authorizing-bind', label: 'Authorizing with passkey', hint: 'Confirm with Face ID or fingerprint' },
-  { id: 'authorizing-settle', label: 'Confirming settlement', hint: 'Final passkey approval for this send' },
+  { id: 'preparing', label: 'Preparing secure transaction', hint: 'Checking passport eligibility' },
+  { id: 'proving', label: 'Generating zero-knowledge proof', hint: 'Runs locally on your device' },
+  { id: 'authorizing-bind', label: 'Binding private eligibility', hint: 'Passkey confirmation (1 of 2)' },
+  { id: 'authorizing-settle', label: 'Confirming settlement', hint: 'Passkey confirmation (2 of 2)' },
   { id: 'submitting', label: 'Submitting to Stellar', hint: 'Recording settlement on ledger' },
   { id: 'complete', label: 'Completed', hint: 'Opening your receipt' },
 ];

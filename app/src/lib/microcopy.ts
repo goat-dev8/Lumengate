@@ -18,14 +18,18 @@ export const microcopy = {
   passport: {
     title: 'Your Private Financial Passport',
     subtitle: 'Prove eligibility without revealing who you are',
+    scopeTitle: 'Passport status by asset',
+    scopeSubtitle: 'Each settlement asset has its own scope. Using one does not expire the others.',
+    scopeEmpty: 'Request your passport to see USDC, EURC, and Treasury scope status.',
     request: 'Request passport',
     requestNew: 'Renew passport',
     verify: 'Verify eligibility privately',
     authorize: 'Confirm with passkey',
     issued: 'Passport issued — access granted',
-    renewTitle: 'Renew access',
+    renewTitle: 'Renew this asset scope',
     renewBody:
-      'Your last settlement used this passport. Request a new one to invest or send again.',
+      'Only this asset scope was used on-chain. Request a fresh passport, confirm eligibility, and authorize with passkey for your next settlement.',
+    scopeRenewHint: 'Other assets may still be ready — renew only what you need.',
   },
   prove: {
     preparing: 'Preparing verification…',
@@ -43,6 +47,9 @@ export const microcopy = {
     authorizeBind: 'Confirm eligibility for this send',
     authorizeSettle: 'Approve this transfer',
     complete: 'Settlement confirmed',
+    processingSecurely:
+      'Everything is still processing securely. This may take up to a minute on the first run. Please keep this page open.',
+    leaveWarning: 'A private settlement is in progress. Leaving now may interrupt it.',
   },
   receipt: {
     title: 'Settlement record',
@@ -56,10 +63,11 @@ export const microcopy = {
     invest: 'Invest now',
     getPassport: 'Get passport',
     privacyLine: 'Identity stays private',
+    requirementPrefix: 'Before you can invest',
   },
   dashboard: {
     ready: 'You\'re verified and cleared for private investing and settlement.',
-    renew: 'Your last settlement succeeded. Renew your passport to invest or send again.',
+    renew: 'One asset scope was used. Renew only that scope on Passport — others may still be ready.',
     confirm: 'Confirm eligibility on your device to activate your private passport.',
     start: 'Create your secure account with a passkey — no seed phrase required.',
   },

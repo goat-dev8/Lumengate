@@ -29,10 +29,14 @@ import { proofMatchesCredential } from '../lib/credentialProof';
 import { currentSettlementOwner } from '../lib/settlementOwner';
 import { ASSET_SCOPES } from '../lib/assetScope';
 import { ProofLifecyclePanel } from '../components/product/ProofLifecyclePanel';
+import { PassportScopePanel } from '../components/product/PassportScopePanel';
 import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartAccountUpgradePanel';
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { microcopy } from '../lib/microcopy';
+import { resolveMarketplaceAction } from '../lib/marketplaceActions';
+import { offeringSettlementAsset } from '../lib/passportScopeStatus';
+import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { isProofUsable } from '../lib/proofLifecycle';
 import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
 
@@ -101,6 +105,7 @@ export function MarketplacePage() {
   } = useApp();
 
   const advanced = useAdvancedMode();
+  const { rows: scopeRows } = usePassportScopeStatuses();
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -248,8 +253,12 @@ export function MarketplacePage() {
 
 
   const canSettle = (offering: LiveOffering): string | null => {
-    if (proofConsumed) return 'Renew passport to invest again';
-    if (!isProofUsable(proofLifecycle)) {
+    const asset = offeringSettlementAsset(offering.settlementAsset);
+    const scopeRow = scopeRows?.find((r) => r.asset === asset);
+    if (scopeRow?.status === 'renewal_required') {
+      return `${scopeRow.label} renewal required — other assets may still be ready`;
+    }
+    if (!isProofUsable(proofLifecycle) && proofLifecycle.lifecycle !== 'ready') {
       return proofLifecycle.reason ?? 'Complete your passport first';
     }
     if (!settlementAddress || !credential) return 'Complete your passport first';
@@ -599,8 +608,8 @@ export function MarketplacePage() {
           eyebrow="Offerings"
           title="Curated by Lumengate"
           description={
-            proofConsumed
-              ? 'Your passport was used — renew it to invest again.'
+            scopeRows?.some((r) => r.status === 'renewal_required')
+              ? 'Some asset scopes need renewal. Others may still be ready — check each offering below.'
               : activeProof
                 ? 'You are verified. Choose an offering and authorize with your passkey.'
                 : credential
@@ -645,11 +654,18 @@ export function MarketplacePage() {
           </div>
         ) : null}
 
+      {credential ? (
+        <div className="mb-6">
+          <PassportScopePanel rows={scopeRows} showActions={false} compact />
+        </div>
+      ) : null}
+
       {proofConsumed || proofLifecycle.lifecycle === 'invalid' ? (
         <div className="mb-6">
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
+            scopeRows={scopeRows}
             onBeginRecovery={() => {
               beginProofRecovery();
               navigate('/app/verify#recovery-credential');
@@ -721,10 +737,16 @@ export function MarketplacePage() {
           const policy = policyByKey(offering.requiredPolicy);
 
           const block = canSettle(offering);
-
           const isSelected = selected?.id === offering.id;
-
           const threshold = fundsThreshold(offering);
+          const action = resolveMarketplaceAction({
+            offering,
+            block,
+            scopeRows,
+            hasSettlementAddress: Boolean(settlementAddress),
+            hasCredential: Boolean(credential),
+            hasActiveProof: Boolean(activeProof),
+          });
 
           return (
             <StaggerItem key={offering.id}>
@@ -764,20 +786,20 @@ export function MarketplacePage() {
                 )}
 
                 <div className="mt-6">
-                  {block && !block.includes('passport') ? (
-                    <p className="mb-3 text-xs text-[#64748b]">{block}</p>
-                  ) : null}
-                  {block?.includes('passport') ? (
-                    <Link to="/app/verify">
-                      <Button className="w-full">
-                        {microcopy.marketplace.getPassport}
-                      </Button>
-                    </Link>
+                  {action ? (
+                    <>
+                      <p className="mb-3 rounded-xl border border-[var(--lg-border)] bg-[var(--lg-muted-bg)]/60 px-3 py-2 text-xs leading-relaxed text-[#64748b]">
+                        <span className="font-semibold text-[#012b54]">{microcopy.marketplace.requirementPrefix}: </span>
+                        {action.message}
+                      </p>
+                      <Link to={action.href}>
+                        <Button className="w-full">{action.cta}</Button>
+                      </Link>
+                    </>
                   ) : (
                     <Button
                       className="w-full"
                       loading={settling && isSelected}
-                      disabled={Boolean(block)}
                       onClick={() => {
                         setSelectedOfferingId(offering.id);
                         handleSettle(offering);

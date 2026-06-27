@@ -37,6 +37,15 @@
   }
 }
 
+@keyframes lg-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
 @media print {
   aside,
   nav[aria-label],

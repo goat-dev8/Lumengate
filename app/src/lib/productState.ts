@@ -92,8 +92,8 @@ export function getProductReadiness(input: {
   }
   if (input.lifecycle === 'consumed') {
     return {
-      title: 'Renew your passport for the next move',
-      description: 'Your last settlement succeeded. Issue a fresh passport before you invest or send again.',
+      title: 'One asset scope was used',
+      description: 'Renew only the scope you need on Passport. Other assets may still be ready to use.',
       cta: 'Renew passport',
       href: '/app/verify#recovery-credential',
       tone: 'warning',

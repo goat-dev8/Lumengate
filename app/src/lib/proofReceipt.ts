@@ -13,6 +13,8 @@ import { fetchEventsForTransaction, fetchTransactionLedger, nullifierSpentEviden
 import { policyByKey, type PolicyKey } from './policies';
 import { rootsMatchCredential } from './passport';
 import { explorerTxUrl } from './utils';
+import { ASSET_SCOPES } from './assetScope';
+import { assetLabelFromProofInputs } from './passportScopeStatus';
 import {
   PUBLIC_INPUTS_BYTES,
   ULTRA_HONK_PROOF_BYTES,
@@ -238,8 +240,13 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
     ledgerCloseTime,
     verificationTimestamp,
     asset: {
-      label: 'Treasury units',
-      contractId: config.rwaTokenId,
+      label: assetLabelFromProofInputs(proof.publicInputs.assetId),
+      contractId:
+        proof.publicInputs.assetId === ASSET_SCOPES.usdc.assetId
+          ? config.complianceSacAdminId || config.rwaTokenId
+          : proof.publicInputs.assetId === ASSET_SCOPES.eurc.assetId
+            ? config.eurcSacId || config.rwaTokenId
+            : config.rwaTokenId,
       complianceTarget: targets.usdcCode,
       complianceSac: targets.usdcSac,
     },

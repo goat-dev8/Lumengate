@@ -25,6 +25,8 @@ import { recoveryLog, verifyStepFlags, type VerifyStepId } from '../lib/proofRec
 import { derivePassportPhase } from '../lib/passportLifecycle';
 import { PrivacySplitCard } from '../components/design/PrivacySplitCard';
 import { StageProgress, PASSPORT_PROVE_STAGES } from '../components/design/StageProgress';
+import { PassportScopePanel } from '../components/product/PassportScopePanel';
+import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { microcopy } from '../lib/microcopy';
 
 const PASSKEY_STEP_META: { id: VerifyStepId | 'passkey'; label: string; hint: string }[] = [
@@ -110,6 +112,7 @@ export function VerifyPage() {
   const [proveProgress, setProveProgress] = useState<ProveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const advanced = useAdvancedMode();
+  const { rows: scopeRows, loading: scopeLoading, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
   const activeProof = proofLifecycle.lifecycle === 'ready' ? proof : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
   const recoveryHint = proofLifecycle.lifecycle === 'none' && Boolean(proofLifecycle.reason);
@@ -251,6 +254,30 @@ export function VerifyPage() {
   const showWizardStep = (stepId: VerifyStepId | 'passkey') =>
     !wizardMode || currentStep === stepId || (stepId === 'credential' && proofConsumed);
 
+  const scrollToRenew = () => {
+    beginProofRecovery();
+    document.getElementById('recovery-credential')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleRequestNewPassport = async () => {
+    setError(null);
+    setCredLoading(true);
+    try {
+      scrollToRenew();
+      await requestCredential(policyKey);
+      pushActivity({
+        kind: 'credential',
+        title: 'Passport renewed',
+        detail: policyKey,
+        status: 'success',
+      });
+    } catch (err) {
+      setError(friendlyIssuerError(err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
   return (
     
       <AppPageLayout
@@ -276,10 +303,21 @@ export function VerifyPage() {
         {advanced ? <WalletSigningNotice compact /> : null}
         <PrivacySplitCard compact className="mt-2" />
 
+        {credential ? (
+          <PassportScopePanel
+            rows={scopeRows}
+            loading={scopeLoading}
+            onRefresh={() => refreshScopeStatuses()}
+            onRenew={scrollToRenew}
+            onRequestNew={handleRequestNewPassport}
+          />
+        ) : null}
+
         {(proofConsumed || proofLifecycle.lifecycle === 'invalid') && (
           <ProofLifecyclePanel
             state={proofLifecycle}
             config={config}
+            scopeRows={scopeRows}
             onBeginRecovery={beginProofRecovery}
             onRefreshProof={() => syncProofLifecycle()}
           />
@@ -575,6 +613,9 @@ export function VerifyPage() {
             <p className="text-sm text-slate-muted">
               Your private passport is active. Invest in regulated offerings or send funds privately.
             </p>
+            {scopeRows?.some((r) => r.status === 'renewal_required') ? (
+              <p className="mt-2 text-xs text-amber-800">{microcopy.passport.scopeRenewHint}</p>
+            ) : null}
             <div className="mt-4">
               <Link to="/app/marketplace">
                 <Button className="w-full sm:w-auto">

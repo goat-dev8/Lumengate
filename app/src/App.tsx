@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LandingPage } from './pages/LandingPage';
 import { WelcomePage } from './pages/WelcomePage';
+import { WelcomeGate } from './components/product/WelcomeGate';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((mod) => ({ default: mod.DashboardPage })),
@@ -54,7 +55,7 @@ function AppRoutes() {
       <Route path="/audit" element={<Navigate to="/app/auditor" replace />} />
       <Route path="/operators" element={<Navigate to="/app/admin" replace />} />
       <Route path="/app" element={<Navigate to="/app/welcome" replace />} />
-      <Route path="/app/welcome" element={<WelcomePage />} />
+      <Route path="/app/welcome" element={<WelcomeGate><WelcomePage /></WelcomeGate>} />
       <Route path="/app" element={<AppLayout />}>
         <Route path="home" element={<DashboardPage />} />
         <Route path="dashboard" element={<Navigate to="/app/home" replace />} />

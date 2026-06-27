@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Fingerprint, ShieldCheck, Sparkles } from 'lucide-react';
@@ -7,48 +6,25 @@ import { microcopy } from '../lib/microcopy';
 import { setOnboardingPath } from '../components/product/OnboardingPathPicker';
 import { PrivacySplitCard } from '../components/design/PrivacySplitCard';
 import { loadPasskeySession } from '../lib/passkeySession';
+import { useState } from 'react';
 
 export function WelcomePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const intent = searchParams.get('intent');
-  const { settlementAddress, signInWithPasskey, smartAccountCreating, createSmartAccount, config } = useApp();
+  const { signInWithPasskey, smartAccountCreating, createSmartAccount, config } = useApp();
   const [signingIn, setSigningIn] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const autoSignInAttempted = useRef(false);
 
   const hasStoredSession = Boolean(loadPasskeySession()?.smartAccountAddress);
-
-  useEffect(() => {
-    if (intent !== 'return' || autoSignInAttempted.current) return;
-    if (settlementAddress) {
-      navigate('/app/home', { replace: true });
-      return;
-    }
-    if (!hasStoredSession) return;
-    autoSignInAttempted.current = true;
-    void (async () => {
-      setSigningIn(true);
-      try {
-        await signInWithPasskey();
-        navigate('/app/home', { replace: true });
-      } catch {
-        /* user can tap Sign in manually */
-      } finally {
-        setSigningIn(false);
-      }
-    })();
-  }, [intent, settlementAddress, hasStoredSession, navigate, signInWithPasskey]);
 
   const handleCreate = async () => {
     setError(null);
     setCreating(true);
     setOnboardingPath('passkey');
     try {
-      if (!settlementAddress) {
-        await createSmartAccount();
-      }
+      await createSmartAccount();
       navigate('/app/verify?path=passkey');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -59,10 +35,6 @@ export function WelcomePage() {
 
   const handleSignIn = async () => {
     setError(null);
-    if (settlementAddress && !intent) {
-      navigate('/app/home');
-      return;
-    }
     if (!hasStoredSession) {
       setError(microcopy.welcome.noAccount);
       return;
@@ -104,7 +76,7 @@ export function WelcomePage() {
           </div>
 
           <h1 className="text-center lg-font-display text-3xl tracking-tight text-[#012b54] md:text-4xl">
-            {microcopy.welcome.title}
+            {intent === 'return' ? microcopy.welcome.signIn : microcopy.welcome.title}
           </h1>
           <p className="mt-3 text-center text-base text-[#64748b]">{microcopy.welcome.subtitle}</p>
 
@@ -122,16 +94,18 @@ export function WelcomePage() {
           </ul>
 
           <div className="mt-8 space-y-3">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleCreate}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#007dfc] to-[#0056b3] py-3.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,125,252,0.35)] transition hover:-translate-y-0.5 disabled:opacity-60"
-            >
-              <Fingerprint className="h-4 w-4" />
-              {creating || smartAccountCreating ? microcopy.account.creating : microcopy.welcome.createAccount}
-              <ArrowRight className="h-4 w-4" />
-            </button>
+            {intent !== 'return' ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleCreate}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#007dfc] to-[#0056b3] py-3.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,125,252,0.35)] transition hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                <Fingerprint className="h-4 w-4" />
+                {creating || smartAccountCreating ? microcopy.account.creating : microcopy.welcome.createAccount}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={loading}

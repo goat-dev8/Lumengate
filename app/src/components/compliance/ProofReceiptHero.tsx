@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Card, CardHeader } from '../ui/Card';
 import type { ProofReceipt } from '../../lib/proofReceipt';
 import { proofReceiptFilename } from '../../lib/proofReceipt';
+import { receiptDisplayAssetLabel } from '../../lib/passportScopeStatus';
 import { truncateMiddle } from '../../lib/utils';
 import { useAdvancedMode } from '../product/AdvancedModeToggle';
 import { Pill } from '../design/Primitives';
@@ -63,7 +64,7 @@ export function ProofReceiptHero({
     ? `RCPT-${receipt.transactions.transfer.slice(0, 8).toUpperCase()}`
     : 'RCPT-PENDING';
   const displayAmount = receipt.transferResult?.amount ?? '—';
-  const assetLabel = receipt.asset?.label ?? 'RWA';
+  const resolvedAssetLabel = receiptDisplayAssetLabel(receipt);
 
   return (
     <div className="space-y-6">
@@ -95,7 +96,7 @@ export function ProofReceiptHero({
                 {displayAmount}
               </p>
               <p className="mt-1 text-sm text-white/70">
-                {assetLabel} · {receipt.network}
+                {resolvedAssetLabel} · {receipt.network}
               </p>
             </div>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">

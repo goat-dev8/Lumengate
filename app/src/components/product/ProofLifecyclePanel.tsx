@@ -1,5 +1,7 @@
 import type { ProofLifecycleState } from '../../lib/proofLifecycle';
 import { recoveryPlanAfterNullifierSpent } from '../../lib/proofRecovery';
+import type { PassportScopeRow } from '../../lib/passportScopeStatus';
+import { microcopy } from '../../lib/microcopy';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Card, CardHeader } from '../ui/Card';
@@ -10,12 +12,15 @@ import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 type Props = {
   state: ProofLifecycleState;
   config: DeploymentConfig;
+  scopeRows?: PassportScopeRow[] | null;
   onBeginRecovery?: () => void;
   onRefreshProof?: () => void;
   compact?: boolean;
 };
 
-export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshProof, compact }: Props) {
+export function ProofLifecyclePanel({ state, config, scopeRows, onBeginRecovery, onRefreshProof, compact }: Props) {
+  const renewalScopes = scopeRows?.filter((r) => r.status === 'renewal_required') ?? [];
+
   if (state.lifecycle === 'none') {
     return (
       <Card>
@@ -37,10 +42,10 @@ export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshP
   if (state.lifecycle === 'ready') {
     return (
       <Card>
-        <CardHeader title="Ready for one settlement" badge={<Badge tone="ok">Ready</Badge>} />
+        <CardHeader title="Ready for settlement" badge={<Badge tone="ok">Ready</Badge>} />
         {!compact ? (
           <p className="text-sm text-slate-muted">
-            Your private confirmation is ready. After a settlement, renew your passport before sending again.
+            Your active proof matches this passport. Each asset scope can be used independently.
           </p>
         ) : null}
         <p className="mt-2 flex items-center gap-2 text-sm text-brand">
@@ -55,9 +60,13 @@ export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshP
     const plan = recoveryPlanAfterNullifierSpent(state.consumedTxHash);
     return (
       <Card className="border-amber-200 bg-amber-50/50">
-        <CardHeader title="Passport used" badge={<Badge tone="warn">Renewal needed</Badge>} />
-        <p className="text-sm text-slate-muted">{plan.message}</p>
-        <p className="mt-2 text-xs text-slate-muted">Renewing creates a fresh private confirmation for your next settlement.</p>
+        <CardHeader title="One scope was used" badge={<Badge tone="warn">Renewal needed</Badge>} />
+        <p className="text-sm text-slate-muted">
+          {renewalScopes.length
+            ? `${renewalScopes.map((r) => r.label).join(', ')} ${renewalScopes.length === 1 ? 'needs' : 'need'} renewal. Other scopes may still be ready.`
+            : plan.message}
+        </p>
+        <p className="mt-2 text-xs text-slate-muted">{microcopy.passport.scopeRenewHint}</p>
         {state.consumedTxHash ? (
           <p className="mt-3 text-sm">
             Previous settlement:{' '}
@@ -81,7 +90,7 @@ export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshP
             disabled={!onBeginRecovery}
           >
             <RefreshCw className="h-4 w-4" />
-            Renew passport
+            {microcopy.passport.requestNew}
           </Button>
           {onRefreshProof ? (
             <Button type="button" variant="secondary" onClick={onRefreshProof}>
@@ -102,7 +111,7 @@ export function ProofLifecyclePanel({ state, config, onBeginRecovery, onRefreshP
       </p>
       {onBeginRecovery ? (
         <Button type="button" className="mt-4" variant="secondary" onClick={onBeginRecovery}>
-          Renew passport
+          {microcopy.passport.requestNew}
         </Button>
       ) : null}
     </Card>
