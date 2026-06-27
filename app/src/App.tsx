@@ -1,8 +1,9 @@
-import { lazy } from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LandingPage } from './pages/LandingPage';
+import { WelcomePage } from './pages/WelcomePage';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((mod) => ({ default: mod.DashboardPage })),
@@ -25,9 +26,6 @@ const CompliancePage = lazy(() =>
 const MarketplacePage = lazy(() =>
   import('./pages/MarketplacePage').then((mod) => ({ default: mod.MarketplacePage })),
 );
-const WelcomePage = lazy(() =>
-  import('./pages/WelcomePage').then((mod) => ({ default: mod.WelcomePage })),
-);
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((mod) => ({ default: mod.SettingsPage })),
 );
@@ -35,8 +33,17 @@ const OfferingDetailRoute = lazy(() =>
   import('./pages/OfferingDetailPage').then((mod) => ({ default: mod.OfferingDetailRoute })),
 );
 
+function RouteFallback() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-[var(--lg-background)]">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#007dfc] border-t-transparent" />
+    </div>
+  );
+}
+
 function AppRoutes() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/home" element={<Navigate to="/app/home" replace />} />
@@ -68,6 +75,7 @@ function AppRoutes() {
         <Route path="transfer" element={<Navigate to="/app/send" replace />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 
