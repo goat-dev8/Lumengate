@@ -153,10 +153,35 @@ function queryDisclosures({ viewingKey, auditorId, txHash }) {
   return rows.map(({ storedAt, viewingKeyHash: _vk, ...rest }) => rest);
 }
 
+/** Capability token (stored disclosure) or on-chain AuditorRegistry registration. */
+async function authorizeDisclosureQuery({ viewingKey, auditorId, env = process.env }) {
+  const hash = viewingKeyHash(viewingKey);
+  const stored = loadStore().filter(
+    (row) => Number(row.auditorId) === Number(auditorId) && row.viewingKeyHash === hash,
+  );
+  if (stored.length > 0) {
+    return { authorized: true, method: 'capability_token', count: stored.length };
+  }
+  try {
+    const onChain = await verifyViewingKeyOnChain(env, auditorId, hash);
+    if (onChain) {
+      return { authorized: true, method: 'auditor_registry', count: 0 };
+    }
+  } catch (err) {
+    return {
+      authorized: false,
+      method: 'none',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  return { authorized: false, method: 'none' };
+}
+
 module.exports = {
   viewingKeyHash,
   verifyViewingKeyOnChain,
   recordDisclosureOnChain,
   appendDisclosure,
   queryDisclosures,
+  authorizeDisclosureQuery,
 };

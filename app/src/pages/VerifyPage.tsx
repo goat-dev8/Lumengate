@@ -32,6 +32,12 @@ import { FloatingTestnetFaucet } from '../components/product/FloatingTestnetFauc
 import { resolveOnboardingNextStep } from '../lib/onboardingGuide';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { microcopy } from '../lib/microcopy';
+import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
+import {
+  PassportProofFlowDiagram,
+  PASSPORT_PROOF_TERMS,
+} from '../components/education/diagrams/PassportProofFlowDiagram';
+import { ProofLifecycleDiagram } from '../components/education/diagrams/ProofLifecycleDiagram';
 
 const PASSKEY_STEP_META: { id: VerifyStepId | 'passkey'; label: string; hint: string }[] = [
   { id: 'passkey', label: 'Passkey account', hint: 'Create your smart account' },
@@ -709,6 +715,22 @@ export function VerifyPage() {
             <p className="font-medium">Something went wrong</p>
             <p className="mt-1">{error}</p>
           </div>
+        ) : null}
+
+        {activeProof && sessionProofBound ? (
+          <ZkExplainerSection
+            id="verify-passport-zk"
+            eyebrow="What happened"
+            title="How your private passport was created"
+            summary="You proved eligibility locally with a Noir circuit and UltraHonk. Only six BN254 public inputs — including a scoped nullifier — can appear on Stellar when you settle."
+            diagram={
+              <div className="space-y-6">
+                <PassportProofFlowDiagram />
+                <ProofLifecycleDiagram />
+              </div>
+            }
+            terms={PASSPORT_PROOF_TERMS}
+          />
         ) : null}
 
         <PassportPrivacySection />

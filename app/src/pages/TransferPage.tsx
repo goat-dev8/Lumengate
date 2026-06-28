@@ -48,6 +48,11 @@ import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
+import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
+import {
+  SettlementPrivacyDiagram,
+  SETTLEMENT_PRIVACY_TERMS,
+} from '../components/education/diagrams/SettlementPrivacyDiagram';
 
 
 
@@ -478,19 +483,30 @@ export function TransferPage() {
             )}
 
             {txHash ? (
-              <Card>
-                <CardHeader title="Transfer confirmed" badge={<Badge tone="ok">On-chain</Badge>} />
-                <p className="font-mono text-xs break-all text-slate-ink">{txHash}</p>
-                <a
-                  href={explorerTxUrl(config.explorerBaseUrl, txHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
-                >
-                  View on Stellar Expert
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </Card>
+              <>
+                <Card>
+                  <CardHeader title="Transfer confirmed" badge={<Badge tone="ok">On-chain</Badge>} />
+                  <p className="font-mono text-xs break-all text-slate-ink">{txHash}</p>
+                  <a
+                    href={explorerTxUrl(config.explorerBaseUrl, txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
+                  >
+                    View on Stellar Expert
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Card>
+                <ZkExplainerSection
+                  id="send-settlement-privacy"
+                  eyebrow="What happened"
+                  title="Private settlement on Stellar"
+                  summary="Your passkey authorized a compliant transfer. Personal eligibility data stayed in the browser; the ledger records amount, addresses, and the scoped nullifier that prevents replay."
+                  diagram={<SettlementPrivacyDiagram />}
+                  terms={SETTLEMENT_PRIVACY_TERMS}
+                  defaultOpen
+                />
+              </>
             ) : null}
 
             {proofLifecycle.lifecycle === 'invalid' ||

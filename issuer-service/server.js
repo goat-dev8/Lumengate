@@ -11,6 +11,7 @@ const {
   verifyViewingKeyOnChain,
   appendDisclosure,
   queryDisclosures,
+  authorizeDisclosureQuery,
 } = require('./lib/disclose');
 const { getIssuerById } = require('./lib/issuerRegistry');
 const { revokeCredential } = require('./lib/revoke');
@@ -483,10 +484,12 @@ app.post('/disclose', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'viewingKey is required' });
   }
   try {
-    const hash = viewingKeyHash(viewingKey);
-    const authorized = await verifyViewingKeyOnChain(process.env, auditorId, hash);
-    if (!authorized) {
-      return res.status(403).json({ error: 'Invalid viewing key for auditor' });
+    const auth = await authorizeDisclosureQuery({ viewingKey, auditorId, env: process.env });
+    if (!auth.authorized) {
+      return res.status(403).json({
+        error: 'Invalid viewing key for auditor',
+        detail: auth.error || 'No matching disclosure or AuditorRegistry registration',
+      });
     }
     const disclosures = queryDisclosures({ viewingKey, auditorId, txHash });
     return res.json({
@@ -494,6 +497,7 @@ app.post('/disclose', express.json(), async (req, res) => {
       txHash: txHash || null,
       count: disclosures.length,
       disclosures,
+      authMethod: auth.method,
     });
   } catch (err) {
     return res.status(503).json({

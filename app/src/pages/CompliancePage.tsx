@@ -14,7 +14,23 @@ import { buildUserJourney } from '../lib/journey';
 import { proofMatchesCredential } from '../lib/credentialProof';
 import { disclosurePackFilename } from '../lib/disclosure';
 import { storeDisclosurePack } from '../lib/disclosureApi';
+import {
+  auditorPackageFilename,
+  buildAuditorPackage,
+  generateViewingKey,
+  loadViewingKeyForReceipt,
+  persistViewingKeyForReceipt,
+} from '../lib/viewingKey';
 import { microcopy } from '../lib/microcopy';
+import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
+import {
+  SelectiveDisclosureDiagram,
+  SELECTIVE_DISCLOSURE_TERMS,
+} from '../components/education/diagrams/SelectiveDisclosureDiagram';
+import {
+  SettlementPrivacyDiagram,
+  SETTLEMENT_PRIVACY_TERMS,
+} from '../components/education/diagrams/SettlementPrivacyDiagram';
 import { useApp } from '../context/AppContext';
 import { currentSettlementOwner } from '../lib/settlementOwner';
 import { cn } from '../lib/cn';
@@ -112,10 +128,11 @@ export function CompliancePage() {
     buildDisclosure,
   } = useApp();
   const [replayLoading, setReplayLoading] = useState(false);
-  const [storeLoading, setStoreLoading] = useState(false);
+  const [generateLoading, setGenerateLoading] = useState(false);
   const [storeMessage, setStoreMessage] = useState<string | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
-  const [viewingKey, setViewingKey] = useState('');
+  const [generatedViewingKey, setGeneratedViewingKey] = useState<string | null>(null);
+  const [viewingKeyRevealed, setViewingKeyRevealed] = useState(false);
   const activeProof = proofMatchesCredential(proof, credential) ? proof : null;
   const settlementOwner = currentSettlementOwner(config, address, settlementAddress);
   const hasAccount = Boolean(settlementOwner || smartAccount);
@@ -135,6 +152,12 @@ export function CompliancePage() {
     receipt: proofReceipt,
     replayBlocked,
   });
+
+  useEffect(() => {
+    if (!settlementTx) return;
+    const saved = loadViewingKeyForReceipt(settlementTx);
+    if (saved) setGeneratedViewingKey(saved);
+  }, [settlementTx]);
 
   useEffect(() => {
     if (!hasAccount) return;
@@ -188,27 +211,55 @@ export function CompliancePage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleStoreDisclosure = async () => {
-    if (!viewingKey.trim()) {
-      setStoreError('Enter the auditor viewing key registered on AuditorRegistry.');
-      return;
-    }
+  const handleDownloadAuditorPackage = () => {
+    const pack = buildDisclosure();
+    if (!pack || !settlementOwner) return;
+    const key = generatedViewingKey ?? generateViewingKey();
+    const auditorPackage = buildAuditorPackage({
+      viewingKey: key,
+      auditorId: config.auditorId,
+      disclosure: pack,
+      network: config.network,
+    });
+    const blob = new Blob([JSON.stringify(auditorPackage, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = auditorPackageFilename(settlementOwner);
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleGenerateViewingKey = async () => {
     const pack = buildDisclosure();
     if (!pack) {
-      setStoreError('Complete passport, proof, and settlement before storing a disclosure pack.');
+      setStoreError('Complete passport, proof, and settlement before generating a viewing key.');
       return;
     }
-    setStoreLoading(true);
+    setGenerateLoading(true);
     setStoreError(null);
     setStoreMessage(null);
     try {
-      await storeDisclosurePack(config.issuerServiceUrl, viewingKey.trim(), config.auditorId, pack);
-      setStoreMessage('Disclosure stored — auditor can query with viewing key on /app/auditor.');
+      const key = generateViewingKey();
+      await storeDisclosurePack(config.issuerServiceUrl, key, config.auditorId, pack);
+      setGeneratedViewingKey(key);
+      setViewingKeyRevealed(true);
+      if (settlementTx) persistViewingKeyForReceipt(settlementTx, key);
+      setStoreMessage(
+        'Viewing key generated and disclosure registered. Share the key or auditor package with your regulator.',
+      );
     } catch (err) {
       setStoreError(err instanceof Error ? err.message : String(err));
     } finally {
-      setStoreLoading(false);
+      setGenerateLoading(false);
     }
+  };
+
+  const handleCopyViewingKey = async () => {
+    if (!generatedViewingKey) return;
+    await navigator.clipboard.writeText(generatedViewingKey);
+    setStoreMessage('Viewing key copied to clipboard.');
+    setStoreError(null);
   };
 
   return (
@@ -261,11 +312,14 @@ export function CompliancePage() {
                   onRefresh={() => refreshProofReceipt()}
                   onVerifyDuplicate={proofReceipt.nullifierSpent ? handleReplay : undefined}
                   replayLoading={replayLoading}
-                  viewingKey={viewingKey}
-                  onViewingKeyChange={setViewingKey}
+                  generatedViewingKey={generatedViewingKey}
+                  viewingKeyRevealed={viewingKeyRevealed}
+                  onToggleViewingKeyReveal={() => setViewingKeyRevealed((v) => !v)}
+                  onGenerateViewingKey={handleGenerateViewingKey}
+                  onCopyViewingKey={handleCopyViewingKey}
                   onDownloadDisclosure={handleDownloadDisclosure}
-                  onShareWithAuditor={handleStoreDisclosure}
-                  storeLoading={storeLoading}
+                  onDownloadAuditorPackage={handleDownloadAuditorPackage}
+                  generateLoading={generateLoading}
                   storeMessage={storeMessage}
                   storeError={storeError}
                 />
@@ -292,6 +346,28 @@ export function CompliancePage() {
                   </div>
                 </Card>
               )}
+
+              {proofReceipt ? (
+                <>
+                  <ZkExplainerSection
+                    id="receipt-settlement-privacy"
+                    eyebrow="What happened"
+                    title="Settlement privacy on Stellar"
+                    summary="Your eligibility attributes never left the browser. Stellar recorded the compliant transfer, scoped nullifier, and public proof inputs."
+                    diagram={<SettlementPrivacyDiagram />}
+                    terms={SETTLEMENT_PRIVACY_TERMS}
+                  />
+                  <ZkExplainerSection
+                    id="receipt-selective-disclosure"
+                    eyebrow="Selective disclosure"
+                    title="How auditors verify without seeing your identity"
+                    summary="A viewing key unlocks only eligibility claims and settlement references for this receipt — not your legal name, government ID, or passkey."
+                    diagram={<SelectiveDisclosureDiagram />}
+                    terms={SELECTIVE_DISCLOSURE_TERMS}
+                    defaultOpen={Boolean(generatedViewingKey)}
+                  />
+                </>
+              ) : null}
             </>
           )}
 

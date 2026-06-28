@@ -37,11 +37,14 @@ type Props = {
   onRefresh?: () => void;
   onVerifyDuplicate?: () => void;
   replayLoading?: boolean;
-  viewingKey: string;
-  onViewingKeyChange: (value: string) => void;
+  generatedViewingKey: string | null;
+  viewingKeyRevealed: boolean;
+  onToggleViewingKeyReveal: () => void;
+  onGenerateViewingKey: () => void;
+  onCopyViewingKey: () => void;
   onDownloadDisclosure: () => void;
-  onShareWithAuditor: () => void;
-  storeLoading?: boolean;
+  onDownloadAuditorPackage: () => void;
+  generateLoading?: boolean;
   storeMessage?: string | null;
   storeError?: string | null;
 };
@@ -174,11 +177,14 @@ export function ProofReceiptHero({
   onRefresh,
   onVerifyDuplicate,
   replayLoading,
-  viewingKey,
-  onViewingKeyChange,
+  generatedViewingKey,
+  viewingKeyRevealed,
+  onToggleViewingKeyReveal,
+  onGenerateViewingKey,
+  onCopyViewingKey,
   onDownloadDisclosure,
-  onShareWithAuditor,
-  storeLoading,
+  onDownloadAuditorPackage,
+  generateLoading,
   storeMessage,
   storeError,
 }: Props) {
@@ -240,7 +246,7 @@ export function ProofReceiptHero({
               <Download className="h-4 w-4" />
               PDF / JSON
             </Button>
-            <Button size="sm" className="bg-white text-[#012b54] hover:bg-white/90" onClick={onShareWithAuditor} loading={storeLoading}>
+            <Button size="sm" className="bg-white text-[#012b54] hover:bg-white/90" onClick={onDownloadAuditorPackage}>
               <Share2 className="h-4 w-4" />
               Share auditor package
             </Button>
@@ -364,36 +370,66 @@ export function ProofReceiptHero({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.55, duration: 0.55, ease: EASE }}
           >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#007dfc]">Auditor viewing key</p>
-            <p className="mt-2 text-sm text-[#64748b]">
-              Share this key so regulators can verify settlement details without revealing your identity on the public ledger.
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#007dfc]">
+              Selective disclosure
             </p>
-            <label className="mt-4 block">
-              <span className="sr-only">Auditor access key</span>
-              <input
-                type="password"
-                className="w-full rounded-xl border border-[var(--lg-border)] bg-white px-3 py-2.5 font-mono text-xs outline-none transition focus:border-[#007dfc] focus:ring-2 focus:ring-[#007dfc]/20"
-                value={viewingKey}
-                onChange={(e) => onViewingKeyChange(e.target.value)}
-                placeholder="Enter auditor viewing key"
-                aria-label="Auditor access key"
-              />
-            </label>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button className="flex-1 sm:flex-none" loading={storeLoading} onClick={onShareWithAuditor}>
-                Generate viewing key share
-              </Button>
-              <Button variant="secondary" onClick={onDownloadDisclosure}>
-                <Download className="h-4 w-4" />
-                Download pack
-              </Button>
-              <Link to="/app/auditor">
-                <Button variant="secondary">
-                  <Shield className="h-4 w-4" />
-                  Auditor portal
+            <p className="mt-2 text-sm text-[#64748b]">
+              Generate a read-only viewing key for this receipt. Share the key or auditor package with a regulator —
+              they verify eligibility claims without accessing your identity on the public ledger.
+            </p>
+
+            {generatedViewingKey ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-xl border border-[var(--lg-border)] bg-white p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+                    Your viewing key
+                  </p>
+                  <p className="mt-2 break-all font-mono text-xs text-[#012b54]">
+                    {viewingKeyRevealed
+                      ? generatedViewingKey
+                      : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••'}
+                  </p>
+                  <p className="mt-2 text-xs text-[#64748b]">
+                    Read-only · scoped to this disclosure · cannot sign transactions or move funds
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={onToggleViewingKeyReveal}>
+                    {viewingKeyRevealed ? 'Hide key' : 'Reveal key'}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={onCopyViewingKey}>
+                    <Copy className="h-4 w-4" />
+                    Copy key
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={onDownloadAuditorPackage}>
+                    <Download className="h-4 w-4" />
+                    Download package
+                  </Button>
+                  <Link to="/app/auditor">
+                    <Button variant="secondary" size="sm">
+                      <Shield className="h-4 w-4" />
+                      Auditor portal
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button className="flex-1 sm:flex-none" loading={generateLoading} onClick={onGenerateViewingKey}>
+                  Generate viewing key
                 </Button>
-              </Link>
-            </div>
+                <Button variant="secondary" onClick={onDownloadDisclosure}>
+                  <Download className="h-4 w-4" />
+                  Disclosure JSON
+                </Button>
+                <Link to="/app/auditor">
+                  <Button variant="secondary">
+                    <Shield className="h-4 w-4" />
+                    Auditor portal
+                  </Button>
+                </Link>
+              </div>
+            )}
             {storeMessage ? <p className="mt-3 text-sm text-emerald-700">{storeMessage}</p> : null}
             {storeError ? <p className="mt-3 text-sm text-red-600">{storeError}</p> : null}
           </motion.div>

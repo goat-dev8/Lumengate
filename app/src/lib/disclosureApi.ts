@@ -10,6 +10,7 @@ export type DisclosureQueryResponse = {
   txHash: string | null;
   count: number;
   disclosures: DisclosurePack[];
+  authMethod?: 'capability_token' | 'auditor_registry';
 };
 
 export async function storeDisclosurePack(

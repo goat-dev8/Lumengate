@@ -3,6 +3,7 @@
 @import './styles/marketing.css';
 @import './styles/design-director.css';
 @import './styles/fintech.css';
+@import './styles/zk-diagrams.css';
 
 @tailwind base;
 @tailwind components;

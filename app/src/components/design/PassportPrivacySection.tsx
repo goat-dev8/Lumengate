@@ -34,7 +34,8 @@ export function PassportPrivacySection() {
           Privacy &amp; disclosure
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-[#64748b]">
-          Lumengate keeps personal data off-chain. Only what regulators need can be shared with an auditor viewing key.
+          Lumengate keeps personal data off-chain. After settlement, generate a read-only viewing key on your receipt
+          to share eligibility claims with an auditor — never your legal identity.
         </p>
       </div>
 

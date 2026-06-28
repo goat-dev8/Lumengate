@@ -14,6 +14,11 @@ import { verifyAuditorInput, type AuditorVerification } from '../lib/auditor';
 import { loadIdentityVerifierAdapter } from '../lib/standards';
 import { truncateMiddle } from '../lib/utils';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
+import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
+import {
+  SelectiveDisclosureDiagram,
+  SELECTIVE_DISCLOSURE_TERMS,
+} from '../components/education/diagrams/SelectiveDisclosureDiagram';
 
 const RESULT_LABELS: Record<string, string> = {
   'Disclosure pack version': 'Eligibility record valid',
@@ -84,7 +89,7 @@ export function AuditorPage() {
 
   const runPortalQuery = async () => {
     if (!viewingKey.trim()) {
-      setPortalError('Enter the auditor viewing key registered on AuditorRegistry.');
+      setPortalError('Enter the viewing key from the investor’s receipt or auditor package.');
       return;
     }
     setPortalLoading(true);
@@ -214,18 +219,19 @@ export function AuditorPage() {
 
         <Card>
           <CardHeader
-            title="Auditor access"
-            description="Use a viewing key to retrieve scoped settlement disclosures."
+            title="Auditor portal"
+            description="Investors generate a read-only viewing key on their receipt. Enter that key here to retrieve scoped disclosures — eligibility claims and settlement references only."
             badge={<Badge tone="brand">Live</Badge>}
           />
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="text-sm text-slate-muted">Viewing key</span>
+              <span className="text-sm text-slate-muted">Viewing key from investor</span>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-line px-3 py-2 font-mono text-xs outline-none focus:border-brand"
                 value={viewingKey}
                 onChange={(e) => setViewingKey(e.target.value)}
-                aria-label="Viewing key"
+                placeholder="lgvk_… from receipt or auditor package"
+                aria-label="Viewing key from investor"
               />
             </label>
             <label className="block">
@@ -374,6 +380,15 @@ export function AuditorPage() {
             </ul>
           </Card>
         ) : null}
+
+        <ZkExplainerSection
+          id="auditor-selective-disclosure"
+          eyebrow="How it works"
+          title="Selective disclosure without identity exposure"
+          summary="Viewing keys are read-only capability tokens. They unlock eligibility categories and on-chain settlement references — never legal name, government ID, or passkey credentials."
+          diagram={<SelectiveDisclosureDiagram />}
+          terms={SELECTIVE_DISCLOSURE_TERMS}
+        />
 
       </AppPageLayout>
     
