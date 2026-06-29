@@ -36,3 +36,15 @@ services:
         sync: false
       - key: RELAYER_ENABLED
         sync: false
+      - key: CONFIDENTIAL_TOKEN_ID
+        sync: false
+      - key: CONFIDENTIAL_VERIFIER_ID
+        sync: false
+      - key: CONFIDENTIAL_AUDITOR_ID
+        sync: false
+      - key: CONFIDENTIAL_POLICY_ID
+        sync: false
+      - key: CONFIDENTIAL_UNDERLYING_ID
+        sync: false
+      - key: CONFIDENTIAL_DEPLOYED_AT_LEDGER
+        sync: false

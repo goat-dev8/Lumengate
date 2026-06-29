@@ -1,0 +1,17 @@
+[package]
+name = "lumengate-confidential-policy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["alloc"] }
+stellar-access = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "539968f158e0d779f584de2821090f715a3b25e1" }
+stellar-macros = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "539968f158e0d779f584de2821090f715a3b25e1" }
+stellar-tokens = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "539968f158e0d779f584de2821090f715a3b25e1" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

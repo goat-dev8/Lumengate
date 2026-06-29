@@ -48,6 +48,7 @@ import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
+import { executeConfidentialEurcSettlement } from '../lib/confidentialFlow';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -108,6 +109,7 @@ export function TransferPage() {
   const [balanceRefresh, setBalanceRefresh] = useState(0);
   const [scopeBlocked, setScopeBlocked] = useState<ProofLifecycleState | null>(null);
   const [passkeyStep, setPasskeyStep] = useState<{ index: number; total: number } | null>(null);
+  const [confidentialMode, setConfidentialMode] = useState(false);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -116,6 +118,7 @@ export function TransferPage() {
   }, [searchParams]);
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
+  const confidentialAvailable = Boolean(config.confidentialTokenId && eurcReady);
   const advanced = useAdvancedMode();
   const { rows: scopeRows, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
   const scope = ASSET_SCOPES[asset];
@@ -289,29 +292,67 @@ export function TransferPage() {
         return;
       }
       const txSource = resolvePasskeySimulationSource(address);
-      const tx =
-        asset === 'usdc'
-          ? await buildUsdcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
-          : asset === 'eurc'
-            ? await buildEurcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
-            : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
+      let hash: string;
+      if (asset === 'eurc' && confidentialMode && config.confidentialTokenId) {
+        setSettlementPhase('proving');
+        setStatusMessage('Preparing confidential EURC settlement…');
+        const result = await executeConfidentialEurcSettlement({
+          config,
+          txSource,
+          smartAccount: settlementFrom,
+          recipient,
+          amount,
+          onProgress: ({ step, message }) => {
+            setStatusMessage(message);
+            if (step === 'prove-transfer' || step === 'register') {
+              setSettlementPhase('proving');
+            } else if (step === 'transfer') {
+              setSettlementPhase('submitting');
+            } else {
+              setSettlementPhase('authorizing-settle');
+            }
+          },
+          submitTx: async (ctTx, _stepLabel) => {
+            setSettlementPhase('waiting-passkey');
+            setStatusMessage('Waiting for secure confirmation…');
+            return signAndSubmitSettlement(settlementFrom, scopedProof, ctTx, (step, index, total) => {
+              setPasskeyStep({ index, total });
+              if (step === 'bind') {
+                setSettlementPhase('authorizing-bind');
+                setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
+              } else {
+                setSettlementPhase('authorizing-settle');
+                setStatusMessage(`Passkey confirmation required (${index} of ${total}) — approve confidential step`);
+              }
+            });
+          },
+        });
+        hash = result.txHash;
+      } else {
+        const tx =
+          asset === 'usdc'
+            ? await buildUsdcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
+            : asset === 'eurc'
+              ? await buildEurcTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope)
+              : await buildTransferTransaction(config, txSource, settlementFrom, recipient, amount, scopedProof, scope);
 
-      setSettlementPhase('submitting');
-      setStatusMessage('Submitting settlement…');
-      const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
-        setPasskeyStep({ index, total });
-        if (step === 'bind') {
-          setSettlementPhase('authorizing-bind');
-          setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
-        } else {
-          setSettlementPhase('waiting-passkey');
-          setStatusMessage('Waiting for secure confirmation… The next passkey prompt will appear automatically.');
-          window.setTimeout(() => {
-            setSettlementPhase('authorizing-settle');
-            setStatusMessage(`Passkey confirmation required (${index} of ${total}) — approve transfer`);
-          }, 500);
-        }
-      });
+        setSettlementPhase('submitting');
+        setStatusMessage('Submitting settlement…');
+        hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+          setPasskeyStep({ index, total });
+          if (step === 'bind') {
+            setSettlementPhase('authorizing-bind');
+            setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
+          } else {
+            setSettlementPhase('waiting-passkey');
+            setStatusMessage('Waiting for secure confirmation… The next passkey prompt will appear automatically.');
+            window.setTimeout(() => {
+              setSettlementPhase('authorizing-settle');
+              setStatusMessage(`Passkey confirmation required (${index} of ${total}) — approve transfer`);
+            }, 500);
+          }
+        });
+      }
 
       setSettlementPhase('confirming');
       setStatusMessage('Waiting for Stellar confirmation…');
@@ -341,9 +382,11 @@ export function TransferPage() {
           asset === 'usdc'
             ? `USDC settlement: ${amount}`
             : asset === 'eurc'
-              ? `EURC settlement: ${amount}`
+              ? confidentialMode
+                ? `Confidential EURC settlement: ${amount}`
+                : `EURC settlement: ${amount}`
               : 'Transfer completed',
-        detail: `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? 'EURC' : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
+        detail: `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? (confidentialMode ? 'confidential EURC' : 'EURC') : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
         txHash: hash,
         explorerUrl: explorerTxUrl(config.explorerBaseUrl, hash),
         status: 'success',
@@ -479,6 +522,9 @@ export function TransferPage() {
                 statusMessage={statusMessage}
                 onSubmit={handleTransfer}
                 showTreasuryOption={advanced}
+                confidentialAvailable={confidentialAvailable}
+                confidentialMode={confidentialMode}
+                onConfidentialModeChange={setConfidentialMode}
               />
             )}
 

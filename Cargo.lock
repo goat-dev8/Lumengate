@@ -185,8 +185,8 @@ name = "auditor-registry"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -307,8 +307,8 @@ name = "compliance-sac-admin"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -323,6 +323,26 @@ name = "compliant-payroll"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+]
+
+[[package]]
+name = "confidential-auditor"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-access 0.7.1",
+ "stellar-macros 0.7.1",
+ "stellar-tokens",
+]
+
+[[package]]
+name = "confidential-verifier"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-access 0.7.1",
+ "stellar-macros 0.7.1",
+ "stellar-tokens",
 ]
 
 [[package]]
@@ -362,8 +382,8 @@ name = "credential-registry"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -768,9 +788,9 @@ name = "governance-timelock"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-governance",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-governance 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -918,8 +938,8 @@ name = "issuer-registry"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -986,6 +1006,26 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "lumengate-confidential-policy"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-access 0.7.1",
+ "stellar-macros 0.7.1",
+ "stellar-tokens",
+]
+
+[[package]]
+name = "lumengate-confidential-token"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-access 0.7.1",
+ "stellar-macros 0.7.1",
+ "stellar-tokens",
+]
 
 [[package]]
 name = "lumengate-smart-account"
@@ -1102,9 +1142,9 @@ name = "policy-verifier"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
- "ultrahonk_soroban_verifier",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
+ "ultrahonk_soroban_verifier 0.1.0",
 ]
 
 [[package]]
@@ -1226,7 +1266,7 @@ dependencies = [
  "soroban-env-host",
  "soroban-sdk",
  "ultrahonk-test-utils",
- "ultrahonk_soroban_verifier",
+ "ultrahonk_soroban_verifier 0.1.0",
 ]
 
 [[package]]
@@ -1249,8 +1289,8 @@ name = "rwa-adapter"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -1258,8 +1298,8 @@ name = "rwa-token"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
- "stellar-macros",
+ "stellar-access 0.7.2",
+ "stellar-macros 0.7.2",
 ]
 
 [[package]]
@@ -1580,6 +1620,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "soroban-poseidon"
+version = "26.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cae04db4ef0b9079ca7ce23bab0e859222ec6a0e9b81480770524475eef91746"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "soroban-sdk"
 version = "26.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1695,6 +1744,14 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stellar-access"
+version = "0.7.1"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?rev=539968f158e0d779f584de2821090f715a3b25e1#539968f158e0d779f584de2821090f715a3b25e1"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-access"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5aae4c50000565b08e97241a06cfb2cff4c3dfde12bdafa0b5303aca22139f38"
@@ -1714,12 +1771,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "stellar-contract-utils"
+version = "0.7.1"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?rev=539968f158e0d779f584de2821090f715a3b25e1#539968f158e0d779f584de2821090f715a3b25e1"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-governance"
+version = "0.7.1"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?rev=539968f158e0d779f584de2821090f715a3b25e1#539968f158e0d779f584de2821090f715a3b25e1"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "stellar-governance"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4828d07c8f3ae45483bdfd41e7e3aa43b4da3dbff1733d77c0f76bf247f01e6"
 dependencies = [
  "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-macros"
+version = "0.7.1"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?rev=539968f158e0d779f584de2821090f715a3b25e1#539968f158e0d779f584de2821090f715a3b25e1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1752,6 +1835,18 @@ dependencies = [
  "crate-git-revision",
  "data-encoding",
  "heapless",
+]
+
+[[package]]
+name = "stellar-tokens"
+version = "0.7.1"
+source = "git+https://github.com/OpenZeppelin/stellar-contracts?rev=539968f158e0d779f584de2821090f715a3b25e1#539968f158e0d779f584de2821090f715a3b25e1"
+dependencies = [
+ "soroban-poseidon",
+ "soroban-sdk",
+ "stellar-contract-utils",
+ "stellar-governance 0.7.1",
+ "ultrahonk_soroban_verifier 0.1.0 (git+https://github.com/NethermindEth/rs-soroban-ultrahonk?rev=661db07200f890b1bd9a7349ed787c70a706dd12)",
 ]
 
 [[package]]
@@ -1872,7 +1967,7 @@ name = "ultrahonk-test-utils"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
- "ultrahonk_soroban_verifier",
+ "ultrahonk_soroban_verifier 0.1.0",
 ]
 
 [[package]]
@@ -1881,6 +1976,14 @@ version = "0.1.0"
 dependencies = [
  "soroban-sdk",
  "ultrahonk-test-utils",
+]
+
+[[package]]
+name = "ultrahonk_soroban_verifier"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/rs-soroban-ultrahonk?rev=661db07200f890b1bd9a7349ed787c70a706dd12#661db07200f890b1bd9a7349ed787c70a706dd12"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

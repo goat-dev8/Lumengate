@@ -19,6 +19,10 @@ members = [
     "contracts/webauthn_verifier",
     "contracts/session_key_policy",
     "contracts/governance_timelock",
+    "contracts/confidential_verifier",
+    "contracts/confidential_auditor",
+    "contracts/lumengate_confidential_token",
+    "contracts/lumengate_confidential_policy",
 ]
 exclude = [
     "vendor/rs-soroban-ultrahonk/contracts/tornado_classic",

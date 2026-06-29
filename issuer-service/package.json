@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --check server.js && node --check lib/smartAccount.js && node --check lib/sorobanAdmin.js && node --check lib/relayer.js && node --check lib/relayerRateLimit.js && node --check lib/relayerXdrNormalize.js && node --check lib/disclose.js"
+    "test": "node --check server.js && node --check lib/smartAccount.js && node --check lib/sorobanAdmin.js && node --check lib/relayer.js && node --check lib/relayerRateLimit.js && node --check lib/relayerXdrNormalize.js && node --check lib/disclose.js && node --check lib/confidentialIndexer.js"
   },
   "dependencies": {
     "@openzeppelin/relayer-plugin-channels": "^0.20.0",

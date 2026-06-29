@@ -22,6 +22,11 @@ const { listFaucetStatus, claimTestnetFunds } = require('./lib/faucet');
 const { isRelayerEnabled, relayerStatus, submitViaChannels } = require('./lib/relayer');
 const { allowRelayerRequest } = require('./lib/relayerRateLimit');
 const {
+  loadDeployments: loadCtDeployments,
+  syncConfidentialEvents,
+  listEvents: listCtEvents,
+} = require('./lib/confidentialIndexer');
+const {
   buildCredentialMaterial,
   normalizeHex32,
   syncCredentialRootOnChain,
@@ -115,6 +120,12 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (_req, res) => {
+  let confidential = null;
+  try {
+    confidential = loadCtDeployments();
+  } catch {
+    confidential = null;
+  }
   res.json({
     ok: true,
     service: 'lumengate-issuer',
@@ -123,6 +134,9 @@ app.get('/health', (_req, res) => {
     signatureScheme: issuer.signatureScheme,
     network: process.env.STELLAR_NETWORK_NAME || 'testnet',
     relayer: relayerStatus(),
+    confidentialToken: confidential
+      ? { token: confidential.token, policy: confidential.policy, verifier: confidential.verifier }
+      : null,
   });
 });
 
@@ -504,6 +518,39 @@ app.post('/disclose', express.json(), async (req, res) => {
       error: 'Disclosure lookup failed',
       detail: err instanceof Error ? err.message : String(err),
     });
+  }
+});
+
+app.get('/ct/deployments', (_req, res) => {
+  try {
+    const deployment = loadCtDeployments();
+    if (!deployment) {
+      return res.status(404).json({ error: 'Confidential token deployment not configured' });
+    }
+    return res.json({ network: process.env.STELLAR_NETWORK_NAME || 'testnet', deployment });
+  } catch (err) {
+    return res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get('/ct/events', (req, res) => {
+  try {
+    const result = listCtEvents({
+      account: req.query.account,
+      fromLedger: req.query.fromLedger,
+    });
+    return res.json(result);
+  } catch (err) {
+    return res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post('/ct/sync', async (_req, res) => {
+  try {
+    const result = await syncConfidentialEvents(process.env);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    return res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

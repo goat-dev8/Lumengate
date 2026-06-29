@@ -13,12 +13,15 @@
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
     "@creit.tech/stellar-wallets-kit": "^1.9.5",
-    "@noble/curves": "^2.2.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
     "@noir-lang/acvm_js": "1.0.0-beta.9",
     "@noir-lang/noir_js": "1.0.0-beta.9",
     "@noir-lang/noirc_abi": "1.0.0-beta.9",
+    "@simplewebauthn/browser": "^13.2.2",
     "@stellar/stellar-sdk": "^16.0.1",
     "@zkpassport/poseidon2": "^0.6.2",
+    "base64url": "^3.0.1",
     "clsx": "^2.1.1",
     "fflate": "^0.8.3",
     "framer-motion": "^11.15.0",
@@ -28,8 +31,6 @@
     "react-router-dom": "^6.28.0",
     "smart-account-kit": "file:./vendor/smart-account-kit",
     "smart-account-kit-bindings": "file:./vendor/smart-account-kit-bindings",
-    "@simplewebauthn/browser": "^13.2.2",
-    "base64url": "^3.0.1",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

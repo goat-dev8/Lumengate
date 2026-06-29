@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
 cd "$ROOT"
 
-for pkg in issuer-registry credential-registry policy-verifier rwa-token rwa-adapter compliance-sac-admin auditor-registry compliant-dex compliant-payroll session-store compliance-policy lumengate-smart-account webauthn-verifier session-key-policy governance-timelock; do
+for pkg in issuer-registry credential-registry policy-verifier rwa-token rwa-adapter compliance-sac-admin auditor-registry compliant-dex compliant-payroll session-store compliance-policy lumengate-smart-account webauthn-verifier session-key-policy governance-timelock confidential-verifier confidential-auditor lumengate-confidential-token lumengate-confidential-policy; do
   echo "Building $pkg..."
   stellar contract build --package "$pkg" --optimize
 done

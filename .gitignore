@@ -47,8 +47,8 @@ research/
 .cursor/
 *.Zone.Identifier
 
-# --- Build outputs ---
-target/
+# --- Cloned upstream (do not commit full vendor/stellar-contracts) ---
+vendor/stellar-contracts/
 **/target/
 node_modules/
 **/node_modules/

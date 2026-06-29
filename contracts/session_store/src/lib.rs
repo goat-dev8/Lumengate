@@ -61,4 +61,11 @@ impl SessionStore {
             .get(&(Symbol::new(&env, "proof"), smart_account))
             .unwrap_or_else(|| env.panic_with_error(Error::NotConfigured))
     }
+
+    /// Non-panicking read for CT policy hook and off-chain checks.
+    pub fn get_bound_proof(env: Env, smart_account: Address) -> Option<SessionProof> {
+        env.storage()
+            .persistent()
+            .get(&(Symbol::new(&env, "proof"), smart_account))
+    }
 }

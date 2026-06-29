@@ -40,6 +40,14 @@ export type DeploymentConfig = {
   privacyPoolId?: string;
   aspMembershipVerifierId?: string;
   auditorId: number;
+  confidentialTokenId?: string;
+  confidentialVerifierId?: string;
+  confidentialAuditorId?: string;
+  confidentialPolicyId?: string;
+  confidentialUnderlyingId?: string;
+  confidentialAuditorIdNum?: number;
+  confidentialDeployedAtLedger?: number;
+  confidentialIndexerUrl?: string;
 };
 
 type DeploymentsFile = {
@@ -62,6 +70,15 @@ type DeploymentsFile = {
   asp_membership?: string;
   eurc_sac?: string;
   native_sac?: string;
+  confidential_token?: {
+    verifier: string;
+    auditor: string;
+    policy: string;
+    token: string;
+    underlying: string;
+    deployed_at_ledger?: number;
+    auditor_id?: number;
+  };
 };
 
 const CANONICAL = deployments as DeploymentsFile;
@@ -186,6 +203,32 @@ export function loadDeploymentConfig(): DeploymentConfig {
     privacyPoolId: optionalViteEnv('VITE_PRIVACY_POOL_ID'),
     aspMembershipVerifierId: optionalViteEnv('VITE_ASP_MEMBERSHIP_ID'),
     auditorId: Number(optionalViteEnv('VITE_AUDITOR_ID') || 1),
+    confidentialTokenId: resolveOptionalContractId(
+      'VITE_CONFIDENTIAL_TOKEN_CONTRACT_ID',
+      CANONICAL.confidential_token?.token,
+    ),
+    confidentialVerifierId: resolveOptionalContractId(
+      'VITE_CONFIDENTIAL_VERIFIER_CONTRACT_ID',
+      CANONICAL.confidential_token?.verifier,
+    ),
+    confidentialAuditorId: resolveOptionalContractId(
+      'VITE_CONFIDENTIAL_AUDITOR_CONTRACT_ID',
+      CANONICAL.confidential_token?.auditor,
+    ),
+    confidentialPolicyId: resolveOptionalContractId(
+      'VITE_CONFIDENTIAL_POLICY_CONTRACT_ID',
+      CANONICAL.confidential_token?.policy,
+    ),
+    confidentialUnderlyingId: resolveOptionalContractId(
+      'VITE_CONFIDENTIAL_UNDERLYING_ASSET_CONTRACT_ID',
+      CANONICAL.confidential_token?.underlying,
+    ),
+    confidentialAuditorIdNum: CANONICAL.confidential_token?.auditor_id ?? 1,
+    confidentialDeployedAtLedger:
+      Number(optionalViteEnv('VITE_CONFIDENTIAL_DEPLOYED_AT_LEDGER')) ||
+      CANONICAL.confidential_token?.deployed_at_ledger ||
+      undefined,
+    confidentialIndexerUrl: optionalViteEnv('VITE_CONFIDENTIAL_INDEXER_URL'),
   };
 }
 

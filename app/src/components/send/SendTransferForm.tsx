@@ -36,6 +36,9 @@ type Props = {
   statusMessage?: string | null;
   onSubmit: () => void;
   showTreasuryOption?: boolean;
+  confidentialAvailable?: boolean;
+  confidentialMode?: boolean;
+  onConfidentialModeChange?: (enabled: boolean) => void;
 };
 
 function ComplianceLineRow({ label, status, ok }: ComplianceLine) {
@@ -78,6 +81,9 @@ export function SendTransferForm({
   statusMessage,
   onSubmit,
   showTreasuryOption = true,
+  confidentialAvailable = false,
+  confidentialMode = false,
+  onConfidentialModeChange,
 }: Props) {
   const assetPills: { id: AssetKind; label: string; disabled?: boolean }[] = [
     ...(showTreasuryOption ? [{ id: 'rwa' as const, label: 'Treasury' }] : []),
@@ -147,6 +153,24 @@ export function SendTransferForm({
               Network fee ~ $0.0001 on Stellar testnet
             </p>
 
+            {asset === 'eurc' && confidentialAvailable ? (
+              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-[#007dfc]/15 bg-[#f6f9fc]/60 px-4 py-3.5">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-[var(--lg-border)] text-[#007dfc]"
+                  checked={confidentialMode}
+                  onChange={(e) => onConfidentialModeChange?.(e.target.checked)}
+                />
+                <span className="text-sm text-[#334155]">
+                  <span className="font-semibold text-[#012b54]">Confidential EURC settlement</span>
+                  <span className="mt-1 block text-[#64748b]">
+                    Shield amount on-chain with zero-knowledge proofs. Recipient must already be registered for
+                    confidential EURC.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+
             <div className="mt-10">
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">
                 Recipient
@@ -187,7 +211,7 @@ export function SendTransferForm({
                 onClick={onSubmit}
               >
                 <Fingerprint className="h-5 w-5" />
-                {loading ? (statusMessage ? 'Working…' : 'Processing…') : 'Send privately'}
+                {loading ? (statusMessage ? 'Working…' : 'Processing…') : confidentialMode ? 'Send confidential EURC' : 'Send privately'}
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </motion.div>

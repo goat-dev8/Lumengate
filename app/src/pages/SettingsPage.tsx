@@ -73,6 +73,10 @@ export function SettingsPage() {
     { label: 'Issuer registry', id: config.issuerRegistryId },
     { label: 'Session store', id: config.sessionStoreId },
     { label: 'Compliance policy', id: config.compliancePolicyId },
+    { label: 'Confidential token (EURC)', id: config.confidentialTokenId },
+    { label: 'CT UltraHonk verifier', id: config.confidentialVerifierId },
+    { label: 'CT auditor registry', id: config.confidentialAuditorId },
+    { label: 'CT Lumengate policy', id: config.confidentialPolicyId },
   ].filter((c) => Boolean(c.id));
 
   return (

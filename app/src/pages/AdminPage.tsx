@@ -46,6 +46,10 @@ export function AdminPage() {
     ['Payroll settlement', config.compliantPayrollId],
     ['Compliance rules', config.compliancePolicyId],
     ['Session store', config.sessionStoreId],
+    ['CT wrapper (EURC)', config.confidentialTokenId],
+    ['CT verifier', config.confidentialVerifierId],
+    ['CT auditor registry', config.confidentialAuditorId],
+    ['CT policy hook', config.confidentialPolicyId],
   ].filter(([, id]) => Boolean(id));
 
   const metrics = [
