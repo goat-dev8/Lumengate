@@ -39,6 +39,8 @@ type Props = {
   onSubmit: () => void;
   showTreasuryOption?: boolean;
   confidentialAvailable?: boolean;
+  confidentialAssetLabel?: string;
+  confidentialAssetKey?: 'eurc' | 'usdc';
   confidentialMode?: boolean;
   onConfidentialModeChange?: (enabled: boolean) => void;
   ctRecipientRegistered?: boolean | null;
@@ -87,6 +89,8 @@ export function SendTransferForm({
   onSubmit,
   showTreasuryOption = true,
   confidentialAvailable = false,
+  confidentialAssetLabel = 'EURC',
+  confidentialAssetKey = 'eurc',
   confidentialMode = false,
   onConfidentialModeChange,
   ctRecipientRegistered = null,
@@ -161,7 +165,7 @@ export function SendTransferForm({
               Network fee ~ $0.0001 on Stellar testnet
             </p>
 
-            {asset === 'eurc' && confidentialAvailable ? (
+            {(asset === 'eurc' || asset === 'usdc') && confidentialAvailable ? (
               <motion.label
                 layout
                 className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-[#007dfc]/15 bg-[#f6f9fc]/60 px-4 py-3.5 transition-shadow hover:shadow-[0_8px_24px_rgba(0,125,252,0.08)]"
@@ -173,7 +177,7 @@ export function SendTransferForm({
                   onChange={(e) => onConfidentialModeChange?.(e.target.checked)}
                 />
                 <span className="text-sm text-[#334155]">
-                  <span className="font-semibold text-[#012b54]">Confidential EURC settlement</span>
+                  <span className="font-semibold text-[#012b54]">Confidential {confidentialAssetLabel} settlement</span>
                   <span className="mt-1 block text-[#64748b]">
                     Shield amount on-chain with zero-knowledge proofs. Recipient must be a registered Lumengate
                     smart account (C… address), not a funding wallet (G…).
@@ -183,7 +187,7 @@ export function SendTransferForm({
             ) : null}
 
             <AnimatePresence>
-              {asset === 'eurc' && confidentialMode && confidentialAvailable ? (
+              {(asset === 'eurc' || asset === 'usdc') && confidentialMode && confidentialAvailable ? (
                 <motion.div
                   key="send-shield-panel"
                   initial={{ opacity: 0, height: 0 }}
@@ -194,6 +198,7 @@ export function SendTransferForm({
                 >
                   <ConfidentialEurcShieldControls
                     variant="send"
+                    assetKey={confidentialAssetKey}
                     suggestedAmount={amount}
                     onShielded={onConfidentialBalanceRefresh}
                   />
@@ -254,7 +259,7 @@ export function SendTransferForm({
                 onClick={onSubmit}
               >
                 <Fingerprint className="h-5 w-5" />
-                {loading ? (statusMessage ? 'Working…' : 'Processing…') : confidentialMode ? 'Send confidential EURC' : 'Send privately'}
+                {loading ? (statusMessage ? 'Working…' : 'Processing…') : confidentialMode ? `Send confidential ${confidentialAssetLabel}` : 'Send privately'}
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </motion.div>

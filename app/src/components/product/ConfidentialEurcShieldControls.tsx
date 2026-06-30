@@ -9,8 +9,14 @@ import {
   shieldConfidentialEurc,
   unshieldConfidentialEurc,
 } from '../../lib/confidentialFlow';
+import {
+  confidentialAssetReady,
+  resolveConfidentialAsset,
+  withConfidentialContracts,
+  type ConfidentialAssetKey,
+} from '../../lib/confidentialAssetConfig';
 import { formatConfidentialAmount } from '../../lib/confidentialBalance';
-import { readEurcSacBalance, formatSorobanUserError } from '../../lib/contracts';
+import { readComplianceAdminUsdcBalance, readEurcSacBalance, formatSorobanUserError } from '../../lib/contracts';
 import { withRetry } from '../../lib/retry';
 
 type CtActionStage = 'preparing' | 'proof' | 'deposit' | 'confirming' | 'merge' | 'sync' | 'done';
@@ -39,12 +45,14 @@ type Props = {
   variant?: 'dashboard' | 'send';
   suggestedAmount?: string;
   onShielded?: () => void;
+  assetKey?: ConfidentialAssetKey;
 };
 
 export function ConfidentialEurcShieldControls({
   variant = 'dashboard',
   suggestedAmount,
   onShielded,
+  assetKey = 'eurc',
 }: Props) {
   const {
     config,
@@ -55,6 +63,8 @@ export function ConfidentialEurcShieldControls({
     confidentialBalanceLoading,
     refreshConfidentialEurcBalance,
   } = useApp();
+  const assetConfig = resolveConfidentialAsset(config, assetKey);
+  const ctConfig = assetConfig.contracts ? withConfidentialContracts(config, assetConfig) : config;
   const [publicBalance, setPublicBalance] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<'shield' | 'merge' | 'unshield' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,22 +74,31 @@ export function ConfidentialEurcShieldControls({
   const [revealed, setRevealed] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!settlementAddress || !config.confidentialTokenId) return;
+    if (!settlementAddress || !assetConfig.contracts) return;
     setError(null);
     try {
-      await refreshConfidentialEurcBalance();
-      const publicEurc = config.eurcSacId
-        ? await withRetry(() => readEurcSacBalance(config, settlementAddress), {
-            attempts: 5,
-            baseDelayMs: 900,
-            maxDelayMs: 6_000,
-          }).catch(() => null)
-        : null;
-      setPublicBalance(publicEurc);
+      if (assetKey === 'eurc') {
+        await refreshConfidentialEurcBalance();
+      }
+      if (assetKey === 'eurc' && config.eurcSacId) {
+        const publicEurc = await withRetry(() => readEurcSacBalance(config, settlementAddress), {
+          attempts: 5,
+          baseDelayMs: 900,
+          maxDelayMs: 6_000,
+        }).catch(() => null);
+        setPublicBalance(publicEurc);
+      } else if (assetKey === 'usdc') {
+        const snap = await withRetry(() => readComplianceAdminUsdcBalance(config, settlementAddress), {
+          attempts: 5,
+          baseDelayMs: 900,
+          maxDelayMs: 6_000,
+        }).catch(() => null);
+        setPublicBalance(snap?.formatted ?? null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [config, settlementAddress, refreshConfidentialEurcBalance]);
+  }, [assetConfig.contracts, assetKey, config, settlementAddress, refreshConfidentialEurcBalance]);
 
   useEffect(() => {
     void refresh();
@@ -91,9 +110,9 @@ export function ConfidentialEurcShieldControls({
     }
   }, [suggestedAmount]);
 
-  if (!config.confidentialTokenId || !settlementAddress) return null;
+  if (!confidentialAssetReady(config, assetKey) || !settlementAddress) return null;
 
-  const balance = confidentialEurcBalance;
+  const balance = assetKey === 'eurc' ? confidentialEurcBalance : null;
   const loading = confidentialBalanceLoading;
   const registered = balance?.registered === true;
   const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
@@ -105,7 +124,7 @@ export function ConfidentialEurcShieldControls({
     setStatus(null);
     setActionStage('preparing');
     try {
-      const ensured = await ensureProofForAsset('eurc', (message) => {
+      const ensured = await ensureProofForAsset(assetKey, (message) => {
         setStatus(message);
         setActionStage(stageFromProgress('proof', message));
       });
@@ -117,8 +136,11 @@ export function ConfidentialEurcShieldControls({
       };
 
       if (kind === 'shield') {
+        if (assetKey !== 'eurc') {
+          throw new Error(`${assetConfig.label} confidential shield is not deployed on this network yet.`);
+        }
         await shieldConfidentialEurc({
-          config,
+          config: ctConfig,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
@@ -130,8 +152,11 @@ export function ConfidentialEurcShieldControls({
         });
         onShielded?.();
       } else if (kind === 'merge') {
+        if (assetKey !== 'eurc') {
+          throw new Error(`${assetConfig.label} confidential merge is not deployed on this network yet.`);
+        }
         await mergeConfidentialEurc({
-          config,
+          config: ctConfig,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           onProgress: (p) => {
@@ -141,8 +166,11 @@ export function ConfidentialEurcShieldControls({
           submitTx,
         });
       } else {
+        if (assetKey !== 'eurc') {
+          throw new Error(`${assetConfig.label} confidential unshield is not deployed on this network yet.`);
+        }
         await unshieldConfidentialEurc({
-          config,
+          config: ctConfig,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
@@ -156,7 +184,7 @@ export function ConfidentialEurcShieldControls({
       if (kind !== 'shield') setAmount('');
       await refresh();
       setActionStage('done');
-      setStatus(kind === 'merge' ? 'Private EURC is now spendable.' : 'Private EURC balance updated.');
+      setStatus(kind === 'merge' ? `Private ${assetConfig.assetCode} is now spendable.` : `Private ${assetConfig.assetCode} balance updated.`);
     } catch (err) {
       setError(formatSorobanUserError(err instanceof Error ? err.message : String(err)));
     } finally {
@@ -186,12 +214,12 @@ export function ConfidentialEurcShieldControls({
           </span>
           <div>
             <p className="text-sm font-semibold text-[#012b54]">
-              {compact ? 'Shield before you send' : 'Move EURC between public and private'}
+              {compact ? 'Shield before you send' : `Move ${assetConfig.assetCode} between public and private`}
             </p>
             <p className="mt-0.5 text-xs text-[#64748b]">
               {compact
-                ? 'Deposit public EURC into your confidential wrapper — same flow as Dashboard, without leaving Send.'
-                : 'Shield public EURC before private settlement, merge received private EURC, or unshield back to public.'}
+                ? `Deposit public ${assetConfig.assetCode} into your confidential wrapper — same flow as Dashboard, without leaving Send.`
+                : `Shield public ${assetConfig.assetCode} before private settlement, merge received private balance, or unshield back to public.`}
             </p>
           </div>
         </div>
@@ -202,7 +230,7 @@ export function ConfidentialEurcShieldControls({
             animate={{ opacity: 1, y: 0 }}
             className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]"
           >
-            {publicBalance} public EURC available — shield here or Lumengate auto-shields during send.
+            {publicBalance} public {assetConfig.assetCode} available — shield here or Lumengate auto-shields during send.
           </motion.p>
         ) : null}
 
@@ -223,7 +251,7 @@ export function ConfidentialEurcShieldControls({
                   : !balance?.spendableSynced
                     ? 'Syncing…'
                     : revealed
-                      ? `${formatConfidentialAmount(balance?.spendable ?? 0n)} EURC`
+                      ? `${formatConfidentialAmount(balance?.spendable ?? 0n)} ${assetConfig.assetCode}`
                       : '••••••'}
             </motion.p>
           </div>

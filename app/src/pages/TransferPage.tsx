@@ -50,6 +50,10 @@ import type { ProofLifecycleState } from '../lib/proofLifecycle';
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
 import { formatConfidentialAmount } from '../lib/confidentialBalance';
+import {
+  confidentialAssetForSettlement,
+  confidentialAssetReady,
+} from '../lib/confidentialAssetConfig';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -125,7 +129,12 @@ export function TransferPage() {
   }, [searchParams]);
   const usdcReady = Boolean(config.complianceSacAdminId);
   const eurcReady = Boolean(config.complianceSacAdminId && config.eurcSacId);
-  const confidentialAvailable = Boolean(config.confidentialTokenId && eurcReady);
+  const ctAsset = asset === 'eurc' || asset === 'usdc' ? asset : null;
+  const ctRow = ctAsset ? confidentialAssetForSettlement(config, ctAsset) : null;
+  const confidentialAvailable = Boolean(
+    ctRow &&
+      ((ctAsset === 'eurc' && eurcReady) || (ctAsset === 'usdc' && usdcReady)),
+  );
   const advanced = useAdvancedMode();
   const { rows: scopeRows, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
   const scope = ASSET_SCOPES[asset];
@@ -640,6 +649,8 @@ export function TransferPage() {
                 onSubmit={handleTransfer}
                 showTreasuryOption={advanced}
                 confidentialAvailable={confidentialAvailable}
+                confidentialAssetLabel={ctRow?.assetCode ?? 'EURC'}
+                confidentialAssetKey={ctAsset === 'usdc' ? 'usdc' : 'eurc'}
                 confidentialMode={confidentialMode}
                 onConfidentialModeChange={setConfidentialMode}
                 ctRecipientRegistered={ctRecipientRegistered}

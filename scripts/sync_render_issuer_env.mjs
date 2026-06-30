@@ -74,12 +74,17 @@ async function triggerDeploy() {
     headers,
     body: JSON.stringify({ clearCache: 'do_not_clear' }),
   });
+  const text = await res.text();
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`Deploy trigger failed: ${res.status} ${detail.slice(0, 200)}`);
+    throw new Error(`Deploy trigger failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const body = await res.json();
-  return body.id || body.deploy?.id || 'queued';
+  if (!text.trim()) return 'queued';
+  try {
+    const body = JSON.parse(text);
+    return body.id || body.deploy?.id || 'queued';
+  } catch {
+    return 'queued';
+  }
 }
 
 const defaults = {
