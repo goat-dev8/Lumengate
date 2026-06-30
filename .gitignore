@@ -11,7 +11,7 @@ issuer-service/.env.*
 
 # --- Internal documentation & planning (README.md + README-linked docs only) ---
 *.md
-!README.md
+!/README.md
 !docs/TEST_RESULTS.md
 !contracts/**/README.md
 !vendor/**/README.md
