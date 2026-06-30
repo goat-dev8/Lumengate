@@ -110,6 +110,7 @@ import {
 } from '../lib/smartAccount';
 import {
   readConfidentialEurcBalance,
+  readCachedConfidentialEurcBalance,
   type ConfidentialEurcBalance,
 } from '../lib/confidentialBalance';
 import {
@@ -1396,6 +1397,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (!options?.background) {
       setConfidentialBalanceLoading(true);
+      // Seed registration + last-known balance from cache instantly so the UI
+      // shows "Registered/Shielded" immediately instead of a stuck "Checking…".
+      const cached = readCachedConfidentialEurcBalance(config, settlementAddress);
+      if (cached) setConfidentialEurcBalance((prev) => prev ?? cached);
     }
     try {
       const balance = await readConfidentialEurcBalance(config, settlementAddress);
@@ -1405,8 +1410,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return balance;
     } catch {
-      setConfidentialEurcBalance(null);
-      return null;
+      // Keep any provisional/cached balance rather than dropping to null.
+      const cached = readCachedConfidentialEurcBalance(config, settlementAddress);
+      setConfidentialEurcBalance((prev) => prev ?? cached);
+      return cached;
     } finally {
       if (!options?.background) {
         setConfidentialBalanceLoading(false);
@@ -1422,9 +1429,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!confidentialEurcBalance || confidentialEurcBalance.spendableSynced || confidentialBalanceLoading) return;
-    if (ctResyncAttemptsRef.current >= 8) return;
+    if (ctResyncAttemptsRef.current >= 15) return;
     ctResyncAttemptsRef.current += 1;
-    const delayMs = retryDelay(ctResyncAttemptsRef.current, { baseDelayMs: 2000, maxDelayMs: 10_000 });
+    const delayMs = retryDelay(ctResyncAttemptsRef.current, { baseDelayMs: 2000, maxDelayMs: 12_000 });
     const timer = window.setTimeout(() => {
       void refreshConfidentialEurcBalance({ background: true });
     }, delayMs);

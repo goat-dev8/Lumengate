@@ -265,10 +265,19 @@ export class StateEngine {
   }
 
   /**
-   * Read-path reconciliation: sync against chain without destroying optimistic
-   * shield/merge state on new accounts while Soroban event indexing catches up.
+   * Read-path reconciliation for the PASSIVE balance display.
+   *
+   * This is deliberately BOUNDED (a few seconds at most). It must never run the
+   * long verification loop, because the UI keeps `loading=true` while it runs —
+   * a long inline wait freezes the balance panel on "Checking…/Syncing…". The
+   * long eventual-consistency wait belongs to the background resync timer
+   * (AppContext) and to active operations (shield/merge/send via
+   * `waitUntilVerified`), not to this read.
+   *
+   * Optimistic shield/merge state is preserved (never destroyed by a rebuild)
+   * while Soroban event indexing catches up.
    */
-  async reconcileForRead(rpcUrl: string): Promise<{
+  async reconcileForRead(_rpcUrl: string): Promise<{
     state: AccountState;
     verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean };
   }> {
@@ -277,77 +286,44 @@ export class StateEngine {
 
     let state = await this.sync();
     let verified = await this.verifyAgainstChain();
-    if (verified.ok) {
+    if (verified.spendableOk) {
       await this.clearOptimisticMarkersIfVerified(verified);
       return { state, verified };
     }
 
-    const poll = async (opts: WaitUntilVerifiedOptions): Promise<boolean> => {
-      try {
-        state = await this.waitUntilVerified(opts);
-        verified = await this.verifyAgainstChain();
-        if (verified.spendableOk) {
-          await this.clearOptimisticMarkersIfVerified(verified);
-        }
-        return verified.spendableOk;
-      } catch {
-        return false;
-      }
-    };
-
-    if (
-      await poll({
-        rpcUrl,
-        maxAttempts: hadOptimistic ? 50 : 35,
-        intervalMs: 1500,
-        skipSync: hadOptimistic,
-        requireSpendable: !verified.spendableOk,
-        requireReceiving: !verified.receivingOk,
-        allowRebuild: !hadOptimistic,
-      })
-    ) {
-      return { state, verified };
-    }
-
-    if (hadOptimistic) {
-      await this.cfg.store.save(prior);
-      if (
-        await poll({
-          rpcUrl,
-          maxAttempts: 45,
-          intervalMs: 2000,
-          skipSync: true,
-          requireSpendable: true,
-          allowRebuild: false,
-        })
-      ) {
-        return { state, verified };
-      }
-    }
-
+    // Fresh device/account with no optimistic state: a single rebuild from the
+    // event stream is safe and often resolves a cold cache immediately.
     if (!hadOptimistic) {
-      state = await this.rebuildFromEvents();
+      const rebuilt = await this.rebuildFromEvents();
+      const rebuiltVerified = await this.verifyAgainstChain();
+      if (rebuiltVerified.spendableOk) {
+        await this.clearOptimisticMarkersIfVerified(rebuiltVerified);
+        return { state: rebuilt, verified: rebuiltVerified };
+      }
+      state = rebuilt;
+      verified = rebuiltVerified;
+    }
+
+    // Short bounded wait for just-landed events (~4.5s worst case). Anything
+    // longer is handled by the background resync timer so the UI never freezes.
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await sleep(1500);
+      state = hadOptimistic ? await this.current() : await this.sync();
       verified = await this.verifyAgainstChain();
       if (verified.spendableOk) {
         await this.clearOptimisticMarkersIfVerified(verified);
         return { state, verified };
       }
-
-      if (
-        await poll({
-          rpcUrl,
-          maxAttempts: 25,
-          intervalMs: 2000,
-          requireSpendable: !verified.spendableOk,
-          requireReceiving: !verified.receivingOk,
-          allowRebuild: false,
-        })
-      ) {
-        return { state, verified };
-      }
     }
 
-    state = await this.current();
+    // Best effort: never lose optimistic shield/merge state on the way out.
+    if (hadOptimistic) {
+      await this.cfg.store.save(prior);
+      state = prior;
+    } else {
+      state = await this.current();
+    }
     return { state, verified };
   }
 

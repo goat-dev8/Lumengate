@@ -4,7 +4,8 @@ import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
-import { readCtRegistrationStatus, markCtRegisteredLocally } from './ctRegistration';
+import { reviveState } from './confidentialToken/state/store';
+import { readCtRegistrationStatus, markCtRegisteredLocally, isCtRegisteredLocally } from './ctRegistration';
 
 export type ConfidentialEurcBalance = {
   registered: boolean;
@@ -15,7 +16,50 @@ export type ConfidentialEurcBalance = {
   receivingSynced: boolean;
   synced: boolean;
   syncError?: string;
+  /** True when this snapshot came from the local cache and is not yet verified against chain. */
+  provisional?: boolean;
 };
+
+/**
+ * Instant, network-free balance snapshot from local storage. Used to render the
+ * registered pill and last-known balance immediately while the verified read
+ * runs in the background — so a passkey account that already registered never
+ * flashes "Checking…/Not registered".
+ */
+export function readCachedConfidentialEurcBalance(
+  config: DeploymentConfig,
+  smartAccount: string,
+): ConfidentialEurcBalance | null {
+  if (!config.confidentialTokenId || typeof localStorage === 'undefined') return null;
+  const tokenId = config.confidentialTokenId;
+  const registeredLocal = isCtRegisteredLocally(smartAccount, tokenId);
+  let spendable = 0n;
+  let receiving = 0n;
+  let stateRegistered = false;
+  const raw = localStorage.getItem(`lumengate:ct:state:${tokenId}:${smartAccount}`);
+  if (raw) {
+    try {
+      const state = reviveState(JSON.parse(raw) as Record<string, unknown>);
+      spendable = state.spendable.v;
+      receiving = state.receiving.v;
+      stateRegistered = state.registered;
+    } catch {
+      /* ignore malformed cache */
+    }
+  }
+  const registered = registeredLocal || stateRegistered;
+  if (!registered) return null;
+  return {
+    registered: true,
+    spendable,
+    receiving,
+    total: spendable + receiving,
+    spendableSynced: false,
+    receivingSynced: false,
+    synced: false,
+    provisional: true,
+  };
+}
 
 function ctChainClient(config: DeploymentConfig): ChainClient {
   if (!config.confidentialTokenId || !config.confidentialVerifierId || !config.confidentialAuditorId) {
