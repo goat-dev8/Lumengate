@@ -28,6 +28,7 @@ import { StageProgress, PASSPORT_PROVE_STAGES } from '../components/design/Stage
 import { PassportScopePanel } from '../components/product/PassportScopePanel';
 import { PassportRequestProgress, type PassportRequestStage } from '../components/product/PassportRequestProgress';
 import { OnboardingNextStepBanner } from '../components/product/OnboardingNextStepBanner';
+import { PasskeyAuthorizePanel } from '../components/product/PasskeyAuthorizePanel';
 import { FloatingTestnetFaucet } from '../components/product/FloatingTestnetFaucet';
 import { resolveOnboardingNextStep } from '../lib/onboardingGuide';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
@@ -363,10 +364,15 @@ export function VerifyPage() {
         />
 
         {!onboardingBannerDismissed && onboardingNextStep.kind !== 'none' && !advanced ? (
-          <OnboardingNextStepBanner
-            step={onboardingNextStep}
-            onDismiss={() => setOnboardingBannerDismissed(true)}
-          />
+          onboardingNextStep.kind === 'confirm-eligibility' &&
+          onboardingNextStep.cta === 'Authorize passkey' ? (
+            <PasskeyAuthorizePanel />
+          ) : (
+            <OnboardingNextStepBanner
+              step={onboardingNextStep}
+              onDismiss={() => setOnboardingBannerDismissed(true)}
+            />
+          )
         ) : null}
 
         <nav aria-label="Verification progress" className="grid gap-3 sm:grid-cols-4">

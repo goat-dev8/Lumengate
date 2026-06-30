@@ -13,6 +13,7 @@ get_env() { grep "^$1=" "$ROOT/.env" | cut -d= -f2- | tr -d '\r'; }
 
 ADMIN=$(get_env CONTRACT_ADMIN_PUBLIC_KEY)
 POLICY_ID=$(get_env POLICY_ID)
+POLICY_VERIFIER=$(node -e "console.log(require('$ROOT/deployments.json').policy_verifier)")
 SESSION_STORE=$(node -e "console.log(require('$ROOT/deployments.json').session_store)")
 ADAPTER=$(node -e "console.log(require('$ROOT/deployments.json').rwa_adapter)")
 UNDERLYING=$(node -e "console.log(require('$ROOT/deployments.json').eurc_sac||require('$ROOT/deployments.json').native_sac)")
@@ -41,7 +42,7 @@ CT_AUDITOR=$(deploy "$WASM/confidential_auditor.wasm" --admin "$ADMIN" --manager
 echo "CT Auditor: $CT_AUDITOR"
 
 echo "=== Deploy CT policy hook ==="
-CT_POLICY=$(deploy "$WASM/lumengate_confidential_policy.wasm" --admin "$ADMIN" --session_store "$SESSION_STORE" --adapter "$ADAPTER" --policy_id "$POLICY_ID")
+CT_POLICY=$(deploy "$WASM/lumengate_confidential_policy.wasm" --admin "$ADMIN" --session_store "$SESSION_STORE" --policy_verifier "$POLICY_VERIFIER" --policy_id "$POLICY_ID")
 echo "CT Policy: $CT_POLICY"
 
 echo "=== Deploy CT token wrapper ==="

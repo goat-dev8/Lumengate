@@ -8,7 +8,10 @@ import { resolvePasskeySimulationSource } from '../../lib/smartAccount';
 import { syncProofLifecycleOnChain } from '../../lib/proofLifecycle';
 import { proofMatchesCredential } from '../../lib/credentialProof';
 import { ASSET_SCOPES } from '../../lib/assetScope';
+import { assertScopeNullifierAvailable } from '../../lib/scopeNullifier';
 import { truncateMiddle } from '../../lib/utils';
+import { formatSorobanUserError } from '../../lib/contracts';
+import { PasskeyAuthorizePanel } from './PasskeyAuthorizePanel';
 
 export function ConfidentialEurcPanel() {
   const {
@@ -20,7 +23,10 @@ export function ConfidentialEurcPanel() {
     settlementAddress,
     signAndSubmitSettlement,
     ensureProofForAsset,
+    bindSessionProofIfNeeded,
     consumedTxHash,
+    sessionProofBound,
+    proofLifecycle,
   } = useApp();
   const [registered, setRegistered] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,8 +48,12 @@ export function ConfidentialEurcPanel() {
   if (!config.confidentialTokenId || !settlementAddress) return null;
 
   const handleRegister = async () => {
-    if (!credential || !smartAccount || !settlementAddress || !address) {
-      setError('Complete passport verification and create your smart account first.');
+    if (!smartAccount || !settlementAddress) {
+      setError('Create your passkey smart account on Verify before registering for confidential EURC.');
+      return;
+    }
+    if (!credential) {
+      setError('Request your Private Financial Passport on Verify before registering for confidential EURC.');
       return;
     }
     setLoading(true);
@@ -51,14 +61,20 @@ export function ConfidentialEurcPanel() {
     try {
       const scope = ASSET_SCOPES.eurc;
       let scopedProof = proof;
-      if (!scopedProof || !proofMatchesCredential(scopedProof, credential) || scopedProof.publicInputs.assetId !== scope.assetId) {
+      if (
+        !scopedProof ||
+        !proofMatchesCredential(scopedProof, credential) ||
+        scopedProof.publicInputs.assetId !== scope.assetId
+      ) {
         const ensured = await ensureProofForAsset('eurc');
         scopedProof = ensured.proof;
       }
+      await assertScopeNullifierAvailable(config, credential, 'eurc');
       const lifecycle = await syncProofLifecycleOnChain(config, credential, scopedProof, consumedTxHash);
       if (lifecycle.lifecycle !== 'ready') {
         throw new Error(lifecycle.reason ?? 'Passport not ready for confidential registration.');
       }
+      await bindSessionProofIfNeeded(scopedProof);
       const hash = await registerConfidentialEurcAccount({
         config,
         txSource: resolvePasskeySimulationSource(address),
@@ -68,45 +84,64 @@ export function ConfidentialEurcPanel() {
       if (hash) setTxHash(hash);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(formatSorobanUserError(raw));
     } finally {
       setLoading(false);
     }
   };
 
+  const needsPasskeyAuth =
+    proofLifecycle.lifecycle === 'ready' &&
+    proof &&
+    credential &&
+    proofMatchesCredential(proof, credential) &&
+    sessionProofBound === false;
+
   return (
-    <div className="lg-surface-card p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-[#007dfc]" />
-            <p className="text-sm font-semibold text-[#012b54]">Confidential EURC account</p>
+    <div className="space-y-4">
+      {needsPasskeyAuth ? <PasskeyAuthorizePanel /> : null}
+      <div className="lg-surface-card p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-[#007dfc]" />
+              <p className="text-sm font-semibold text-[#012b54]">Confidential EURC account</p>
+            </div>
+            <p className="mt-2 text-sm text-[#64748b]">
+              Register once to send and receive shielded EURC on Stellar testnet. Uses the same passkey and passport as
+              compliant settlement.
+            </p>
+            <p className="mt-2 font-mono text-xs text-[#64748b]">{truncateMiddle(settlementAddress, 10, 8)}</p>
           </div>
-          <p className="mt-2 text-sm text-[#64748b]">
-            Register once to send and receive shielded EURC on Stellar testnet. Uses the same passkey and passport as
-            compliant settlement.
-          </p>
-          <p className="mt-2 font-mono text-xs text-[#64748b]">{truncateMiddle(settlementAddress, 10, 8)}</p>
+          {registered === true ? (
+            <Pill tone="success">Registered</Pill>
+          ) : registered === false ? (
+            <Pill tone="warning">Not registered</Pill>
+          ) : null}
         </div>
-        {registered === true ? (
-          <Pill tone="success">Registered</Pill>
-        ) : registered === false ? (
-          <Pill tone="warning">Not registered</Pill>
+        {registered === false ? (
+          <Button
+            className="mt-4 w-full"
+            loading={loading}
+            disabled={Boolean(needsPasskeyAuth)}
+            onClick={() => void handleRegister()}
+          >
+            Register confidential EURC
+          </Button>
+        ) : null}
+        {needsPasskeyAuth ? (
+          <p className="mt-3 text-sm text-amber-800">Authorize with passkey above before registering.</p>
+        ) : null}
+        {txHash ? (
+          <p className="mt-3 break-all font-mono text-xs text-emerald-700">Registered — tx {txHash.slice(0, 16)}…</p>
+        ) : null}
+        {error ? (
+          <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            {error}
+          </p>
         ) : null}
       </div>
-      {registered === false ? (
-        <Button className="mt-4 w-full" loading={loading} onClick={() => void handleRegister()}>
-          Register confidential EURC
-        </Button>
-      ) : null}
-      {txHash ? (
-        <p className="mt-3 break-all font-mono text-xs text-emerald-700">Registered — tx {txHash.slice(0, 16)}…</p>
-      ) : null}
-      {error ? (
-        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

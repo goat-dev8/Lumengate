@@ -158,6 +158,7 @@ impl PolicyVerifier {
         proof: Bytes,
         public_inputs: Bytes,
         spend_nullifier: bool,
+        reject_spent_nullifier: bool,
     ) -> Result<bool, Error> {
         if proof.len() as usize != PROOF_BYTES {
             return Err(Error::ProofParseError);
@@ -179,11 +180,12 @@ impl PolicyVerifier {
             (0, 0)
         };
         let nullifier = Self::nullifier_from_public_inputs(&env, &public_inputs)?;
-        if env
-            .storage()
-            .persistent()
-            .get(&Self::spent_key(policy_id, asset_id, action_id, &nullifier))
-            .unwrap_or(false)
+        if reject_spent_nullifier
+            && env
+                .storage()
+                .persistent()
+                .get(&Self::spent_key(policy_id, asset_id, action_id, &nullifier))
+                .unwrap_or(false)
         {
             return Err(Error::NullifierSpent);
         }
@@ -213,7 +215,7 @@ impl PolicyVerifier {
         proof: Bytes,
         public_inputs: Bytes,
     ) -> Result<bool, Error> {
-        Self::verify_inner(env, policy_id, proof, public_inputs, true)
+        Self::verify_inner(env, policy_id, proof, public_inputs, true, true)
     }
 
     pub fn check(
@@ -222,7 +224,18 @@ impl PolicyVerifier {
         proof: Bytes,
         public_inputs: Bytes,
     ) -> Result<bool, Error> {
-        Self::verify_inner(env, policy_id, proof, public_inputs, false)
+        Self::verify_inner(env, policy_id, proof, public_inputs, false, true)
+    }
+
+    /// Cryptographic passport validation for confidential-token registration.
+    /// Does not reject already-spent nullifiers and never consumes a nullifier.
+    pub fn validate(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> Result<bool, Error> {
+        Self::verify_inner(env, policy_id, proof, public_inputs, false, false)
     }
 
     pub fn verify_vec(

@@ -110,6 +110,28 @@ impl RwaAdapter {
     ) -> bool {
         Self::check_passport(env, policy_id, proof, public_inputs).unwrap_or(false)
     }
+
+    /// Passport validity for confidential-token authorization (ignores spent nullifiers).
+    pub fn validate_passport(
+        env: Env,
+        policy_id: u32,
+        proof: Bytes,
+        public_inputs: Bytes,
+    ) -> bool {
+        let verifier = Self::verifier(&env);
+        let mut args = Vec::new(&env);
+        args.push_back(policy_id.into_val(&env));
+        args.push_back(proof.into_val(&env));
+        args.push_back(public_inputs.into_val(&env));
+        match env.try_invoke_contract::<bool, soroban_sdk::InvokeError>(
+            &verifier,
+            &Symbol::new(&env, "validate"),
+            args,
+        ) {
+            Ok(Ok(true)) => true,
+            _ => false,
+        }
+    }
 }
 
 #[contractimpl(contracttrait)]

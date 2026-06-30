@@ -1790,19 +1790,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await assertSmartAccountReadyForSettlement(config, smartAccount);
       const bindSource = resolvePasskeySimulationSource(address);
-      const needsBind =
-        config.sessionStoreId &&
-        isContractAddress(settlementFrom) &&
-        !isProofBoundLocally(proof);
       let boundOnChain = false;
-      if (needsBind) {
+      if (config.sessionStoreId && isContractAddress(settlementFrom)) {
         const bound = await readSessionProofBound(config, settlementFrom);
         boundOnChain = Boolean(bound && sessionProofMatchesBound(bound, proof));
       }
-      const passkeySteps = needsBind && !boundOnChain ? 2 : 1;
+      const passkeySteps = boundOnChain ? 1 : 2;
       let passkeyIndex = 0;
 
-      if (config.sessionStoreId && isContractAddress(settlementFrom) && !boundOnChain && !isProofBoundLocally(proof)) {
+      if (config.sessionStoreId && isContractAddress(settlementFrom) && !boundOnChain) {
         try {
           passkeyIndex += 1;
           onPasskeyStep?.('bind', passkeyIndex, passkeySteps);

@@ -21,7 +21,7 @@ pub struct SessionProof {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolicyConfig {
     pub session_store: Address,
-    pub adapter: Address,
+    pub policy_verifier: Address,
     pub policy_id: u32,
 }
 
@@ -31,7 +31,7 @@ impl LumengateConfidentialPolicy {
         e: &Env,
         admin: Address,
         session_store: Address,
-        adapter: Address,
+        policy_verifier: Address,
         policy_id: u32,
     ) {
         access_control::set_admin(e, &admin);
@@ -39,7 +39,7 @@ impl LumengateConfidentialPolicy {
             &Symbol::new(e, "cfg"),
             &PolicyConfig {
                 session_store,
-                adapter,
+                policy_verifier,
                 policy_id,
             },
         );
@@ -73,8 +73,8 @@ impl Policy for LumengateConfidentialPolicy {
         verify_args.push_back(session.proof.into_val(&e));
         verify_args.push_back(session.public_inputs.into_val(&e));
         e.invoke_contract::<bool>(
-            &cfg.adapter,
-            &Symbol::new(&e, "is_eligible"),
+            &cfg.policy_verifier,
+            &Symbol::new(&e, "validate"),
             verify_args,
         )
     }

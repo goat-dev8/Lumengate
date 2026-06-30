@@ -40,7 +40,8 @@
     "rwa_token_set_policy_verifier": "3360190df15ebd251b3f67faa07e405ef06f34f61c2717093c3f4b886d1e7aec",
     "rwa_admin_seed": "ef08f89d4d42d76c4bd2f9d1e453815988fe896c28b6bfac64f83438a05c8a8d",
     "rwa_sanctioned_freeze": "ae82695c6e52e1a9de93a7b97651bea38cbcbbaf334f734f4ba270a234fa56ac",
-    "v3_auditor_deploy": "69ae046212df30ddbb6ab647dbbb782839b8f97bc1a295f51610085bee8a97a6"
+    "v3_auditor_deploy": "69ae046212df30ddbb6ab647dbbb782839b8f97bc1a295f51610085bee8a97a6",
+    "ct_policy_validate_upgrade": "upgrade_ct_policy_validate.sh"
   },
   "integration": {
     "wallet_field": "200",
@@ -79,11 +80,13 @@
   "confidential_token": {
     "verifier": "CDT6OHHRX2WK45A7RXAFCAA3ETOOYWD67N4XEUZN7BDRR7NOYSUNB2GO",
     "auditor": "CCUMCSQOSLI2VHE4FIGYATSEPBUDMPFNDLUQH753HIOFKECH435QKNEW",
-    "policy": "CCGW5GTVXCE2TA5E3OOMHEX6ITL2BUTJLWDTX5IKE7HXOBOMMDHQZ2SA",
+    "policy": "CBBGGAKMHHDQKLF2ER4HAB6ATIEGZZ75CNAADKQJRP6E34HMNQQ72274",
+    "policy_verifier": "CAIJKGDLIL7UX6XNKD3XXIIYZCZY2X3HM65IO4LJJPDLB4SCLSNQNYU3",
     "token": "CD6GQ4ZMC3VOE4QZJY32IGXRNOESZGLCZDRLD2PNWZSMKLMH2XR3MLZ6",
     "underlying": "CCEO6CAXLBLBOPES32MALMYLOJPHSK477WZH6ZOOHECV4IKLUCTZKU25",
     "deployed_at_ledger": 3352000,
     "auditor_id": 1,
-    "auditor_secret_hex": "0000000000000000000000000000000000000000000000000000000000000001"
+    "auditor_secret_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+    "policy_upgraded_at_ledger": 0
   }
 }
