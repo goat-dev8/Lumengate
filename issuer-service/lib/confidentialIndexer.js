@@ -3,38 +3,49 @@ const { join } = require('path');
 const { rpc, xdr, Address, scValToNative } = require('@stellar/stellar-sdk');
 
 const ROOT = join(__dirname, '..', '..');
-const STORE_PATH = join(__dirname, '..', 'data', 'confidential_events.json');
+const DATA_DIR = join(__dirname, '..', 'data');
 
 const KNOWN = new Set(['register', 'deposit', 'merge', 'withdraw', 'transfer']);
 
-function loadDeployments() {
-  if (process.env.CONFIDENTIAL_TOKEN_ID) {
+function storePath(assetKey = 'eurc') {
+  const key = String(assetKey || 'eurc').toLowerCase();
+  return join(DATA_DIR, `confidential_events_${key}.json`);
+}
+
+function loadDeployments(assetKey = 'eurc', env = process.env) {
+  const key = String(assetKey || 'eurc').toLowerCase();
+  const envPrefix = key === 'eurc' ? 'CONFIDENTIAL' : `CONFIDENTIAL_${key.toUpperCase()}`;
+  const tokenEnv = env[`${envPrefix}_TOKEN_ID`] || (key === 'eurc' ? env.CONFIDENTIAL_TOKEN_ID : undefined);
+  if (tokenEnv) {
     return {
-      token: process.env.CONFIDENTIAL_TOKEN_ID,
-      verifier: process.env.CONFIDENTIAL_VERIFIER_ID,
-      auditor: process.env.CONFIDENTIAL_AUDITOR_ID,
-      policy: process.env.CONFIDENTIAL_POLICY_ID,
-      underlying: process.env.CONFIDENTIAL_UNDERLYING_ID,
-      deployed_at_ledger: Number(process.env.CONFIDENTIAL_DEPLOYED_AT_LEDGER || 0),
-      auditor_id: Number(process.env.CONFIDENTIAL_AUDITOR_ID_NUM || 1),
+      token: tokenEnv,
+      verifier: env[`${envPrefix}_VERIFIER_ID`] || env.CONFIDENTIAL_VERIFIER_ID,
+      auditor: env[`${envPrefix}_AUDITOR_ID`] || env.CONFIDENTIAL_AUDITOR_ID,
+      policy: env[`${envPrefix}_POLICY_ID`] || env.CONFIDENTIAL_POLICY_ID,
+      underlying: env[`${envPrefix}_UNDERLYING_ID`] || env.CONFIDENTIAL_UNDERLYING_ID,
+      deployed_at_ledger: Number(
+        env[`${envPrefix}_DEPLOYED_AT_LEDGER`] || env.CONFIDENTIAL_DEPLOYED_AT_LEDGER || 0,
+      ),
+      auditor_id: Number(env[`${envPrefix}_AUDITOR_ID_NUM`] || env.CONFIDENTIAL_AUDITOR_ID_NUM || 1),
     };
   }
-  const deploymentsPath =
-    process.env.DEPLOYMENTS_JSON_PATH || join(ROOT, 'deployments.json');
+  const deploymentsPath = env.DEPLOYMENTS_JSON_PATH || join(ROOT, 'deployments.json');
   const raw = readFileSync(deploymentsPath, 'utf8');
-  return JSON.parse(raw).confidential_token || null;
+  const parsed = JSON.parse(raw);
+  return parsed.confidential_tokens?.[key] || (key === 'eurc' ? parsed.confidential_token : null) || null;
 }
 
-function loadStore() {
-  if (!existsSync(STORE_PATH)) {
-    return { cursor: null, events: [], latestLedger: 0 };
+function loadStore(assetKey = 'eurc') {
+  const path = storePath(assetKey);
+  if (!existsSync(path)) {
+    return { cursor: null, events: [], latestLedger: 0, assetKey };
   }
-  return JSON.parse(readFileSync(STORE_PATH, 'utf8'));
+  return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function saveStore(store) {
-  mkdirSync(join(__dirname, '..', 'data'), { recursive: true });
-  writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+function saveStore(store, assetKey = 'eurc') {
+  mkdirSync(DATA_DIR, { recursive: true });
+  writeFileSync(storePath(assetKey), JSON.stringify({ ...store, assetKey }, null, 2));
 }
 
 function rpcEventCoords(id) {
@@ -144,14 +155,15 @@ function parseRpcEvent(ev) {
   }
 }
 
-async function syncConfidentialEvents(env = process.env) {
-  const deployment = loadDeployments();
+async function syncConfidentialEvents(env = process.env, assetKey = 'eurc') {
+  const key = String(assetKey || 'eurc').toLowerCase();
+  const deployment = loadDeployments(key, env);
   if (!deployment?.token) {
-    throw new Error('confidential_token deployment missing from deployments.json');
+    throw new Error(`confidential token deployment missing for asset "${key}"`);
   }
   const rpcUrl = env.STELLAR_RPC_URL || env.VITE_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org';
   const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
-  const store = loadStore();
+  const store = loadStore(key);
   const health = await server.getHealth();
   const oldest = health.oldestLedger ?? 1;
   const startLedger =
@@ -187,13 +199,14 @@ async function syncConfidentialEvents(env = process.env) {
   }
 
   decoded.sort((a, b) => a.ledger - b.ledger);
-  const next = { cursor: pageCursor || store.cursor, events: decoded, latestLedger };
-  saveStore(next);
-  return { ingested: decoded.length, latestLedger, cursor: next.cursor };
+  const next = { cursor: pageCursor || store.cursor, events: decoded, latestLedger, assetKey: key };
+  saveStore(next, key);
+  return { ingested: decoded.length, latestLedger, cursor: next.cursor, assetKey: key };
 }
 
-function listEvents(query = {}) {
-  const store = loadStore();
+function listEvents(query = {}, assetKey = 'eurc') {
+  const key = String(query.asset || assetKey || 'eurc').toLowerCase();
+  const store = loadStore(key);
   let events = store.events;
   if (query.account) {
     const account = String(query.account);
@@ -208,7 +221,7 @@ function listEvents(query = {}) {
     const from = Number(query.fromLedger);
     events = events.filter((ev) => ev.ledger >= from);
   }
-  return { events, latestLedger: store.latestLedger, cursor: store.cursor };
+  return { events, latestLedger: store.latestLedger, cursor: store.cursor, assetKey: key };
 }
 
 module.exports = {

@@ -109,10 +109,12 @@ import {
   type SmartAccountState,
 } from '../lib/smartAccount';
 import {
-  readConfidentialEurcBalance,
-  readCachedConfidentialEurcBalance,
+  readConfidentialAssetBalance,
+  readCachedConfidentialAssetBalance,
+  type ConfidentialAssetBalance,
   type ConfidentialEurcBalance,
 } from '../lib/confidentialBalance';
+import { resolveConfidentialAsset, type ConfidentialAssetKey } from '../lib/confidentialAssetConfig';
 import { ctTrace } from '../lib/ctSyncDiagnostics';
 import {
   buildFundSmartAccountEurcXdr,
@@ -154,7 +156,13 @@ type AppContextValue = {
   revokeLumengateSession: () => Promise<void>;
   refreshLumengateSessionStatus: () => Promise<LumengateSessionStatus | null>;
   confidentialEurcBalance: ConfidentialEurcBalance | null;
+  confidentialUsdcBalance: ConfidentialAssetBalance | null;
   confidentialBalanceLoading: boolean;
+  confidentialBalanceLoadingFor: (assetKey: ConfidentialAssetKey) => boolean;
+  refreshConfidentialBalance: (
+    assetKey: ConfidentialAssetKey,
+    options?: { background?: boolean },
+  ) => Promise<ConfidentialAssetBalance | null>;
   refreshConfidentialEurcBalance: (options?: { background?: boolean }) => Promise<ConfidentialEurcBalance | null>;
   passkeyBusy: boolean;
   proverReady: boolean;
@@ -268,9 +276,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
   const [lumengateSessionStatus, setLumengateSessionStatus] = useState<LumengateSessionStatus | null>(null);
-  const [confidentialEurcBalance, setConfidentialEurcBalance] = useState<ConfidentialEurcBalance | null>(null);
-  const [confidentialBalanceLoading, setConfidentialBalanceLoading] = useState(false);
-  const ctResyncAttemptsRef = useRef(0);
+  const [confidentialBalances, setConfidentialBalances] = useState<
+    Partial<Record<ConfidentialAssetKey, ConfidentialAssetBalance>>
+  >({});
+  const [confidentialBalanceLoadingMap, setConfidentialBalanceLoadingMap] = useState<
+    Partial<Record<ConfidentialAssetKey, boolean>>
+  >({});
+  const ctResyncAttemptsRef = useRef<Partial<Record<ConfidentialAssetKey, number>>>({});
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
@@ -1398,61 +1410,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refreshLumengateSessionStatus();
   }, [refreshLumengateSessionStatus]);
 
-  const refreshConfidentialEurcBalance = useCallback(async (options?: { background?: boolean }): Promise<ConfidentialEurcBalance | null> => {
-    if (!settlementAddress || !config.confidentialTokenId) {
-      setConfidentialEurcBalance(null);
+  const refreshConfidentialBalance = useCallback(async (
+    assetKey: ConfidentialAssetKey,
+    options?: { background?: boolean },
+  ): Promise<ConfidentialAssetBalance | null> => {
+    const asset = resolveConfidentialAsset(config, assetKey);
+    if (!settlementAddress || !asset.contracts) {
+      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: undefined }));
       return null;
     }
     if (!options?.background) {
-      setConfidentialBalanceLoading(true);
-      // Seed registration + last-known balance from cache instantly so the UI
-      // shows "Registered/Shielded" immediately instead of a stuck "Checking…".
-      const cached = readCachedConfidentialEurcBalance(config, settlementAddress);
-      if (cached) setConfidentialEurcBalance((prev) => prev ?? cached);
+      setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: true }));
+      const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
+      if (cached) {
+        setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached }));
+      }
     }
     try {
-      ctTrace('app.refresh.start', { account: settlementAddress, background: Boolean(options?.background) });
-      const balance = await readConfidentialEurcBalance(config, settlementAddress);
+      ctTrace('app.refresh.start', { account: settlementAddress, assetKey, background: Boolean(options?.background) });
+      const balance = await readConfidentialAssetBalance(config, settlementAddress, assetKey);
       ctTrace('app.refresh.result', {
         account: settlementAddress,
+        assetKey,
         registered: balance.registered,
         spendableSynced: balance.spendableSynced,
         receivingSynced: balance.receivingSynced,
         syncError: balance.syncError,
       });
-      setConfidentialEurcBalance(balance);
+      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: balance }));
       if (balance.spendableSynced) {
-        ctResyncAttemptsRef.current = 0;
+        ctResyncAttemptsRef.current[assetKey] = 0;
       }
       return balance;
     } catch {
-      // Keep any provisional/cached balance rather than dropping to null.
-      const cached = readCachedConfidentialEurcBalance(config, settlementAddress);
-      setConfidentialEurcBalance((prev) => prev ?? cached);
+      const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
+      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached ?? undefined }));
       return cached;
     } finally {
       if (!options?.background) {
-        setConfidentialBalanceLoading(false);
+        setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: false }));
       }
     }
   }, [config, settlementAddress]);
 
-  useEffect(() => {
-    ctResyncAttemptsRef.current = 0;
-    setConfidentialEurcBalance(null);
-    void refreshConfidentialEurcBalance();
-  }, [settlementAddress, config.confidentialTokenId, refreshConfidentialEurcBalance]);
+  const refreshConfidentialEurcBalance = useCallback(
+    (options?: { background?: boolean }) => refreshConfidentialBalance('eurc', options),
+    [refreshConfidentialBalance],
+  );
 
   useEffect(() => {
-    if (!confidentialEurcBalance || confidentialEurcBalance.spendableSynced || confidentialBalanceLoading) return;
-    if (ctResyncAttemptsRef.current >= 15) return;
-    ctResyncAttemptsRef.current += 1;
-    const delayMs = retryDelay(ctResyncAttemptsRef.current, { baseDelayMs: 2000, maxDelayMs: 12_000 });
-    const timer = window.setTimeout(() => {
-      void refreshConfidentialEurcBalance({ background: true });
-    }, delayMs);
-    return () => window.clearTimeout(timer);
-  }, [confidentialEurcBalance, confidentialBalanceLoading, refreshConfidentialEurcBalance]);
+    ctResyncAttemptsRef.current = {};
+    setConfidentialBalances({});
+    void refreshConfidentialBalance('eurc');
+    void refreshConfidentialBalance('usdc');
+  }, [settlementAddress, config.confidentialTokenId, config.confidentialTokens?.usdc?.token, refreshConfidentialBalance]);
+
+  useEffect(() => {
+    for (const assetKey of ['eurc', 'usdc'] as const) {
+      const balance = confidentialBalances[assetKey];
+      const loading = confidentialBalanceLoadingMap[assetKey];
+      if (!balance || balance.spendableSynced || loading) continue;
+      const attempts = ctResyncAttemptsRef.current[assetKey] ?? 0;
+      if (attempts >= 15) continue;
+      ctResyncAttemptsRef.current[assetKey] = attempts + 1;
+      const delayMs = retryDelay(attempts + 1, { baseDelayMs: 2000, maxDelayMs: 12_000 });
+      window.setTimeout(() => {
+        void refreshConfidentialBalance(assetKey, { background: true });
+      }, delayMs);
+    }
+  }, [confidentialBalances, confidentialBalanceLoadingMap, refreshConfidentialBalance]);
 
   const enableLumengateSession = useCallback(async (options?: {
     onProgress?: (progress: LumengateSessionEnableProgress) => void;
@@ -2151,8 +2177,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     enableLumengateSession,
     revokeLumengateSession,
     refreshLumengateSessionStatus,
-    confidentialEurcBalance,
-    confidentialBalanceLoading,
+    confidentialEurcBalance: confidentialBalances.eurc ?? null,
+    confidentialUsdcBalance: confidentialBalances.usdc ?? null,
+    confidentialBalanceLoading: confidentialBalanceLoadingMap.eurc ?? false,
+    confidentialBalanceLoadingFor: (assetKey: ConfidentialAssetKey) =>
+      confidentialBalanceLoadingMap[assetKey] ?? false,
+    refreshConfidentialBalance,
     refreshConfidentialEurcBalance,
     passkeyBusy,
     refreshSessionProofBound,

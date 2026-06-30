@@ -19,13 +19,24 @@ test('resolveConfidentialAsset loads EURC from legacy config fields', async () =
   assert.ok(confidentialAssetReady(config, 'eurc'));
 });
 
-test('USDC confidential requires explicit wrapper env', async () => {
+test('USDC confidential loads from deployments.json confidential_tokens', async () => {
   const { resolveConfidentialAsset, confidentialAssetReady } = await import('../src/lib/confidentialAssetConfig.ts');
   const config = {
     usdcSacId: 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    confidentialTokens: {
+      usdc: {
+        token: 'CBIGJFIRVZRNUJ45TN5EMLMMIBJY4GHELFLVYCJ4HUZLWUWA2VSSWOWF',
+        verifier: 'CBTQRGYH6YWWRZXUMMW4JFGLFBBY2JGG5DVZMMLADUEMCBJEVBZKURUS',
+        auditor: 'CAMGRDELQPYIPJEZPW5GYBPTPEADP7RAK4KMZEXVSUN5AAVOWHYDCJYY',
+        policy: 'CB22T45KWIJHMYUVIEVEXVC3RYZ2FKVKQ26EFSINB5TOLASPDOSWEDEM',
+        underlying: 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+        auditorIdNum: 1,
+        deployedAtLedger: 3369135,
+      },
+    },
   };
   const usdc = resolveConfidentialAsset(config, 'usdc');
   assert.equal(usdc.key, 'usdc');
-  assert.equal(usdc.contracts, null);
-  assert.equal(confidentialAssetReady(config, 'usdc'), false);
+  assert.ok(usdc.contracts?.token);
+  assert.ok(confidentialAssetReady(config, 'usdc'));
 });

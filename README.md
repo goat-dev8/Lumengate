@@ -167,19 +167,23 @@ flowchart LR
 
 **UI:** `ProofReceiptHero`, `UnifiedTimeline`, `CtDisclosurePanel`.
 
-### Confidential EURC (`/app/home` + `/app/send`)
+### Confidential assets — EURC and USDC (`/app/home` + `/app/send`)
 
-**User flow:** Register → shield → merge → private send → optional unshield.
+Assets are selected through `ConfidentialAssetConfig` (`eurc` | `usdc`). Contract IDs load from `deployments.json` → `confidential_tokens` (EURC also mirrors legacy `confidential_token`).
+
+**User flow (both assets):** Register → shield → merge → private send → receipt → viewing key → auditor → unshield.
 
 **Internal execution:**
 
-1. **Keys** — `getOrCreateCtKeys()` derives Grumpkin keypair per smart account; persisted at `lumengate:ct:keys:{account}:{tokenId}`.
-2. **Register** — `registerConfidentialEurcAccount()` builds register witness, proves via `confidential-circuits/register.json`, invokes token `register`, then `initializeCtStateFromEvents()` calls `StateEngine.rebuildFromEvents()` (mandatory for new accounts).
-3. **Shield** — `shieldConfidentialEurc()`: `deposit` → `waitUntilVerified({ requireReceiving: true })` → `merge` → `waitUntilVerified({ requireSpendable: true })`.
-4. **Private send** — `executeConfidentialEurcSettlement()`: reconciles spendable via hybrid indexer (`IssuerCtIndexerClient` + RPC), auto-deposit/merge if shortfall, proves transfer circuit, invokes `confidential_transfer`.
-5. **State sync** — `StateEngine` replays events; `AppContext.refreshConfidentialEurcBalance()` retries up to 15 times if `!spendableSynced`.
+1. **Keys** — `getOrCreateCtKeys()` derives Grumpkin keypair per smart account + token wrapper; persisted at `lumengate:ct:keys:{account}:{tokenId}`.
+2. **Register** — `registerConfidentialAccount({ assetKey })` … `initializeCtStateFromEvents(config, account, assetKey)`.
+3. **Shield / merge / unshield** — `shieldConfidentialAsset`, `mergeConfidentialAsset`, `unshieldConfidentialAsset` with `assetKey`.
+4. **Private send** — `executeConfidentialSettlement({ assetKey })`: hybrid indexer (`IssuerCtIndexerClient` with `?asset=`), auto-deposit/merge, transfer circuit, `confidential_transfer`.
+5. **State sync** — `refreshConfidentialBalance(assetKey)` retries up to 15 times per asset if `!spendableSynced`.
 
-**UI:** `ConfidentialBalancePanel`, `TrustedDeviceSessionPanel`, `CT_ACTION_STAGES` progress rail.
+**Testnet USDC CT stack** (verified `bash scripts/verify_confidential_token.sh`): token `CBIGJFIRVZRNUJ45TN5EMLMMIBJY4GHELFLVYCJ4HUZLWUWA2VSSWOWF`, underlying SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`.
+
+**UI:** `ConfidentialBalancePanel`, `ConfidentialEurcShieldControls` (assetKey prop), automatic shield panel in Send for both EURC and USDC.
 
 ```mermaid
 flowchart TB
@@ -1015,16 +1019,16 @@ All counts below are from executed passing tests documented in [`docs/TEST_RESUL
 | **UltraHonk verifier (total)** | **54** | `cargo test -p rs-soroban-ultrahonk -p ultrahonk_soroban_verifier` |
 | rs-soroban-ultrahonk | 9 | `cargo test -p rs-soroban-ultrahonk` |
 | ultrahonk_soroban_verifier | 45 | `cargo test -p ultrahonk_soroban_verifier` |
-| **Integration (total)** | **71** | shell scripts below |
+| **Integration (total)** | **78** | shell scripts below |
 | Passkey AuthPayload encoding | 1 | `bash scripts/verify_passkey_auth_encoding.sh` |
-| Confidential token stack | 9 | `ISSUER_SERVICE_URL=http://127.0.0.1:3001 bash scripts/verify_confidential_token.sh` |
+| Confidential token stacks (EURC + USDC) | 16 | `bash scripts/verify_confidential_token.sh` |
 | CT registration semantics | 2 | `bash scripts/ct_integration_test.sh` |
 | Issuer API + disclosure + CT indexer | 18 | `ISSUER_URL=http://127.0.0.1:3001 bash scripts/api_integration_test.sh` |
 | Testnet regression (compliance paths) | 34 | sync-root then `bash scripts/regression_test.sh` |
 | CT hybrid sync + indexer routing | 7 | `ISSUER_SERVICE_URL=http://127.0.0.1:3001 node scripts/verify_ct_sync.mjs` |
 | **Circuits** | **1** | `node scripts/test_prove_node.mjs 200` |
-| **Backend** | **27** | `cd issuer-service && npm test` |
-| **Frontend** | **12** | `cd app && npm test` |
+| **Backend** | **30** | `cd issuer-service && npm test` |
+| **Frontend** | **14** | `cd app && npm test` |
 
 ### What each suite verifies
 

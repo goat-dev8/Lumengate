@@ -1,4 +1,9 @@
 import type { DeploymentConfig } from './config';
+import {
+  resolveConfidentialAsset,
+  withConfidentialContracts,
+  type ConfidentialAssetKey,
+} from './confidentialAssetConfig';
 import { resolveCtKeys } from './confidentialFlow';
 import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
@@ -8,7 +13,7 @@ import { StateEngine } from './confidentialToken/state/engine';
 import { reviveState } from './confidentialToken/state/store';
 import { readCtRegistrationStatus, markCtRegisteredLocally, isCtRegisteredLocally } from './ctRegistration';
 
-export type ConfidentialEurcBalance = {
+export type ConfidentialAssetBalance = {
   registered: boolean;
   spendable: bigint;
   receiving: bigint;
@@ -21,18 +26,59 @@ export type ConfidentialEurcBalance = {
   provisional?: boolean;
 };
 
-/**
- * Instant, network-free balance snapshot from local storage. Used to render the
- * registered pill and last-known balance immediately while the verified read
- * runs in the background — so a passkey account that already registered never
- * flashes "Checking…/Not registered".
- */
-export function readCachedConfidentialEurcBalance(
+/** @deprecated Use ConfidentialAssetBalance */
+export type ConfidentialEurcBalance = ConfidentialAssetBalance;
+
+function ctConfigForAsset(config: DeploymentConfig, assetKey: ConfidentialAssetKey): DeploymentConfig {
+  const asset = resolveConfidentialAsset(config, assetKey);
+  if (!asset.contracts) {
+    throw new Error(`${asset.label} confidential token is not configured.`);
+  }
+  return withConfidentialContracts(config, asset);
+}
+
+function ctChainClient(config: DeploymentConfig): ChainClient {
+  if (!config.confidentialTokenId || !config.confidentialVerifierId || !config.confidentialAuditorId) {
+    throw new Error('Confidential token contracts are not configured.');
+  }
+  return new ChainClient({
+    rpcUrl: config.rpcUrl,
+    networkPassphrase: config.networkPassphrase,
+    contracts: {
+      token: config.confidentialTokenId,
+      verifier: config.confidentialVerifierId,
+      auditor: config.confidentialAuditorId,
+    },
+  });
+}
+
+type CtHistoryIndexer = IndexerClient | IssuerCtIndexerClient;
+
+/** Resolve the durable CT event backfill client (issuer `/ct/events` or Goldsky Worker). */
+function ctIndexer(config: DeploymentConfig, assetKey: ConfidentialAssetKey): CtHistoryIndexer | undefined {
+  const issuerBase = config.issuerServiceUrl?.replace(/\/$/, '');
+  const configured = config.confidentialIndexerUrl?.replace(/\/$/, '');
+
+  if (configured && issuerBase && (configured === `${issuerBase}/ct` || configured.endsWith('/ct'))) {
+    return new IssuerCtIndexerClient({ baseUrl: issuerBase, assetKey });
+  }
+  if (configured && !configured.endsWith('/ct')) {
+    return new IndexerClient({ baseUrl: configured });
+  }
+  if (issuerBase) {
+    return new IssuerCtIndexerClient({ baseUrl: issuerBase, assetKey });
+  }
+  return undefined;
+}
+
+export function readCachedConfidentialAssetBalance(
   config: DeploymentConfig,
   smartAccount: string,
-): ConfidentialEurcBalance | null {
-  if (!config.confidentialTokenId || typeof localStorage === 'undefined') return null;
-  const tokenId = config.confidentialTokenId;
+  assetKey: ConfidentialAssetKey,
+): ConfidentialAssetBalance | null {
+  const asset = resolveConfidentialAsset(config, assetKey);
+  if (!asset.contracts || typeof localStorage === 'undefined') return null;
+  const tokenId = asset.contracts.token;
   const registeredLocal = isCtRegisteredLocally(smartAccount, tokenId);
   let spendable = 0n;
   let receiving = 0n;
@@ -62,78 +108,63 @@ export function readCachedConfidentialEurcBalance(
   };
 }
 
-function ctChainClient(config: DeploymentConfig): ChainClient {
-  if (!config.confidentialTokenId || !config.confidentialVerifierId || !config.confidentialAuditorId) {
-    throw new Error('Confidential token contracts are not configured.');
-  }
-  return new ChainClient({
-    rpcUrl: config.rpcUrl,
-    networkPassphrase: config.networkPassphrase,
-    contracts: {
-      token: config.confidentialTokenId,
-      verifier: config.confidentialVerifierId,
-      auditor: config.confidentialAuditorId,
-    },
-  });
-}
-
-type CtHistoryIndexer = IndexerClient | IssuerCtIndexerClient;
-
-/** Resolve the durable CT event backfill client (issuer `/ct/events` or Goldsky Worker). */
-function ctIndexer(config: DeploymentConfig): CtHistoryIndexer | undefined {
-  const issuerBase = config.issuerServiceUrl?.replace(/\/$/, '');
-  const configured = config.confidentialIndexerUrl?.replace(/\/$/, '');
-
-  // Lumengate issuer `/ct` is NOT the Goldsky Worker API. Using IndexerClient
-  // against it 404s and silently drops pre-window history during hybrid sync.
-  if (configured && issuerBase && (configured === `${issuerBase}/ct` || configured.endsWith('/ct'))) {
-    return new IssuerCtIndexerClient({ baseUrl: issuerBase });
-  }
-  if (configured && !configured.endsWith('/ct')) {
-    return new IndexerClient({ baseUrl: configured });
-  }
-  if (issuerBase) {
-    return new IssuerCtIndexerClient({ baseUrl: issuerBase });
-  }
-  return undefined;
+/** @deprecated Use readCachedConfidentialAssetBalance(config, account, 'eurc') */
+export function readCachedConfidentialEurcBalance(
+  config: DeploymentConfig,
+  smartAccount: string,
+): ConfidentialAssetBalance | null {
+  return readCachedConfidentialAssetBalance(config, smartAccount, 'eurc');
 }
 
 /** Authoritative cold-start initialization after CT register (demo wallet.refresh baseline). */
 export async function initializeCtStateFromEvents(
   config: DeploymentConfig,
   smartAccount: string,
+  assetKey: ConfidentialAssetKey = 'eurc',
 ): Promise<void> {
-  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
+  const engine = await createConfidentialAssetStateEngine(config, smartAccount, assetKey);
   await engine.rebuildFromEvents();
   await engine.verifyAgainstChain();
 }
 
+export async function createConfidentialAssetStateEngine(
+  config: DeploymentConfig,
+  smartAccount: string,
+  assetKey: ConfidentialAssetKey,
+): Promise<StateEngine> {
+  const scoped = ctConfigForAsset(config, assetKey);
+  const keys = await resolveCtKeys(scoped, smartAccount);
+  const client = ctChainClient(scoped);
+  const fromLedger = Math.max(
+    0,
+    scoped.confidentialDeployedAtLedger ?? (await client.latestLedger()) - 50_000,
+  );
+  return new StateEngine({
+    client,
+    store: new LocalStorageStore(`lumengate:ct:state:${scoped.confidentialTokenId}:`),
+    keys,
+    address: smartAccount,
+    fromLedger,
+    indexer: ctIndexer(scoped, assetKey),
+  });
+}
+
+/** @deprecated Use createConfidentialAssetStateEngine */
 export async function createConfidentialEurcStateEngine(
   config: DeploymentConfig,
   smartAccount: string,
 ): Promise<StateEngine> {
-  const keys = await resolveCtKeys(config, smartAccount);
-  const client = ctChainClient(config);
-  const fromLedger = Math.max(
-    0,
-    config.confidentialDeployedAtLedger ?? (await client.latestLedger()) - 50_000,
-  );
-  return new StateEngine({
-    client,
-    store: new LocalStorageStore(`lumengate:ct:state:${config.confidentialTokenId}:`),
-    keys,
-    address: smartAccount,
-    fromLedger,
-    indexer: ctIndexer(config),
-  });
+  return createConfidentialAssetStateEngine(config, smartAccount, 'eurc');
 }
 
-export async function readConfidentialEurcBalance(
+export async function readConfidentialAssetBalance(
   config: DeploymentConfig,
   smartAccount: string,
-): Promise<ConfidentialEurcBalance> {
-  const registration = await readCtRegistrationStatus(config, smartAccount);
-  if (!registration.registered || !config.confidentialTokenId) {
+  assetKey: ConfidentialAssetKey,
+): Promise<ConfidentialAssetBalance> {
+  const scoped = ctConfigForAsset(config, assetKey);
+  const registration = await readCtRegistrationStatus(scoped, smartAccount);
+  if (!registration.registered || !scoped.confidentialTokenId) {
     return {
       registered: false,
       spendable: 0n,
@@ -146,10 +177,10 @@ export async function readConfidentialEurcBalance(
   }
 
   try {
-    const engine = await createConfidentialEurcStateEngine(config, smartAccount);
+    const engine = await createConfidentialAssetStateEngine(config, smartAccount, assetKey);
     const { state, verified } = await engine.reconcileForRead(config.rpcUrl);
     if (registration.onChain) {
-      markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+      markCtRegisteredLocally(smartAccount, scoped.confidentialTokenId);
     }
     const spendable = state.spendable.v;
     const receiving = state.receiving.v;
@@ -175,6 +206,14 @@ export async function readConfidentialEurcBalance(
       syncError: message,
     };
   }
+}
+
+/** @deprecated Use readConfidentialAssetBalance(config, account, 'eurc') */
+export async function readConfidentialEurcBalance(
+  config: DeploymentConfig,
+  smartAccount: string,
+): Promise<ConfidentialAssetBalance> {
+  return readConfidentialAssetBalance(config, smartAccount, 'eurc');
 }
 
 export function formatConfidentialAmount(raw: bigint, decimals = 7): string {

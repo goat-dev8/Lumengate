@@ -17,7 +17,12 @@ import { buildTransferWitness } from './confidentialToken/witness/transfer';
 import { buildWithdrawWitness } from './confidentialToken/witness/withdraw';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
-import { createConfidentialEurcStateEngine, initializeCtStateFromEvents } from './confidentialBalance';
+import { createConfidentialAssetStateEngine, initializeCtStateFromEvents } from './confidentialBalance';
+import {
+  resolveConfidentialAsset,
+  withConfidentialContracts,
+  type ConfidentialAssetKey,
+} from './confidentialAssetConfig';
 import { ctTrace } from './ctSyncDiagnostics';
 import {
   buildCtConfidentialTransferTransaction,
@@ -37,6 +42,18 @@ type CtProver = {
 };
 
 const ctProvers = new Map<CtCircuit, Promise<CtProver>>();
+
+function ctConfigForAsset(config: DeploymentConfig, assetKey: ConfidentialAssetKey): DeploymentConfig {
+  const asset = resolveConfidentialAsset(config, assetKey);
+  if (!asset.contracts) {
+    throw new Error(`${asset.label} confidential token is not configured.`);
+  }
+  return withConfidentialContracts(config, asset);
+}
+
+function assetLabel(config: DeploymentConfig, assetKey: ConfidentialAssetKey): string {
+  return resolveConfidentialAsset(config, assetKey).assetCode;
+}
 
 function requireCtConfig(config: DeploymentConfig) {
   if (
@@ -90,7 +107,7 @@ export function getOrCreateCtKeys(config: DeploymentConfig, smartAccount: string
     if (existing.addrF !== addrF) {
       if (isCtRegisteredLocally(smartAccount, tokenId)) {
         throw new Error(
-          'Private EURC keys on this device cannot be replaced after registration. Clear Lumengate site data only if support asks you to reset this account.',
+          'Private keys on this device cannot be replaced after registration. Clear Lumengate site data only if support asks you to reset this account.',
         );
       }
       const keys = generateKeys(addrF);
@@ -122,7 +139,7 @@ export async function resolveCtKeys(config: DeploymentConfig, smartAccount: stri
   if (existing) {
     if (onchain && !existing.PVK.equals(onchain.viewingPublicKey)) {
       throw new Error(
-        'Private EURC keys on this device do not match your on-chain account. Create a fresh smart account on this device to use private EURC.',
+        'Private keys on this device do not match your on-chain account. Create a fresh smart account on this device to use confidential settlement.',
       );
     }
     return existing;
@@ -130,12 +147,12 @@ export async function resolveCtKeys(config: DeploymentConfig, smartAccount: stri
 
   if (registration.local) {
     throw new Error(
-      'Private EURC registration was started on this device, but the local key material is missing. Create a fresh smart account and register again.',
+      'Private registration was started on this device, but the local key material is missing. Create a fresh smart account and register again.',
     );
   }
 
   throw new Error(
-    'This smart account is registered for private EURC, but this browser is missing the local key material needed to open your balance.',
+    'This smart account is registered for confidential settlement, but this browser is missing the local key material needed to open your balance.',
   );
 }
 
@@ -176,8 +193,9 @@ async function ctStateEngine(
   config: DeploymentConfig,
   smartAccount: string,
   _keys: KeyPair,
+  assetKey: ConfidentialAssetKey,
 ): Promise<StateEngine> {
-  return createConfidentialEurcStateEngine(config, smartAccount);
+  return createConfidentialAssetStateEngine(config, smartAccount, assetKey);
 }
 
 export type ConfidentialSettlementStep =
@@ -199,14 +217,17 @@ export type SubmitCtTx = (
   stepLabel: string,
 ) => Promise<string>;
 
-export async function registerConfidentialEurcAccount(input: {
+export async function registerConfidentialAccount(input: {
   config: DeploymentConfig;
+  assetKey?: ConfidentialAssetKey;
   txSource: string;
   smartAccount: string;
   onProgress?: (message: string) => void;
   submitTx: SubmitCtTx;
 }): Promise<string> {
-  const { config, txSource, smartAccount, onProgress, submitTx } = input;
+  const assetKey = input.assetKey ?? 'eurc';
+  const config = ctConfigForAsset(input.config, assetKey);
+  const { txSource, smartAccount, onProgress, submitTx } = input;
   if (await readCtRegistered(config, smartAccount)) {
     return '';
   }
@@ -226,15 +247,27 @@ export async function registerConfidentialEurcAccount(input: {
   const hash = await submitTx(registerTx, 'register');
   if (hash && config.confidentialTokenId) {
     markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
-    ctTrace('flow.register.confirmed', { account: smartAccount, txHash: hash });
-    await initializeCtStateFromEvents(config, smartAccount);
-    ctTrace('flow.register.initialized', { account: smartAccount, txHash: hash });
+    ctTrace('flow.register.confirmed', { account: smartAccount, txHash: hash, assetKey });
+    await initializeCtStateFromEvents(config, smartAccount, assetKey);
+    ctTrace('flow.register.initialized', { account: smartAccount, txHash: hash, assetKey });
   }
   return hash;
 }
 
-export async function executeConfidentialEurcSettlement(input: {
+/** @deprecated Use registerConfidentialAccount */
+export async function registerConfidentialEurcAccount(input: {
   config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  onProgress?: (message: string) => void;
+  submitTx: SubmitCtTx;
+}): Promise<string> {
+  return registerConfidentialAccount({ ...input, assetKey: 'eurc' });
+}
+
+export async function executeConfidentialSettlement(input: {
+  config: DeploymentConfig;
+  assetKey?: ConfidentialAssetKey;
   txSource: string;
   smartAccount: string;
   recipient: string;
@@ -242,14 +275,17 @@ export async function executeConfidentialEurcSettlement(input: {
   onProgress?: (progress: ConfidentialSettlementProgress) => void;
   submitTx: SubmitCtTx;
 }): Promise<{ txHash: string; steps: string[] }> {
-  const { config, txSource, smartAccount, recipient, amount, onProgress, submitTx } = input;
+  const assetKey = input.assetKey ?? 'eurc';
+  const config = ctConfigForAsset(input.config, assetKey);
+  const label = assetLabel(input.config, assetKey);
+  const { txSource, smartAccount, recipient, amount, onProgress, submitTx } = input;
   const contracts = requireCtConfig(config);
   const amountRaw = parseStellarAmount(amount);
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
 
   const client = ctChainClient(config);
   const keys = await resolveCtKeys(config, smartAccount);
-  const engine = await ctStateEngine(config, smartAccount, keys);
+  const engine = await ctStateEngine(config, smartAccount, keys, assetKey);
   const hashes: string[] = [];
 
   const progress = (step: ConfidentialSettlementStep, message: string) => {
@@ -273,7 +309,7 @@ export async function executeConfidentialEurcSettlement(input: {
     hashes.push(await submitTx(registerTx, 'register'));
     if (config.confidentialTokenId) {
       markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
-      await initializeCtStateFromEvents(config, smartAccount);
+      await initializeCtStateFromEvents(config, smartAccount, assetKey);
     }
     registered = true;
   }
@@ -281,7 +317,7 @@ export async function executeConfidentialEurcSettlement(input: {
   const recipientRegistered = await readCtRegistered(config, recipient);
   if (!recipientRegistered) {
     throw new Error(
-      `Recipient ${recipient} is not registered for confidential EURC. ` +
+      `Recipient ${recipient} is not registered for confidential ${label}. ` +
         'The recipient must open Lumengate Private Mode once so their confidential account can be created before receiving.',
     );
   }
@@ -305,11 +341,11 @@ export async function executeConfidentialEurcSettlement(input: {
   if (totalConfidential < amountRaw) {
     if (!verified.receivingOk && state.receiving.v > 0n) {
       throw new Error(
-        'Received private EURC is still syncing with Stellar. Spendable EURC can be sent now, but wait before auto-shielding or merging additional received balance.',
+        `Received private ${label} is still syncing with Stellar. Spendable balance can be sent now, but wait before auto-shielding or merging additional received balance.`,
       );
     }
     const depositRaw = amountRaw - totalConfidential;
-    progress('deposit', `Shielding ${amount} EURC into confidential balance…`);
+    progress('deposit', `Shielding ${amount} ${label} into confidential balance…`);
     const depositTx = await buildCtDepositTransaction(
       config,
       txSource,
@@ -331,7 +367,7 @@ export async function executeConfidentialEurcSettlement(input: {
 
   if (state.spendable.v < amountRaw && (state.receiving.v > 0n || state.receiving.r !== 0n)) {
     if (!verified.receivingOk) {
-      throw new Error('Received private EURC is syncing with Stellar. Wait a moment before merging it into spendable balance.');
+      throw new Error(`Received private ${label} is syncing with Stellar. Wait a moment before merging it into spendable balance.`);
     }
     progress('merge', 'Consolidating confidential balance…');
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
@@ -349,7 +385,7 @@ export async function executeConfidentialEurcSettlement(input: {
 
   if (state.spendable.v < amountRaw) {
     throw new Error(
-      `Insufficient confidential EURC after shielding (have ${state.spendable.v}, need ${amountRaw}).`,
+      `Insufficient confidential ${label} after shielding (have ${state.spendable.v}, need ${amountRaw}).`,
     );
   }
 
@@ -390,24 +426,41 @@ export async function executeConfidentialEurcSettlement(input: {
   return { txHash, steps: hashes };
 }
 
-export async function shieldConfidentialEurc(input: {
+/** @deprecated Use executeConfidentialSettlement */
+export async function executeConfidentialEurcSettlement(input: {
   config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  recipient: string;
+  amount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  return executeConfidentialSettlement({ ...input, assetKey: 'eurc' });
+}
+
+export async function shieldConfidentialAsset(input: {
+  config: DeploymentConfig;
+  assetKey?: ConfidentialAssetKey;
   txSource: string;
   smartAccount: string;
   amount: string;
   onProgress?: (progress: ConfidentialSettlementProgress) => void;
   submitTx: SubmitCtTx;
 }): Promise<{ txHash: string; steps: string[] }> {
-  const { config, txSource, smartAccount, amount, onProgress, submitTx } = input;
+  const assetKey = input.assetKey ?? 'eurc';
+  const config = ctConfigForAsset(input.config, assetKey);
+  const label = assetLabel(input.config, assetKey);
+  const { txSource, smartAccount, amount, onProgress, submitTx } = input;
   const amountRaw = parseStellarAmount(amount);
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
   const keys = await resolveCtKeys(config, smartAccount);
-  const engine = await ctStateEngine(config, smartAccount, keys);
+  const engine = await ctStateEngine(config, smartAccount, keys, assetKey);
   const hashes: string[] = [];
   const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
 
   if (!(await readCtRegistered(config, smartAccount))) {
-    progress('register', 'Creating your private EURC account…');
+    progress('register', `Creating your private ${label} account…`);
     const witness = buildRegisterWitness(keys);
     const proof = await proveCtCircuit('register', witness.inputs);
     const registerTx = await buildCtRegisterTransaction(
@@ -421,11 +474,11 @@ export async function shieldConfidentialEurc(input: {
     hashes.push(await submitTx(registerTx, 'register'));
     if (config.confidentialTokenId) {
       markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
-      await initializeCtStateFromEvents(config, smartAccount);
+      await initializeCtStateFromEvents(config, smartAccount, assetKey);
     }
   }
 
-  progress('deposit', `Shielding ${amount} EURC…`);
+  progress('deposit', `Shielding ${amount} ${label}…`);
   const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
   const depositHash = await submitTx(depositTx, 'deposit');
   hashes.push(depositHash);
@@ -440,7 +493,7 @@ export async function shieldConfidentialEurc(input: {
     throw new Error('Shield deposit succeeded, but no private receiving balance was found.');
   }
 
-  progress('merge', 'Moving shielded EURC into spendable private balance…');
+  progress('merge', `Moving shielded ${label} into spendable private balance…`);
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const mergeHash = await submitTx(mergeTx, 'merge');
   hashes.push(mergeHash);
@@ -457,22 +510,38 @@ export async function shieldConfidentialEurc(input: {
   return { txHash: mergeHash, steps: hashes };
 }
 
-export async function mergeConfidentialEurc(input: {
+/** @deprecated Use shieldConfidentialAsset */
+export async function shieldConfidentialEurc(input: {
   config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  amount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  return shieldConfidentialAsset({ ...input, assetKey: 'eurc' });
+}
+
+export async function mergeConfidentialAsset(input: {
+  config: DeploymentConfig;
+  assetKey?: ConfidentialAssetKey;
   txSource: string;
   smartAccount: string;
   onProgress?: (progress: ConfidentialSettlementProgress) => void;
   submitTx: SubmitCtTx;
 }): Promise<{ txHash: string; steps: string[] }> {
-  const { config, txSource, smartAccount, onProgress, submitTx } = input;
+  const assetKey = input.assetKey ?? 'eurc';
+  const config = ctConfigForAsset(input.config, assetKey);
+  const label = assetLabel(input.config, assetKey);
+  const { txSource, smartAccount, onProgress, submitTx } = input;
   const keys = await resolveCtKeys(config, smartAccount);
-  const engine = await ctStateEngine(config, smartAccount, keys);
+  const engine = await ctStateEngine(config, smartAccount, keys, assetKey);
   let { state, verified } = await engine.reconcileForRead(config.rpcUrl);
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
-    throw new Error('No received private EURC is waiting to merge.');
+    throw new Error(`No received private ${label} is waiting to merge.`);
   }
   if (!verified.receivingOk) {
-    onProgress?.({ step: 'merge', message: 'Synchronizing received private EURC before merge…' });
+    onProgress?.({ step: 'merge', message: `Synchronizing received private ${label} before merge…` });
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       requireReceiving: true,
@@ -481,9 +550,9 @@ export async function mergeConfidentialEurc(input: {
     verified = await engine.verifyAgainstChain();
   }
   if (!verified.receivingOk) {
-    throw new Error('Received private EURC is still syncing with Stellar. Wait a moment before merging.');
+    throw new Error(`Received private ${label} is still syncing with Stellar. Wait a moment before merging.`);
   }
-  onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
+  onProgress?.({ step: 'merge', message: `Moving received private ${label} into spendable balance…` });
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const txHash = await submitTx(mergeTx, 'merge');
   ctTrace('flow.merge.submitted', { account: smartAccount, txHash });
@@ -496,26 +565,41 @@ export async function mergeConfidentialEurc(input: {
   return { txHash, steps: [txHash] };
 }
 
-export async function unshieldConfidentialEurc(input: {
+/** @deprecated Use mergeConfidentialAsset */
+export async function mergeConfidentialEurc(input: {
   config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  return mergeConfidentialAsset({ ...input, assetKey: 'eurc' });
+}
+
+export async function unshieldConfidentialAsset(input: {
+  config: DeploymentConfig;
+  assetKey?: ConfidentialAssetKey;
   txSource: string;
   smartAccount: string;
   amount: string;
   onProgress?: (progress: ConfidentialSettlementProgress) => void;
   submitTx: SubmitCtTx;
 }): Promise<{ txHash: string; steps: string[] }> {
-  const { config, txSource, smartAccount, amount, onProgress, submitTx } = input;
+  const assetKey = input.assetKey ?? 'eurc';
+  const config = ctConfigForAsset(input.config, assetKey);
+  const label = assetLabel(input.config, assetKey);
+  const { txSource, smartAccount, amount, onProgress, submitTx } = input;
   const amountRaw = parseStellarAmount(amount);
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
   const client = ctChainClient(config);
   const keys = await resolveCtKeys(config, smartAccount);
-  const engine = await ctStateEngine(config, smartAccount, keys);
+  const engine = await ctStateEngine(config, smartAccount, keys, assetKey);
   const hashes: string[] = [];
   const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
 
   let state = await engine.waitUntilVerified({ rpcUrl: config.rpcUrl });
   if (state.spendable.v < amountRaw && state.receiving.v > 0n) {
-    progress('merge', 'Preparing received private EURC for unshield…');
+    progress('merge', `Preparing received private ${label} for unshield…`);
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
     hashes.push(mergeHash);
@@ -529,13 +613,13 @@ export async function unshieldConfidentialEurc(input: {
   }
   if (state.spendable.v < amountRaw) {
     throw new Error(
-      `Insufficient private EURC to unshield (have ${state.spendable.v}, need ${amountRaw}).`,
+      `Insufficient private ${label} to unshield (have ${state.spendable.v}, need ${amountRaw}).`,
     );
   }
 
   const senderOnChain = await client.confidentialBalance(smartAccount);
   if (!senderOnChain) {
-    throw new Error('Confidential EURC account is not registered on chain.');
+    throw new Error(`Confidential ${label} account is not registered on chain.`);
   }
   const kAudS = await client.auditorKey(senderOnChain.auditorId);
   progress('prove-withdraw', 'Generating unshield proof…');
@@ -547,7 +631,7 @@ export async function unshieldConfidentialEurc(input: {
     kAudS,
   });
   const proof = await proveCtCircuit('withdraw', witness.inputs);
-  progress('withdraw', `Unshielding ${amount} EURC to public balance…`);
+  progress('withdraw', `Unshielding ${amount} ${label} to public balance…`);
   const withdrawTx = await buildCtWithdrawTransaction(
     config,
     txSource,
@@ -563,10 +647,32 @@ export async function unshieldConfidentialEurc(input: {
   return { txHash, steps: hashes };
 }
 
+/** @deprecated Use unshieldConfidentialAsset */
+export async function unshieldConfidentialEurc(input: {
+  config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  amount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  return unshieldConfidentialAsset({ ...input, assetKey: 'eurc' });
+}
+
+export async function readConfidentialRegistered(
+  config: DeploymentConfig,
+  account: string,
+  assetKey: ConfidentialAssetKey = 'eurc',
+): Promise<boolean> {
+  const scoped = ctConfigForAsset(config, assetKey);
+  const status = await readCtRegistrationStatus(scoped, account);
+  return status.registered;
+}
+
+/** @deprecated Use readConfidentialRegistered */
 export async function readConfidentialEurcRegistered(
   config: DeploymentConfig,
   account: string,
 ): Promise<boolean> {
-  const status = await readCtRegistrationStatus(config, account);
-  return status.registered;
+  return readConfidentialRegistered(config, account, 'eurc');
 }

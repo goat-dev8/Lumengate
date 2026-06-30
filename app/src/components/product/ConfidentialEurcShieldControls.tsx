@@ -5,9 +5,9 @@ import { Button } from '../ui/Button';
 import { StageProgress, type StageProgressItem } from '../design/StageProgress';
 import { useApp } from '../../context/AppContext';
 import {
-  mergeConfidentialEurc,
-  shieldConfidentialEurc,
-  unshieldConfidentialEurc,
+  mergeConfidentialAsset,
+  shieldConfidentialAsset,
+  unshieldConfidentialAsset,
 } from '../../lib/confidentialFlow';
 import {
   confidentialAssetReady,
@@ -60,8 +60,9 @@ export function ConfidentialEurcShieldControls({
     ensureProofForAsset,
     signAndSubmitSettlement,
     confidentialEurcBalance,
-    confidentialBalanceLoading,
-    refreshConfidentialEurcBalance,
+    confidentialUsdcBalance,
+    confidentialBalanceLoadingFor,
+    refreshConfidentialBalance,
   } = useApp();
   const assetConfig = resolveConfidentialAsset(config, assetKey);
   const ctConfig = assetConfig.contracts ? withConfidentialContracts(config, assetConfig) : config;
@@ -78,7 +79,9 @@ export function ConfidentialEurcShieldControls({
     setError(null);
     try {
       if (assetKey === 'eurc') {
-        await refreshConfidentialEurcBalance();
+        await refreshConfidentialBalance('eurc');
+      } else {
+        await refreshConfidentialBalance('usdc');
       }
       if (assetKey === 'eurc' && config.eurcSacId) {
         const publicEurc = await withRetry(() => readEurcSacBalance(config, settlementAddress), {
@@ -98,7 +101,7 @@ export function ConfidentialEurcShieldControls({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [assetConfig.contracts, assetKey, config, settlementAddress, refreshConfidentialEurcBalance]);
+  }, [assetConfig.contracts, assetKey, config, settlementAddress, refreshConfidentialBalance]);
 
   useEffect(() => {
     void refresh();
@@ -112,8 +115,8 @@ export function ConfidentialEurcShieldControls({
 
   if (!confidentialAssetReady(config, assetKey) || !settlementAddress) return null;
 
-  const balance = assetKey === 'eurc' ? confidentialEurcBalance : null;
-  const loading = confidentialBalanceLoading;
+  const balance = assetKey === 'usdc' ? confidentialUsdcBalance : confidentialEurcBalance;
+  const loading = confidentialBalanceLoadingFor(assetKey);
   const registered = balance?.registered === true;
   const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
   const compact = variant === 'send';
@@ -136,11 +139,9 @@ export function ConfidentialEurcShieldControls({
       };
 
       if (kind === 'shield') {
-        if (assetKey !== 'eurc') {
-          throw new Error(`${assetConfig.label} confidential shield is not deployed on this network yet.`);
-        }
-        await shieldConfidentialEurc({
+        await shieldConfidentialAsset({
           config: ctConfig,
+          assetKey,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
@@ -152,11 +153,9 @@ export function ConfidentialEurcShieldControls({
         });
         onShielded?.();
       } else if (kind === 'merge') {
-        if (assetKey !== 'eurc') {
-          throw new Error(`${assetConfig.label} confidential merge is not deployed on this network yet.`);
-        }
-        await mergeConfidentialEurc({
+        await mergeConfidentialAsset({
           config: ctConfig,
+          assetKey,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           onProgress: (p) => {
@@ -166,11 +165,9 @@ export function ConfidentialEurcShieldControls({
           submitTx,
         });
       } else {
-        if (assetKey !== 'eurc') {
-          throw new Error(`${assetConfig.label} confidential unshield is not deployed on this network yet.`);
-        }
-        await unshieldConfidentialEurc({
+        await unshieldConfidentialAsset({
           config: ctConfig,
+          assetKey,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
@@ -333,7 +330,7 @@ export function ConfidentialEurcShieldControls({
               stages={CT_ACTION_STAGES}
               currentStageId={actionStage}
               indeterminate={actionStage !== 'done'}
-              aria-label="Confidential EURC operation progress"
+              aria-label={`Confidential ${assetConfig.assetCode} operation progress`}
             />
           </div>
         ) : null}

@@ -522,13 +522,14 @@ app.post('/disclose', express.json(), async (req, res) => {
   }
 });
 
-app.get('/ct/deployments', (_req, res) => {
+app.get('/ct/deployments', (req, res) => {
   try {
-    const deployment = loadCtDeployments();
+    const assetKey = String(req.query.asset || 'eurc').toLowerCase();
+    const deployment = loadCtDeployments(assetKey);
     if (!deployment) {
-      return res.status(404).json({ error: 'Confidential token deployment not configured' });
+      return res.status(404).json({ error: `Confidential token deployment not configured for ${assetKey}` });
     }
-    return res.json({ network: process.env.STELLAR_NETWORK_NAME || 'testnet', deployment });
+    return res.json({ network: process.env.STELLAR_NETWORK_NAME || 'testnet', assetKey, deployment });
   } catch (err) {
     return res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -539,6 +540,7 @@ app.get('/ct/events', (req, res) => {
     const result = listCtEvents({
       account: req.query.account,
       fromLedger: req.query.fromLedger,
+      asset: req.query.asset,
     });
     return res.json(result);
   } catch (err) {
@@ -546,9 +548,10 @@ app.get('/ct/events', (req, res) => {
   }
 });
 
-app.post('/ct/sync', async (_req, res) => {
+app.post('/ct/sync', async (req, res) => {
   try {
-    const result = await syncConfidentialEvents(process.env);
+    const assetKey = String(req.query.asset || req.body?.asset || 'eurc').toLowerCase();
+    const result = await syncConfidentialEvents(process.env, assetKey);
     return res.json({ ok: true, ...result });
   } catch (err) {
     return res.status(503).json({ error: err instanceof Error ? err.message : String(err) });

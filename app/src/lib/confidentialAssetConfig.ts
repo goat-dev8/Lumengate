@@ -54,14 +54,15 @@ function contractsFromFields(fields: {
 }
 
 function resolveEurcAsset(config: DeploymentConfig): ConfidentialAssetConfig {
+  const stack = config.confidentialTokens?.eurc;
   const contracts = contractsFromFields({
-    token: config.confidentialTokenId,
-    verifier: config.confidentialVerifierId,
-    auditor: config.confidentialAuditorId,
-    policy: config.confidentialPolicyId,
-    underlying: config.confidentialUnderlyingId ?? config.eurcSacId,
-    auditorIdNum: config.confidentialAuditorIdNum,
-    deployedAtLedger: config.confidentialDeployedAtLedger,
+    token: stack?.token ?? config.confidentialTokenId,
+    verifier: stack?.verifier ?? config.confidentialVerifierId,
+    auditor: stack?.auditor ?? config.confidentialAuditorId,
+    policy: stack?.policy ?? config.confidentialPolicyId,
+    underlying: stack?.underlying ?? config.confidentialUnderlyingId ?? config.eurcSacId,
+    auditorIdNum: stack?.auditorIdNum ?? config.confidentialAuditorIdNum,
+    deployedAtLedger: stack?.deployedAtLedger ?? config.confidentialDeployedAtLedger,
   });
   return {
     key: 'eurc',
@@ -74,14 +75,19 @@ function resolveEurcAsset(config: DeploymentConfig): ConfidentialAssetConfig {
 }
 
 function resolveUsdcAsset(config: DeploymentConfig): ConfidentialAssetConfig {
+  const stack = config.confidentialTokens?.usdc;
   const contracts = contractsFromFields({
-    token: readOptionalEnv('VITE_CONFIDENTIAL_USDC_TOKEN_ID'),
-    verifier: readOptionalEnv('VITE_CONFIDENTIAL_USDC_VERIFIER_ID') ?? config.confidentialVerifierId,
-    auditor: readOptionalEnv('VITE_CONFIDENTIAL_USDC_AUDITOR_ID') ?? config.confidentialAuditorId,
-    policy: readOptionalEnv('VITE_CONFIDENTIAL_USDC_POLICY_ID') ?? config.confidentialPolicyId,
-    underlying: config.usdcSacId,
-    auditorIdNum: Number(readOptionalEnv('VITE_CONFIDENTIAL_USDC_AUDITOR_ID_NUM') ?? config.confidentialAuditorIdNum ?? 1),
-    deployedAtLedger: Number(readOptionalEnv('VITE_CONFIDENTIAL_USDC_DEPLOYED_AT_LEDGER') ?? 0) || undefined,
+    token: readOptionalEnv('VITE_CONFIDENTIAL_USDC_TOKEN_ID') ?? stack?.token,
+    verifier: readOptionalEnv('VITE_CONFIDENTIAL_USDC_VERIFIER_ID') ?? stack?.verifier,
+    auditor: readOptionalEnv('VITE_CONFIDENTIAL_USDC_AUDITOR_ID') ?? stack?.auditor,
+    policy: readOptionalEnv('VITE_CONFIDENTIAL_USDC_POLICY_ID') ?? stack?.policy,
+    underlying: stack?.underlying ?? config.usdcSacId,
+    auditorIdNum: Number(
+      readOptionalEnv('VITE_CONFIDENTIAL_USDC_AUDITOR_ID_NUM') ?? stack?.auditorIdNum ?? 1,
+    ),
+    deployedAtLedger:
+      Number(readOptionalEnv('VITE_CONFIDENTIAL_USDC_DEPLOYED_AT_LEDGER') ?? stack?.deployedAtLedger ?? 0) ||
+      undefined,
   });
   return {
     key: 'usdc',

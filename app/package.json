@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node ../scripts/fetch_crs_assets.mjs && tsc -b && vite build",
+    "build": "node -e \"import('node:fs').then(fs=>{const p='../scripts/fetch_crs_assets.mjs';if(fs.existsSync(p))import(p);})\" && tsc -b && vite build",
     "test": "tsc -b --pretty false && node --import tsx --test test/*.test.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test"

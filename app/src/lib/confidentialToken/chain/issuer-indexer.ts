@@ -127,14 +127,22 @@ export function parseIssuerCtEvent(row: IssuerCtEventRow): ConfidentialEvent | n
 }
 
 export class IssuerCtIndexerClient {
-  constructor(readonly cfg: { baseUrl: string }) {}
+  constructor(readonly cfg: { baseUrl: string; assetKey?: 'eurc' | 'usdc' }) {}
 
   private base(): string {
     return this.cfg.baseUrl.replace(/\/$/, "");
   }
 
+  private eventsPath(startLedger?: number): string {
+    const params = new URLSearchParams();
+    if (this.cfg.assetKey) params.set("asset", this.cfg.assetKey);
+    if (startLedger !== undefined) params.set("fromLedger", String(startLedger));
+    const qs = params.toString();
+    return `${this.base()}/ct/events${qs ? `?${qs}` : ""}`;
+  }
+
   async health(): Promise<IndexerHealth> {
-    const resp = await fetch(`${this.base()}/ct/events`);
+    const resp = await fetch(this.eventsPath());
     if (!resp.ok) return { latestSyncedLedger: 0 };
     const body = (await resp.json()) as IssuerCtEventsResponse;
     return { latestSyncedLedger: Number(body.latestLedger ?? 0) };
@@ -148,10 +156,7 @@ export class IssuerCtIndexerClient {
   }): Promise<FetchEventsResult> {
     void opts.contractId;
     void opts.pageLimit;
-    const params = new URLSearchParams();
-    if (opts.startLedger !== undefined) params.set("fromLedger", String(opts.startLedger));
-    const qs = params.toString();
-    const resp = await fetch(`${this.base()}/ct/events${qs ? `?${qs}` : ""}`);
+    const resp = await fetch(this.eventsPath(opts.startLedger));
     if (!resp.ok) {
       throw new Error(`issuer CT events ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
     }
@@ -167,9 +172,7 @@ export class IssuerCtIndexerClient {
   }
 
   async resolveEventRef(_contractId: string, ref: EventRef): Promise<ConfidentialEvent | null> {
-    const resp = await fetch(
-      `${this.base()}/ct/events?fromLedger=${ref.ledger}`,
-    );
+    const resp = await fetch(this.eventsPath(ref.ledger));
     if (!resp.ok) return null;
     const body = (await resp.json()) as IssuerCtEventsResponse;
     const match = (body.events ?? [])

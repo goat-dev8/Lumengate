@@ -1,5 +1,5 @@
 import { StrKey } from '@stellar/stellar-sdk';
-import deployments from '../../../deployments.json';
+import deployments from '../../deployments.json';
 
 export type DeploymentConfig = {
   network: string;
@@ -48,6 +48,21 @@ export type DeploymentConfig = {
   confidentialAuditorIdNum?: number;
   confidentialDeployedAtLedger?: number;
   confidentialIndexerUrl?: string;
+  /** Per-asset CT stacks from deployments.json (eurc, usdc, …). */
+  confidentialTokens?: Partial<
+    Record<
+      'eurc' | 'usdc',
+      {
+        token: string;
+        verifier: string;
+        auditor: string;
+        policy: string;
+        underlying: string;
+        auditorIdNum: number;
+        deployedAtLedger?: number;
+      }
+    >
+  >;
 };
 
 type DeploymentsFile = {
@@ -70,6 +85,7 @@ type DeploymentsFile = {
   asp_membership?: string;
   eurc_sac?: string;
   native_sac?: string;
+  usdc_sac?: string;
   confidential_token?: {
     verifier: string;
     auditor: string;
@@ -79,7 +95,55 @@ type DeploymentsFile = {
     deployed_at_ledger?: number;
     auditor_id?: number;
   };
+  confidential_tokens?: Record<
+    string,
+    {
+      verifier: string;
+      auditor: string;
+      policy: string;
+      token: string;
+      underlying: string;
+      deployed_at_ledger?: number;
+      auditor_id?: number;
+    }
+  >;
 };
+
+function mapConfidentialTokenStack(
+  stack?: DeploymentsFile['confidential_token'],
+): DeploymentConfig['confidentialTokens'] {
+  if (!stack?.token) return undefined;
+  const entry = {
+    token: stack.token,
+    verifier: stack.verifier,
+    auditor: stack.auditor,
+    policy: stack.policy,
+    underlying: stack.underlying,
+    auditorIdNum: stack.auditor_id ?? 1,
+    deployedAtLedger: stack.deployed_at_ledger,
+  };
+  return { eurc: entry };
+}
+
+function loadConfidentialTokens(): DeploymentConfig['confidentialTokens'] {
+  const mapped: NonNullable<DeploymentConfig['confidentialTokens']> = {
+    ...mapConfidentialTokenStack(CANONICAL.confidential_token),
+  };
+  for (const [key, stack] of Object.entries(CANONICAL.confidential_tokens ?? {})) {
+    if (key !== 'eurc' && key !== 'usdc') continue;
+    if (!stack?.token) continue;
+    mapped[key] = {
+      token: stack.token,
+      verifier: stack.verifier,
+      auditor: stack.auditor,
+      policy: stack.policy,
+      underlying: stack.underlying,
+      auditorIdNum: stack.auditor_id ?? 1,
+      deployedAtLedger: stack.deployed_at_ledger,
+    };
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
 
 const CANONICAL = deployments as DeploymentsFile;
 
@@ -153,7 +217,10 @@ export function loadDeploymentConfig(): DeploymentConfig {
       'VITE_COMPLIANCE_SAC_ADMIN_ID',
       CANONICAL.compliance_sac_admin,
     ),
-    usdcSacId: optionalViteEnv('VITE_USDC_SAC_ID') || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    usdcSacId:
+      optionalViteEnv('VITE_USDC_SAC_ID') ||
+      CANONICAL.usdc_sac ||
+      'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
     usdcIssuer:
       optionalViteEnv('VITE_USDC_ISSUER') || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
     usdcAssetCode: optionalViteEnv('VITE_USDC_ASSET_CODE') || 'USDC',
@@ -229,6 +296,7 @@ export function loadDeploymentConfig(): DeploymentConfig {
       CANONICAL.confidential_token?.deployed_at_ledger ||
       undefined,
     confidentialIndexerUrl: optionalViteEnv('VITE_CONFIDENTIAL_INDEXER_URL'),
+    confidentialTokens: loadConfidentialTokens(),
   };
 }
 

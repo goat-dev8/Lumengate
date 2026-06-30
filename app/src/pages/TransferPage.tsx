@@ -48,11 +48,12 @@ import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
-import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
+import { executeConfidentialSettlement, readConfidentialRegistered } from '../lib/confidentialFlow';
 import { formatConfidentialAmount } from '../lib/confidentialBalance';
 import {
   confidentialAssetForSettlement,
   confidentialAssetReady,
+  type ConfidentialAssetKey,
 } from '../lib/confidentialAssetConfig';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
@@ -92,7 +93,10 @@ export function TransferPage() {
     fundSmartAccountEurc,
     fundSmartAccountXlm,
     confidentialEurcBalance,
+    confidentialUsdcBalance,
     confidentialBalanceLoading,
+    confidentialBalanceLoadingFor,
+    refreshConfidentialBalance,
     refreshConfidentialEurcBalance,
     lumengateSessionStatus,
   } = useApp();
@@ -203,39 +207,46 @@ export function TransferPage() {
     };
   }, [credential, asset, scope, config, consumedTxHash]);
 
+  const ctAssetKey: ConfidentialAssetKey | null = ctAsset;
+  const activeConfidentialBalance =
+    ctAssetKey === 'usdc' ? confidentialUsdcBalance : confidentialEurcBalance;
+  const activeConfidentialLoading = ctAssetKey
+    ? confidentialBalanceLoadingFor(ctAssetKey)
+    : confidentialBalanceLoading;
+
   useEffect(() => {
-    if (!confidentialMode || !config.confidentialTokenId || !to || !validateStellarAddress(to.trim())) {
+    if (!confidentialMode || !ctAssetKey || !confidentialAssetReady(config, ctAssetKey) || !to || !validateStellarAddress(to.trim())) {
       setCtRecipientRegistered(null);
       return;
     }
     let cancelled = false;
-    void readConfidentialEurcRegistered(config, to.trim()).then((ok) => {
+    void readConfidentialRegistered(config, to.trim(), ctAssetKey).then((ok) => {
       if (!cancelled) setCtRecipientRegistered(ok);
     });
     return () => {
       cancelled = true;
     };
-  }, [confidentialMode, config, to]);
+  }, [confidentialMode, config, to, ctAssetKey]);
 
   useEffect(() => {
-    if (!confidentialMode || !config.confidentialTokenId || !settlementAddress) {
+    if (!confidentialMode || !ctAssetKey || !confidentialAssetReady(config, ctAssetKey) || !settlementAddress) {
       setSenderCtRegistered(null);
       return;
     }
     let cancelled = false;
-    void readConfidentialEurcRegistered(config, settlementAddress).then((ok) => {
+    void readConfidentialRegistered(config, settlementAddress, ctAssetKey).then((ok) => {
       if (!cancelled) setSenderCtRegistered(ok);
     });
     return () => {
       cancelled = true;
     };
-  }, [confidentialMode, config, settlementAddress]);
+  }, [confidentialMode, config, settlementAddress, ctAssetKey]);
 
-  const confidentialSpendableBalance = confidentialEurcBalance
-    ? formatConfidentialAmount(confidentialEurcBalance.spendable)
+  const confidentialSpendableBalance = activeConfidentialBalance
+    ? formatConfidentialAmount(activeConfidentialBalance.spendable)
     : null;
-  const confidentialReceivingBalance = confidentialEurcBalance
-    ? formatConfidentialAmount(confidentialEurcBalance.receiving)
+  const confidentialReceivingBalance = activeConfidentialBalance
+    ? formatConfidentialAmount(activeConfidentialBalance.receiving)
     : null;
 
   const handleTransfer = async () => {
@@ -299,24 +310,27 @@ export function TransferPage() {
 
     }
 
-    if (asset === 'eurc' && confidentialMode && confidentialRecipientIsG) {
-      setError(confidentialRecipientWarning ?? 'Use a C… smart account address for confidential EURC.');
-      return;
-    }
-    if (asset === 'eurc' && confidentialMode && ctRecipientRegistered === false) {
+    if (confidentialMode && ctAssetKey && confidentialRecipientIsG) {
       setError(
-        'Recipient is not registered for confidential EURC. Use their Lumengate smart account address (C…), not a funding wallet (G…). They must open Private Mode once before receiving.',
+        confidentialRecipientWarning ??
+          `Use a C… smart account address for confidential ${friendlyAssetName(ctAssetKey)}.`,
       );
       return;
     }
-    if (asset === 'eurc' && confidentialMode) {
+    if (confidentialMode && ctAssetKey && ctRecipientRegistered === false) {
+      setError(
+        `Recipient is not registered for confidential ${friendlyAssetName(ctAssetKey)}. Use their Lumengate smart account address (C…), not a funding wallet (G…). They must open Private Mode once before receiving.`,
+      );
+      return;
+    }
+    if (confidentialMode && ctAssetKey && confidentialAssetReady(config, ctAssetKey)) {
       if (!lumengateSessionStatus?.enabled) {
         setError('Enable Trusted device (7 days) on your dashboard before confidential settlement.');
         return;
       }
-      let balance = confidentialEurcBalance;
+      let balance = activeConfidentialBalance;
       if (!balance?.spendableSynced) {
-        balance = await refreshConfidentialEurcBalance();
+        balance = await refreshConfidentialBalance(ctAssetKey);
       }
       if (!balance?.spendableSynced) {
         setError(
@@ -372,11 +386,12 @@ export function TransferPage() {
       }
       const txSource = resolvePasskeySimulationSource(address);
       let hash: string;
-      if (asset === 'eurc' && confidentialMode && config.confidentialTokenId) {
+      if (confidentialMode && ctAssetKey && confidentialAssetReady(config, ctAssetKey)) {
         setSettlementPhase('proving');
-        setStatusMessage('Preparing confidential EURC settlement…');
-        const result = await executeConfidentialEurcSettlement({
+        setStatusMessage(`Preparing confidential ${friendlyAssetName(ctAssetKey)} settlement…`);
+        const result = await executeConfidentialSettlement({
           config,
+          assetKey: ctAssetKey,
           txSource,
           smartAccount: settlementFrom,
           recipient,
@@ -443,11 +458,10 @@ export function TransferPage() {
         amount,
 
         success: true,
-        confidential: asset === 'eurc' && confidentialMode,
-
+        confidential: confidentialMode && Boolean(ctAssetKey),
       });
-      if (asset === 'eurc' && confidentialMode) {
-        await refreshConfidentialEurcBalance();
+      if (confidentialMode && ctAssetKey) {
+        await refreshConfidentialBalance(ctAssetKey);
       }
       setBalanceRefresh((value) => value + 1);
 
@@ -455,14 +469,16 @@ export function TransferPage() {
         kind: 'transfer',
         title:
           asset === 'usdc'
-            ? `USDC settlement: ${amount}`
+            ? confidentialMode
+              ? 'Confidential USDC settlement'
+              : `USDC settlement: ${amount}`
             : asset === 'eurc'
               ? confidentialMode
                 ? 'Confidential EURC settlement'
                 : `EURC settlement: ${amount}`
               : 'Transfer completed',
         detail:
-          asset === 'eurc' && confidentialMode
+          confidentialMode && ctAssetKey
             ? `Amount private by default → ${truncateMiddle(recipient, 8, 6)}`
             : `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? 'EURC' : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
         txHash: hash,
@@ -506,22 +522,37 @@ export function TransferPage() {
   const assetProofReady = Boolean(activeProof);
   const confidentialRecipientIsG =
     confidentialMode && to.trim().startsWith('G') && validateStellarAddress(to.trim());
+  const confidentialAssetLabel = ctAssetKey ? friendlyAssetName(ctAssetKey) : 'EURC';
   const confidentialRecipientWarning = confidentialRecipientIsG
-    ? 'Confidential EURC requires the recipient’s Lumengate smart account (C… address). G… funding wallets cannot receive shielded EURC.'
+    ? `Confidential ${confidentialAssetLabel} requires the recipient’s Lumengate smart account (C… address). G… funding wallets cannot receive shielded ${confidentialAssetLabel}.`
     : null;
 
   const balanceLabel =
     asset === 'usdc'
-      ? usdcBalance !== null
-        ? `${usdcBalance} USDC`
-        : 'USDC unavailable'
+      ? confidentialMode
+        ? activeConfidentialLoading && !activeConfidentialBalance
+          ? 'Checking private USDC…'
+          : activeConfidentialBalance?.registered === false
+            ? 'Register private USDC on Dashboard'
+            : !activeConfidentialBalance?.spendableSynced
+              ? 'Syncing private USDC…'
+              : confidentialSpendableBalance !== null
+                ? `${confidentialSpendableBalance} spendable private USDC${
+                    confidentialReceivingBalance && confidentialReceivingBalance !== '0'
+                      ? ` · ${confidentialReceivingBalance} receiving`
+                      : ''
+                  }`
+                : 'Private USDC unavailable'
+        : usdcBalance !== null
+          ? `${usdcBalance} USDC`
+          : 'USDC unavailable'
       : asset === 'eurc'
         ? confidentialMode
-          ? confidentialBalanceLoading && !confidentialEurcBalance
+          ? activeConfidentialLoading && !activeConfidentialBalance
             ? 'Checking private EURC…'
-            : confidentialEurcBalance?.registered === false
+            : activeConfidentialBalance?.registered === false
               ? 'Register private EURC on Dashboard'
-              : !confidentialEurcBalance?.spendableSynced
+              : !activeConfidentialBalance?.spendableSynced
                 ? 'Syncing private EURC…'
                 : confidentialSpendableBalance !== null
                 ? `${confidentialSpendableBalance} spendable private EURC${
@@ -539,7 +570,7 @@ export function TransferPage() {
 
   const recipientValid = to ? validateStellarAddress(to) : null;
   const complianceLines = [
-    ...(confidentialMode && config.confidentialTokenId
+    ...(confidentialMode && ctAssetKey && confidentialAssetReady(config, ctAssetKey)
       ? [
           {
             label: 'Your confidential account',

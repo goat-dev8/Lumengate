@@ -19,8 +19,6 @@ if [[ -z "$RENDER_KEY" ]]; then
   exit 1
 fi
 
-CT=$(node -e "console.log(JSON.stringify(require('$ROOT/deployments.json').confidential_token))")
-
 upsert_vercel_env() {
   local key=$1 value=$2
   local existing
@@ -51,29 +49,61 @@ upsert_render_env() {
   echo "Render env: $key"
 }
 
-TOKEN=$(node -e "const c=$CT; console.log(c.token)")
-VERIFIER=$(node -e "const c=$CT; console.log(c.verifier)")
-AUDITOR=$(node -e "const c=$CT; console.log(c.auditor)")
-POLICY=$(node -e "const c=$CT; console.log(c.policy)")
-UNDERLYING=$(node -e "const c=$CT; console.log(c.underlying)")
-LEDGER=$(node -e "const c=$CT; console.log(c.deployed_at_ledger||3352000)")
+sync_asset() {
+  local asset=$1
+  local prefix=$2
+  local stack
+  stack=$(node -e "
+    const d=require('$ROOT/deployments.json');
+    const s=d.confidential_tokens?.['$asset']||(('$asset'==='eurc')?d.confidential_token:null);
+    if(!s) process.exit(1);
+    console.log(JSON.stringify(s));
+  ")
 
-echo "=== Vercel ($VERCEL_PROJECT) ==="
-upsert_vercel_env VITE_CONFIDENTIAL_TOKEN_CONTRACT_ID "$TOKEN"
-upsert_vercel_env VITE_CONFIDENTIAL_VERIFIER_CONTRACT_ID "$VERIFIER"
-upsert_vercel_env VITE_CONFIDENTIAL_AUDITOR_CONTRACT_ID "$AUDITOR"
-upsert_vercel_env VITE_CONFIDENTIAL_POLICY_CONTRACT_ID "$POLICY"
-upsert_vercel_env VITE_CONFIDENTIAL_UNDERLYING_ASSET_CONTRACT_ID "$UNDERLYING"
-upsert_vercel_env VITE_CONFIDENTIAL_DEPLOYED_AT_LEDGER "$LEDGER"
+  local token verifier auditor policy underlying ledger
+  token=$(node -e "console.log(JSON.parse(process.argv[1]).token)" "$stack")
+  verifier=$(node -e "console.log(JSON.parse(process.argv[1]).verifier)" "$stack")
+  auditor=$(node -e "console.log(JSON.parse(process.argv[1]).auditor)" "$stack")
+  policy=$(node -e "console.log(JSON.parse(process.argv[1]).policy)" "$stack")
+  underlying=$(node -e "console.log(JSON.parse(process.argv[1]).underlying)" "$stack")
+  ledger=$(node -e "console.log(JSON.parse(process.argv[1]).deployed_at_ledger||3352000)" "$stack")
+
+  echo "=== Sync confidential $asset ==="
+  if [[ "$asset" == "eurc" ]]; then
+    upsert_vercel_env VITE_CONFIDENTIAL_TOKEN_CONTRACT_ID "$token"
+    upsert_vercel_env VITE_CONFIDENTIAL_VERIFIER_CONTRACT_ID "$verifier"
+    upsert_vercel_env VITE_CONFIDENTIAL_AUDITOR_CONTRACT_ID "$auditor"
+    upsert_vercel_env VITE_CONFIDENTIAL_POLICY_CONTRACT_ID "$policy"
+    upsert_vercel_env VITE_CONFIDENTIAL_UNDERLYING_ASSET_CONTRACT_ID "$underlying"
+    upsert_vercel_env VITE_CONFIDENTIAL_DEPLOYED_AT_LEDGER "$ledger"
+    upsert_render_env CONFIDENTIAL_TOKEN_ID "$token"
+    upsert_render_env CONFIDENTIAL_VERIFIER_ID "$verifier"
+    upsert_render_env CONFIDENTIAL_AUDITOR_ID "$auditor"
+    upsert_render_env CONFIDENTIAL_POLICY_ID "$policy"
+    upsert_render_env CONFIDENTIAL_UNDERLYING_ID "$underlying"
+    upsert_render_env CONFIDENTIAL_DEPLOYED_AT_LEDGER "$ledger"
+    upsert_render_env CONFIDENTIAL_AUDITOR_ID_NUM "1"
+  else
+    upsert_vercel_env "VITE_CONFIDENTIAL_${prefix}_TOKEN_ID" "$token"
+    upsert_vercel_env "VITE_CONFIDENTIAL_${prefix}_VERIFIER_ID" "$verifier"
+    upsert_vercel_env "VITE_CONFIDENTIAL_${prefix}_AUDITOR_ID" "$auditor"
+    upsert_vercel_env "VITE_CONFIDENTIAL_${prefix}_POLICY_ID" "$policy"
+    upsert_vercel_env "VITE_CONFIDENTIAL_${prefix}_DEPLOYED_AT_LEDGER" "$ledger"
+    upsert_render_env "CONFIDENTIAL_${prefix}_TOKEN_ID" "$token"
+    upsert_render_env "CONFIDENTIAL_${prefix}_VERIFIER_ID" "$verifier"
+    upsert_render_env "CONFIDENTIAL_${prefix}_AUDITOR_ID" "$auditor"
+    upsert_render_env "CONFIDENTIAL_${prefix}_POLICY_ID" "$policy"
+    upsert_render_env "CONFIDENTIAL_${prefix}_UNDERLYING_ID" "$underlying"
+    upsert_render_env "CONFIDENTIAL_${prefix}_DEPLOYED_AT_LEDGER" "$ledger"
+    upsert_render_env "CONFIDENTIAL_${prefix}_AUDITOR_ID_NUM" "1"
+  fi
+}
+
+echo "=== Vercel ($VERCEL_PROJECT) + Render ($RENDER_SERVICE) ==="
+sync_asset eurc EURC
+sync_asset usdc USDC
 upsert_vercel_env VITE_CONFIDENTIAL_INDEXER_URL "https://lumengate-issuer.onrender.com/ct"
+upsert_vercel_env VITE_USDC_SAC_ID "$(node -e "console.log(require('$ROOT/deployments.json').usdc_sac||'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA')")"
 
-echo "=== Render ($RENDER_SERVICE) ==="
-upsert_render_env CONFIDENTIAL_TOKEN_ID "$TOKEN"
-upsert_render_env CONFIDENTIAL_VERIFIER_ID "$VERIFIER"
-upsert_render_env CONFIDENTIAL_AUDITOR_ID "$AUDITOR"
-upsert_render_env CONFIDENTIAL_POLICY_ID "$POLICY"
-upsert_render_env CONFIDENTIAL_UNDERLYING_ID "$UNDERLYING"
-upsert_render_env CONFIDENTIAL_DEPLOYED_AT_LEDGER "$LEDGER"
-upsert_render_env CONFIDENTIAL_AUDITOR_ID_NUM "1"
-
-echo "Done. Redeploy Vercel + Render for changes to take effect."
+echo "Done. Trigger redeploys next."
+cp "$ROOT/deployments.json" "$ROOT/app/deployments.json"

@@ -1,6 +1,6 @@
 # Lumengate — Verified Test Results
 
-**Generated:** 2026-06-30T20:53:01Z (UTC)  
+**Generated:** 2026-06-30T23:10:00Z (UTC)  
 **Repository root:** `/home/devmo/Lumengate`  
 **Network:** Stellar Soroban testnet  
 **Prerequisites for full integration pass:** `.env` with funded testnet keys, `stellar` CLI on `PATH`, local issuer on `http://127.0.0.1:3001` (`cd issuer-service && PORT=3001 node server.js`)
@@ -13,13 +13,13 @@
 |-------|-------:|-------:|--------:|---------|
 | Rust — Lumengate contracts (17 crates) | 42 | 0 | 0 | see Rust section |
 | Rust — UltraHonk verifier | 54 | 0 | 0 | `cargo test -p rs-soroban-ultrahonk -p ultrahonk_soroban_verifier` |
-| Integration — shell / on-chain | 71 | 0 | 0 | see Integration section |
+| Integration — shell / on-chain | 78 | 0 | 0 | see Integration section |
 | Circuits — Node prove | 1 | 0 | 0 | `node scripts/test_prove_node.mjs 200` |
-| Backend — issuer-service | 27 | 0 | 0 | `cd issuer-service && npm test` |
-| Frontend — app unit | 12 | 0 | 0 | `cd app && npm test` |
-| **Total executed passing tests** | **207** | **0** | **0** | |
+| Backend — issuer-service | 30 | 0 | 0 | `cd issuer-service && npm test` |
+| Frontend — app unit | 14 | 0 | 0 | `cd app && npm test` |
+| **Total executed passing tests** | **219** | **0** | **0** | |
 
-**Delta from prior verified run (155 tests):** **+52** new passing tests.
+**Delta from prior verified run (207 tests):** **+12** (USDC CT stack verification + generic asset config tests + faucet liquidity tests).
 
 **Stress / manual matrix:** `node scripts/ct_passkey_validation.mjs` — not executed in this run (requires interactive passkey sessions).
 
@@ -91,12 +91,12 @@ cargo test -p rs-soroban-ultrahonk -p ultrahonk_soroban_verifier
 | Script | Passed | Failed | Skipped | Command |
 |--------|-------:|-------:|--------:|---------|
 | verify_passkey_auth_encoding.sh | 1 | 0 | 0 | `bash scripts/verify_passkey_auth_encoding.sh` |
-| verify_confidential_token.sh | 9 | 0 | 0 | `ISSUER_SERVICE_URL=http://127.0.0.1:3001 bash scripts/verify_confidential_token.sh` |
+| verify_confidential_token.sh | 16 | 0 | 0 | `bash scripts/verify_confidential_token.sh` (EURC + USDC stacks) |
 | ct_integration_test.sh | 2 | 0 | 0 | `bash scripts/ct_integration_test.sh` |
 | api_integration_test.sh | 18 | 0 | 0 | `ISSUER_URL=http://127.0.0.1:3001 bash scripts/api_integration_test.sh` |
 | regression_test.sh | 34 | 0 | 0 | `curl …/registry/sync-root` then `bash scripts/regression_test.sh` |
 | verify_ct_sync.mjs | 7 | 0 | 0 | `ISSUER_SERVICE_URL=http://127.0.0.1:3001 node scripts/verify_ct_sync.mjs` |
-| **Subtotal** | **71** | **0** | **0** | |
+| **Subtotal** | **78** | **0** | **0** | |
 
 **Note:** `api_integration_test.sh` against production Render issuer returns **503** on `GET /issuer/2` when `stellar` CLI is unavailable on the host (`spawnSync stellar ENOENT`). Run against local issuer for full pass.
 
@@ -150,7 +150,7 @@ node scripts/test_prove_node.mjs 200
 cd issuer-service && npm test
 ```
 
-**Result:** 27 passed, 0 failed  
+**Result:** 30 passed, 0 failed  
 **Log:** `/tmp/backend_final.log`
 
 | File | Tests passed |
@@ -164,6 +164,7 @@ cd issuer-service && npm test
 | revoke.test.js | 2 |
 | offerings.test.js | 4 |
 | relayerXdrNormalize.test.js | 2 |
+| faucetLiquidity.test.js | 3 |
 
 ---
 
@@ -175,7 +176,7 @@ cd issuer-service && npm test
 cd app && npm test
 ```
 
-**Result:** 12 passed, 0 failed  
+**Result:** 14 passed, 0 failed  
 **Log:** `/tmp/frontend_final.log`
 
 | File | Tests passed |
@@ -183,6 +184,7 @@ cd app && npm test
 | assetScope.test.mjs | 4 |
 | assetAmount.test.mjs | 4 |
 | credentialProof.test.mjs | 4 |
+| confidentialAssetConfig.test.mjs | 2 |
 
 ---
 
