@@ -39,6 +39,11 @@ EXECUTION_*
 VISUAL_*
 FRONTEND_*
 
+# --- Canonical docs/ release documentation (tracked) ---
+!docs/
+!docs/**
+!ROOT_CAUSE_SYNC_REPORT.md
+
 # --- Cloned research & documentation repos ---
 research/
 .firecrawl/

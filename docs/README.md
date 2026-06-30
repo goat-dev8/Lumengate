@@ -1,8 +1,19 @@
 # Lumengate Documentation Index
 
-**Last updated:** 2026-06-27 · commit `3e0ea77`
+**Last updated:** 2026-06-30 · commit `a8fed62`
 
 Read these documents in order for a full picture of the project today.
+
+## Release documentation (2026-06-30)
+
+| Document | Description |
+|----------|-------------|
+| [**FINAL_PROJECT_IMPLEMENTATION_REPORT.md**](./FINAL_PROJECT_IMPLEMENTATION_REPORT.md) | Executive architecture report — all subsystems |
+| [**PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md**](./PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md) | Definitive passkey, sessions, context rules, bug catalog |
+| [**CONFIDENTIAL_TOKENS_ON_STELLAR.md**](./CONFIDENTIAL_TOKENS_ON_STELLAR.md) | CT feature comparison vs Stellar Developer Preview |
+| [**FINAL_TEST_REPORT.md**](./FINAL_TEST_REPORT.md) | Verified test enumeration (automated + manual) |
+| [**PROJECT_HISTORY.md**](./PROJECT_HISTORY.md) | Milestones, bugs, fixes, evolution timeline |
+| [../ROOT_CAUSE_SYNC_REPORT.md](../ROOT_CAUSE_SYNC_REPORT.md) | CT sync root-cause analysis (passkey accounts) |
 
 ## Primary (authoritative)
 
@@ -10,7 +21,6 @@ Read these documents in order for a full picture of the project today.
 |----------|-------------|
 | [**CURRENT_ARCHITECTURE.md**](./CURRENT_ARCHITECTURE.md) | Single source of truth — flows, contracts, APIs, deployment |
 | [**IMPLEMENTATION_STATUS_REPORT.md**](./IMPLEMENTATION_STATUS_REPORT.md) | DONE / partial / debt / security / production test analysis |
-| [**PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md**](./PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md) | Passkey auth, SessionStore, bug history, ADRs (§1–34) |
 | [**ENVIRONMENT.md**](./ENVIRONMENT.md) | Frontend + issuer environment variables |
 | [**ARCHITECTURE_TRUTH.md**](./ARCHITECTURE_TRUTH.md) | Short index (supersedes outdated pre-2026-06-27 content) |
 

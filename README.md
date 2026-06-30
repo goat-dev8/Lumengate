@@ -10,9 +10,12 @@ Privacy-preserving compliance for Stellar. Prove eligibility with zero-knowledge
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/FINAL_PROJECT_IMPLEMENTATION_REPORT.md`](docs/FINAL_PROJECT_IMPLEMENTATION_REPORT.md) | Release architecture report |
+| [`docs/PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md`](docs/PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md) | Passkey + sessions definitive guide |
+| [`docs/CONFIDENTIAL_TOKENS_ON_STELLAR.md`](docs/CONFIDENTIAL_TOKENS_ON_STELLAR.md) | Confidential EURC implementation |
+| [`docs/FINAL_TEST_REPORT.md`](docs/FINAL_TEST_REPORT.md) | Verified test enumeration |
+| [`docs/PROJECT_HISTORY.md`](docs/PROJECT_HISTORY.md) | Milestones and bug timeline |
 | [`docs/CURRENT_ARCHITECTURE.md`](docs/CURRENT_ARCHITECTURE.md) | How the system works today |
-| [`docs/IMPLEMENTATION_STATUS_REPORT.md`](docs/IMPLEMENTATION_STATUS_REPORT.md) | DONE / partial / debt / security |
-| [`docs/PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md`](docs/PASSKEY_SMART_ACCOUNT_IMPLEMENTATION_GUIDE.md) | Passkey auth deep dive |
 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | All environment variables |
 
 ---
