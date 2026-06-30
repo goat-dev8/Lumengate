@@ -910,7 +910,10 @@ async function ensureLumengateSessionRule(
   };
 
   if (options?.installWithPasskey !== false) {
-    await runPasskeyCeremony('enable-session', installDefaultSessionRule);
+    // smart-account-kit opens the WebAuthn ceremony internally. Wrapping this
+    // in runPasskeyCeremony deadlocks because the inner passkey request is
+    // queued behind the outer promise that is waiting for it.
+    await installDefaultSessionRule();
   }
 
   return existingRules;
@@ -922,7 +925,6 @@ export async function enableLumengateSession(
   contractIds?: string[],
 ): Promise<LumengateSessionStatus> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
-  await assertSmartAccountReadyForSettlement(config, hydrated);
   invalidateSmartAccountKitCache();
   const kit = await connectPersonalSmartAccount(config, hydrated);
   const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);

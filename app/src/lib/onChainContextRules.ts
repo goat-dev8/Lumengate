@@ -13,6 +13,7 @@ import type { DeploymentConfig } from './config';
 const SECP256R1_PUBLIC_KEY_SIZE = 65;
 const DEFAULT_MAX_PROBED_RULE_ID = 8;
 const DEFAULT_MAX_CONSECUTIVE_PROBE_MISSES = 3;
+const READ_ONLY_SIMULATION_TIMEOUT_MS = 10_000;
 
 export type OnChainExternalSigner = {
   tag: 'External';
@@ -271,7 +272,11 @@ async function simulateContractCall(
     )
     .setTimeout(30)
     .build();
-  const sim = await s.simulateTransaction(tx);
+  const sim = await Promise.race([
+    s.simulateTransaction(tx),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), READ_ONLY_SIMULATION_TIMEOUT_MS)),
+  ]);
+  if (!sim) return null;
   if (rpc.Api.isSimulationError(sim) || !sim.result?.retval) {
     return null;
   }
