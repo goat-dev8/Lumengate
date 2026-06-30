@@ -44,6 +44,7 @@ import {
   type SettlementPhase,
 } from '../components/send/SettlementProgress';
 import { friendlyAssetName } from '../lib/productState';
+import { withRetry } from '../lib/retry';
 
 import {
 
@@ -155,6 +156,7 @@ export function MarketplacePage() {
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   const [eurcBalanceRaw, setEurcBalanceRaw] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [settlementPhase, setSettlementPhase] = useState<SettlementPhase>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -176,9 +178,15 @@ export function MarketplacePage() {
 
   useEffect(() => {
 
+    let cancelled = false;
     if (!address) {
 
       setBalance(null);
+      setUsdcBalance(null);
+      setUsdcBalanceRaw(null);
+      setEurcBalance(null);
+      setEurcBalanceRaw(null);
+      setBalanceLoading(false);
 
       setBalanceError(null);
 
@@ -187,44 +195,58 @@ export function MarketplacePage() {
     }
 
     const balanceHolder = currentSettlementOwner(config, address, settlementAddress) ?? address;
-    readBalance(config, balanceHolder)
-      .then((b) => {
-        setBalance(b);
-        setBalanceError(null);
-      })
-      .catch((err) => {
-        setBalance(null);
-        setBalanceError(err instanceof Error ? err.message : String(err));
-      });
-    if (config.complianceSacAdminId) {
-      readComplianceAdminUsdcBalance(config, balanceHolder)
-        .then((snap) => {
-          setUsdcBalance(snap.formatted);
-          setUsdcBalanceRaw(snap.raw);
-        })
-        .catch(() => {
+    setBalanceLoading(true);
+    setBalanceError(null);
+    void (async () => {
+      try {
+        const [rwa, usdc, eurc] = await Promise.all([
+          withRetry(() => readBalance(config, balanceHolder), {
+            attempts: 5,
+            baseDelayMs: 900,
+            maxDelayMs: 6_000,
+          }).catch((err) => {
+            setBalanceError(err instanceof Error ? err.message : String(err));
+            return '0';
+          }),
+          config.complianceSacAdminId
+            ? withRetry(() => readComplianceAdminUsdcBalance(config, balanceHolder), {
+                attempts: 5,
+                baseDelayMs: 900,
+                maxDelayMs: 6_000,
+              }).catch(() => null)
+            : Promise.resolve(null),
+          config.eurcSacId
+            ? withRetry(() => readEurcSacBalance(config, balanceHolder), {
+                attempts: 5,
+                baseDelayMs: 900,
+                maxDelayMs: 6_000,
+              }).catch(() => '0')
+            : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        setBalance(rwa);
+        if (usdc) {
+          setUsdcBalance(usdc.formatted);
+          setUsdcBalanceRaw(usdc.raw);
+        } else {
           setUsdcBalance(null);
           setUsdcBalanceRaw(null);
-        });
-    } else {
-      setUsdcBalance(null);
-      setUsdcBalanceRaw(null);
-    }
-    if (config.eurcSacId) {
-      readEurcSacBalance(config, balanceHolder)
-        .then((formatted) => {
-          setEurcBalance(formatted);
-          setEurcBalanceRaw(parseStellarAmount(formatted));
-        })
-        .catch(() => {
+        }
+        if (eurc !== null) {
+          setEurcBalance(eurc);
+          setEurcBalanceRaw(parseStellarAmount(eurc));
+        } else {
           setEurcBalance(null);
           setEurcBalanceRaw(null);
-        });
-    } else {
-      setEurcBalance(null);
-      setEurcBalanceRaw(null);
-    }
+        }
+      } finally {
+        if (!cancelled) setBalanceLoading(false);
+      }
+    })();
 
+    return () => {
+      cancelled = true;
+    };
   }, [address, settlementAddress, config, txHash, pofTxHash]);
 
   const fundsThreshold = (offering: LiveOffering): bigint | null => {
@@ -721,7 +743,7 @@ export function MarketplacePage() {
                 <p className="mt-1 text-sm text-status-err">{balanceError}</p>
               ) : (
                 <div className="text-xl font-semibold tabular-nums text-[#012b54]">
-                  {balance !== null ? balance : 'Reading…'}
+                  {balanceLoading && balance === null ? <Skeleton className="h-6 w-24" /> : (balance ?? '0')}
                 </div>
               )}
             </div>
@@ -731,7 +753,11 @@ export function MarketplacePage() {
                   USDC for settlement
                 </div>
                 <div className="text-xl font-semibold tabular-nums text-[#012b54]">
-                  {usdcBalance !== null ? `${usdcBalance} USDC` : 'Reading…'}
+                  {balanceLoading && usdcBalance === null ? (
+                    <Skeleton className="h-6 w-32" />
+                  ) : (
+                    `${usdcBalance ?? '0.0000000'} USDC`
+                  )}
                 </div>
               </div>
             ) : null}

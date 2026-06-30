@@ -305,7 +305,10 @@ export function TransferPage() {
         setError('Enable Trusted device (7 days) on your dashboard before confidential settlement.');
         return;
       }
-      const balance = confidentialEurcBalance ?? (await refreshConfidentialEurcBalance());
+      let balance = confidentialEurcBalance;
+      if (!balance?.spendableSynced) {
+        balance = await refreshConfidentialEurcBalance();
+      }
       if (!balance?.spendableSynced) {
         setError('Confidential spendable balance is syncing with Stellar. Wait a moment and try again.');
         return;

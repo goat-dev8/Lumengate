@@ -10,7 +10,31 @@ import {
 } from '../../lib/confidentialFlow';
 import { formatConfidentialAmount } from '../../lib/confidentialBalance';
 import { readEurcSacBalance } from '../../lib/contracts';
+import { withRetry } from '../../lib/retry';
 import { TrustedDeviceSessionPanel } from './TrustedDeviceSessionPanel';
+import { StageProgress, type StageProgressItem } from '../design/StageProgress';
+
+type CtActionStage = 'preparing' | 'proof' | 'deposit' | 'confirming' | 'merge' | 'sync' | 'done';
+
+const CT_ACTION_STAGES: StageProgressItem[] = [
+  { id: 'preparing', label: 'Preparing private operation', hint: 'Checking account and passport state' },
+  { id: 'proof', label: 'Generating local proof', hint: 'Cryptography runs in this browser' },
+  { id: 'deposit', label: 'Creating confidential commitment', hint: 'Shielding public EURC into the wrapper' },
+  { id: 'confirming', label: 'Waiting for Stellar confirmation', hint: 'Testnet ledgers can briefly lag' },
+  { id: 'merge', label: 'Merging spendable balance', hint: 'Moving received balance into spendable private EURC' },
+  { id: 'sync', label: 'Synchronizing private balance', hint: 'Verifying local openings against chain commitments' },
+  { id: 'done', label: 'Ready', hint: 'Private EURC balance is up to date' },
+];
+
+function stageFromProgress(step: string, message: string): CtActionStage {
+  const lower = message.toLowerCase();
+  if (lower.includes('proof') || lower.includes('passport') || lower.includes('eligibility')) return 'proof';
+  if (step === 'deposit' || lower.includes('shield') || lower.includes('deposit')) return 'deposit';
+  if (step === 'merge' || lower.includes('merge') || lower.includes('spendable')) return 'merge';
+  if (lower.includes('sync') || lower.includes('balance')) return 'sync';
+  if (lower.includes('stellar') || lower.includes('submit')) return 'confirming';
+  return 'preparing';
+}
 
 export function ConfidentialBalancePanel() {
   const {
@@ -26,6 +50,7 @@ export function ConfidentialBalancePanel() {
   const [actionLoading, setActionLoading] = useState<'shield' | 'merge' | 'unshield' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [actionStage, setActionStage] = useState<CtActionStage | null>(null);
   const [amount, setAmount] = useState('');
   const [revealed, setRevealed] = useState(false);
 
@@ -37,7 +62,11 @@ export function ConfidentialBalancePanel() {
     try {
       await refreshConfidentialEurcBalance();
       const publicEurc = config.eurcSacId
-        ? await readEurcSacBalance(config, settlementAddress).catch(() => null)
+        ? await withRetry(() => readEurcSacBalance(config, settlementAddress), {
+            attempts: 5,
+            baseDelayMs: 900,
+            maxDelayMs: 6_000,
+          }).catch(() => null)
         : null;
       setPublicBalance(publicEurc);
     } catch (err) {
@@ -61,17 +90,28 @@ export function ConfidentialBalancePanel() {
     setActionLoading(kind);
     setError(null);
     setStatus(null);
+    setActionStage('preparing');
     try {
-      const ensured = await ensureProofForAsset('eurc', setStatus);
-      const submitTx = (tx: Parameters<typeof signAndSubmitSettlement>[2]) =>
-        signAndSubmitSettlement(settlementAddress, ensured.proof, tx);
+      const ensured = await ensureProofForAsset('eurc', (message) => {
+        setStatus(message);
+        setActionStage(stageFromProgress('proof', message));
+      });
+      const submitTx = async (tx: Parameters<typeof signAndSubmitSettlement>[2], stepLabel: string) => {
+        setActionStage(stageFromProgress(stepLabel, `Submitting ${stepLabel} to Stellar…`));
+        const hash = await signAndSubmitSettlement(settlementAddress, ensured.proof, tx);
+        setActionStage('sync');
+        return hash;
+      };
       if (kind === 'shield') {
         await shieldConfidentialEurc({
           config,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
-          onProgress: (p) => setStatus(p.message),
+          onProgress: (p) => {
+            setStatus(p.message);
+            setActionStage(stageFromProgress(p.step, p.message));
+          },
           submitTx,
         });
       } else if (kind === 'merge') {
@@ -79,7 +119,10 @@ export function ConfidentialBalancePanel() {
           config,
           txSource: settlementAddress,
           smartAccount: settlementAddress,
-          onProgress: (p) => setStatus(p.message),
+          onProgress: (p) => {
+            setStatus(p.message);
+            setActionStage(stageFromProgress(p.step, p.message));
+          },
           submitTx,
         });
       } else {
@@ -88,17 +131,24 @@ export function ConfidentialBalancePanel() {
           txSource: settlementAddress,
           smartAccount: settlementAddress,
           amount,
-          onProgress: (p) => setStatus(p.message),
+          onProgress: (p) => {
+            setStatus(p.message);
+            setActionStage(stageFromProgress(p.step, p.message));
+          },
           submitTx,
         });
       }
       setAmount('');
       await refresh();
+      setActionStage('done');
       setStatus(kind === 'merge' ? 'Private EURC is now spendable.' : 'Private EURC balance updated.');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setActionLoading(null);
+      window.setTimeout(() => {
+        setActionLoading(null);
+        setActionStage(null);
+      }, 900);
     }
   };
 
@@ -216,6 +266,16 @@ export function ConfidentialBalancePanel() {
         <p className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]" role="status">
           {status}
         </p>
+      ) : null}
+      {actionStage ? (
+        <div className="mt-3 rounded-2xl border border-[#007dfc]/15 bg-white px-4 py-4 shadow-[0_12px_32px_rgba(1,43,84,0.06)]">
+          <StageProgress
+            stages={CT_ACTION_STAGES}
+            currentStageId={actionStage}
+            indeterminate={actionStage !== 'done'}
+            aria-label="Confidential EURC operation progress"
+          />
+        </div>
       ) : null}
       </div>
     </div>

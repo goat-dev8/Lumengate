@@ -9,6 +9,7 @@ import type { LiveOffering } from '../../lib/offerings';
 import { offeringCategoryLabel } from '../../lib/offeringDisplay';
 import { readBalance, readComplianceAdminUsdcBalance } from '../../lib/contracts';
 import { allocationFromActivity } from '../../lib/portfolio';
+import { withRetry } from '../../lib/retry';
 
 type Props = {
   config: DeploymentConfig;
@@ -41,11 +42,19 @@ export function DashboardHoldings({ config, settlementOwner, activity, offerings
     setLoading(true);
     setError(null);
     Promise.all([
-      readBalance(config, settlementOwner).catch(() => null),
+      withRetry(() => readBalance(config, settlementOwner), {
+        attempts: 5,
+        baseDelayMs: 900,
+        maxDelayMs: 6_000,
+      }).catch(() => '0'),
       config.complianceSacAdminId
-        ? readComplianceAdminUsdcBalance(config, settlementOwner)
+        ? withRetry(() => readComplianceAdminUsdcBalance(config, settlementOwner), {
+            attempts: 5,
+            baseDelayMs: 900,
+            maxDelayMs: 6_000,
+          })
             .then((s) => s.formatted)
-            .catch(() => null)
+            .catch(() => '0.0000000')
         : Promise.resolve(null),
     ])
       .then(([rwa, usdc]) => {

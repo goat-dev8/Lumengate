@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchOfferings, type LiveOffering } from '../lib/offerings';
 import { loadDeploymentConfig } from '../lib/config';
+import { withRetry } from '../lib/retry';
 
 export function useOfferings() {
   const config = loadDeploymentConfig();
@@ -11,7 +12,11 @@ export function useOfferings() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchOfferings(config.issuerServiceUrl)
+    withRetry(() => fetchOfferings(config.issuerServiceUrl), {
+      attempts: 5,
+      baseDelayMs: 1000,
+      maxDelayMs: 7_500,
+    })
       .then((rows) => {
         if (!cancelled) {
           setOfferings(rows);

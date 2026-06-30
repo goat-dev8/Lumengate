@@ -116,6 +116,7 @@ import {
   buildFundSmartAccountUsdcXdr,
   buildFundSmartAccountXlmXdr,
 } from '../lib/smartAccountFunding';
+import { retryDelay, withRetry } from '../lib/retry';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -1393,7 +1394,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     setConfidentialBalanceLoading(true);
     try {
-      const balance = await readConfidentialEurcBalance(config, settlementAddress);
+      const balance = await withRetry(
+        () => readConfidentialEurcBalance(config, settlementAddress),
+        { attempts: 5, baseDelayMs: 900, maxDelayMs: 6_000 },
+      );
       setConfidentialEurcBalance(balance);
       return balance;
     } catch {
@@ -1407,6 +1411,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshConfidentialEurcBalance();
   }, [refreshConfidentialEurcBalance]);
+
+  useEffect(() => {
+    if (!confidentialEurcBalance || confidentialEurcBalance.synced || confidentialBalanceLoading) return;
+    const delayMs = retryDelay(2, { baseDelayMs: 1500, maxDelayMs: 8_000 });
+    const timer = window.setTimeout(() => {
+      void refreshConfidentialEurcBalance();
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [confidentialEurcBalance, confidentialBalanceLoading, refreshConfidentialEurcBalance]);
 
   const enableLumengateSession = useCallback(async (): Promise<LumengateSessionStatus> => {
     if (!smartAccount) {
