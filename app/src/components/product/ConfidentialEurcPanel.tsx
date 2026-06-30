@@ -61,6 +61,7 @@ export function ConfidentialEurcPanel() {
     try {
       const scope = ASSET_SCOPES.eurc;
       let scopedProof = proof;
+      let scopedCredential = credential;
       if (
         !scopedProof ||
         !proofMatchesCredential(scopedProof, credential) ||
@@ -68,9 +69,10 @@ export function ConfidentialEurcPanel() {
       ) {
         const ensured = await ensureProofForAsset('eurc');
         scopedProof = ensured.proof;
+        scopedCredential = ensured.credential;
       }
       await assertScopeNullifierAvailable(config, credential, 'eurc');
-      const lifecycle = await syncProofLifecycleOnChain(config, credential, scopedProof, consumedTxHash);
+      const lifecycle = await syncProofLifecycleOnChain(config, scopedCredential, scopedProof, consumedTxHash);
       if (lifecycle.lifecycle !== 'ready') {
         throw new Error(lifecycle.reason ?? 'Passport not ready for confidential registration.');
       }
@@ -92,15 +94,26 @@ export function ConfidentialEurcPanel() {
   };
 
   const needsPasskeyAuth =
+    registered === false &&
+    Boolean(credential) &&
+    (!proof ||
+      !credential ||
+      !proofMatchesCredential(proof, credential) ||
+      proof.publicInputs.assetId !== ASSET_SCOPES.eurc.assetId ||
+      sessionProofBound === false) &&
+    proofLifecycle.lifecycle === 'ready';
+
+  const eurcProofReadyAndBound =
     proofLifecycle.lifecycle === 'ready' &&
     proof &&
     credential &&
     proofMatchesCredential(proof, credential) &&
-    sessionProofBound === false;
+    proof.publicInputs.assetId === ASSET_SCOPES.eurc.assetId &&
+    sessionProofBound === true;
 
   return (
     <div className="space-y-4">
-      {needsPasskeyAuth ? <PasskeyAuthorizePanel /> : null}
+      {needsPasskeyAuth ? <PasskeyAuthorizePanel asset="eurc" /> : null}
       <div className="lg-surface-card p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -131,7 +144,12 @@ export function ConfidentialEurcPanel() {
           </Button>
         ) : null}
         {needsPasskeyAuth ? (
-          <p className="mt-3 text-sm text-amber-800">Authorize with passkey above before registering.</p>
+          <p className="mt-3 text-sm text-amber-800">
+            Authorize the EURC passport scope above before registering. Registration itself will still ask for one
+            passkey confirmation.
+          </p>
+        ) : registered === false && eurcProofReadyAndBound ? (
+          <p className="mt-3 text-sm text-emerald-700">EURC passport scope authorized. Register confidential EURC next.</p>
         ) : null}
         {txHash ? (
           <p className="mt-3 break-all font-mono text-xs text-emerald-700">Registered — tx {txHash.slice(0, 16)}…</p>

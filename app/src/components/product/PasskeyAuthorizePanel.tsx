@@ -3,13 +3,23 @@ import { Fingerprint } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { proofMatchesCredential } from '../../lib/credentialProof';
+import {
+  ASSET_SCOPES,
+  proofScopeMatches,
+  type SettlementAsset,
+} from '../../lib/assetScope';
 
-export function PasskeyAuthorizePanel() {
+type Props = {
+  asset?: SettlementAsset;
+};
+
+export function PasskeyAuthorizePanel({ asset }: Props) {
   const {
     credential,
     proof,
     proofLifecycle,
     sessionProofBound,
+    ensureProofForAsset,
     bindSessionProofIfNeeded,
     refreshSessionProofBound,
   } = useApp();
@@ -17,26 +27,43 @@ export function PasskeyAuthorizePanel() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const activeProof =
+  const proofReadyForCredential =
     proofLifecycle.lifecycle === 'ready' &&
     proof &&
     credential &&
-    proofMatchesCredential(proof, credential)
-      ? proof
-      : null;
+    proofMatchesCredential(proof, credential);
+  const activeProof = proofReadyForCredential ? proof : null;
+  const requestedScope = asset ? ASSET_SCOPES[asset] : null;
+  const activeProofMatchesScope =
+    activeProof && requestedScope ? proofScopeMatches(activeProof, requestedScope) : Boolean(activeProof);
+  const requestedScopeAuthorized =
+    Boolean(activeProof && activeProofMatchesScope && sessionProofBound === true);
 
-  if (!activeProof || sessionProofBound !== false) return null;
+  if (!credential) return null;
+  if (asset) {
+    if (requestedScopeAuthorized) return null;
+  } else if (!activeProof || sessionProofBound !== false) {
+    return null;
+  }
 
   const handleAuthorize = async () => {
     setLoading(true);
     setError(null);
     setStatus('Opening passkey — confirm with Face ID, fingerprint, or device PIN…');
     try {
-      const bindHash = await bindSessionProofIfNeeded(activeProof);
-      await refreshSessionProofBound(activeProof);
+      const proofToBind =
+        asset && (!activeProof || !activeProofMatchesScope)
+          ? (await ensureProofForAsset(asset, (message) => setStatus(message))).proof
+          : activeProof;
+      if (!proofToBind) {
+        throw new Error('Generate your private passport proof before authorizing your passkey.');
+      }
+      setStatus('Opening passkey — confirm with Face ID, fingerprint, or device PIN…');
+      const bindHash = await bindSessionProofIfNeeded(proofToBind);
+      await refreshSessionProofBound(proofToBind);
       setStatus(
         bindHash
-          ? 'Passkey authorized on-chain. You can register for confidential EURC or send funds.'
+          ? 'Passkey authorized on-chain for this passport scope.'
           : 'Passkey already authorized for this proof.',
       );
     } catch (err) {

@@ -8,10 +8,12 @@ import {
   readConfidentialEurcBalance,
   type ConfidentialEurcBalance,
 } from '../../lib/confidentialBalance';
+import { readEurcSacBalance } from '../../lib/contracts';
 
 export function ConfidentialBalancePanel() {
   const { config, settlementAddress } = useApp();
   const [balance, setBalance] = useState<ConfidentialEurcBalance | null>(null);
+  const [publicBalance, setPublicBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -24,7 +26,12 @@ export function ConfidentialBalancePanel() {
     setLoading(true);
     setError(null);
     try {
-      setBalance(await readConfidentialEurcBalance(config, settlementAddress));
+      const [confidential, publicEurc] = await Promise.all([
+        readConfidentialEurcBalance(config, settlementAddress),
+        config.eurcSacId ? readEurcSacBalance(config, settlementAddress).catch(() => null) : Promise.resolve(null),
+      ]);
+      setBalance(confidential);
+      setPublicBalance(publicEurc);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -40,6 +47,7 @@ export function ConfidentialBalancePanel() {
 
   const registered = balance?.registered === true;
   const hasShielded = balance ? balance.total > 0n : false;
+  const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
 
   return (
     <div className="lg-surface-card p-6">
@@ -47,7 +55,8 @@ export function ConfidentialBalancePanel() {
         <div>
           <p className="text-sm font-semibold text-[#012b54]">Confidential EURC balance</p>
           <p className="mt-1 text-sm text-[#64748b]">
-            Shielded amount stays off the public ledger. Synced from your browser state and Stellar events.
+            Shielded amount stays off the public ledger. Public EURC must be deposited into the confidential wrapper
+            before it appears here.
           </p>
         </div>
         {registered ? (
@@ -56,6 +65,13 @@ export function ConfidentialBalancePanel() {
           <Pill tone="warning">Not registered</Pill>
         )}
       </div>
+
+      {registered && publicEurcAvailable ? (
+        <p className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]">
+          {publicBalance} public EURC is available in this smart account. It will be shielded automatically when you
+          send confidential EURC.
+        </p>
+      ) : null}
 
       <div className="mt-5 flex items-end justify-between gap-4 rounded-2xl bg-[#f6f9fc] px-5 py-4">
         <div>

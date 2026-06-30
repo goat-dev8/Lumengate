@@ -255,7 +255,7 @@ export function TransferPage() {
       return;
     }
 
-    if (asset === 'usdc') {
+    if (asset === 'usdc' && recipient.startsWith('G')) {
 
       const trustlineStatus = await checkRecipientUsdcCapacity(config, recipient, amount);
 

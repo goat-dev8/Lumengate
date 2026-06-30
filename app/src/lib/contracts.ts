@@ -468,7 +468,7 @@ export async function buildUsdcTransferTransaction(
   }
   const recipient = to.trim();
   if (!validateStellarAddress(recipient)) {
-    throw new Error('Recipient must be a valid Stellar G-address');
+    throw new Error('Recipient must be a valid Stellar address');
   }
   assertProofBundleForChain(proof);
   assertProofScope(proof, scope);
@@ -514,7 +514,7 @@ export async function buildEurcTransferTransaction(
   }
   const recipient = to.trim();
   if (!validateStellarAddress(recipient)) {
-    throw new Error('Recipient must be a valid Stellar G-address');
+    throw new Error('Recipient must be a valid Stellar address');
   }
   assertProofBundleForChain(proof);
   assertProofScope(proof, scope);
@@ -557,7 +557,7 @@ export async function buildSwapCompliantTransaction(
   }
   const to = recipient.trim();
   if (!validateStellarAddress(to)) {
-    throw new Error('Recipient must be a valid Stellar G-address');
+    throw new Error('Recipient must be a valid Stellar address');
   }
   assertProofBundleForChain(proof);
   await assertPassportNullifierAvailable(config, proof);
@@ -597,7 +597,7 @@ export async function buildPayCompliantTransaction(
   }
   const to = employee.trim();
   if (!validateStellarAddress(to)) {
-    throw new Error('Employee must be a valid Stellar G-address');
+    throw new Error('Employee must be a valid Stellar address');
   }
   assertProofBundleForChain(proof);
   await assertPassportNullifierAvailable(config, proof);
@@ -635,7 +635,7 @@ export async function buildTransferTransaction(
 ): Promise<SmartAccountAssembledTransaction> {
   const recipient = to.trim();
   if (!validateStellarAddress(recipient)) {
-    throw new Error('Recipient must be a valid Stellar G-address');
+    throw new Error('Recipient must be a valid Stellar address');
   }
   assertProofBundleForChain(proof);
   assertProofScope(proof, scope);
@@ -834,7 +834,8 @@ function formatSubmitError(result: rpc.Api.SendTransactionResponse): string {
 }
 
 export function validateStellarAddress(addr: string): boolean {
-  return StrKey.isValidEd25519PublicKey(addr);
+  const trimmed = addr.trim();
+  return StrKey.isValidEd25519PublicKey(trimmed) || StrKey.isValidContract(trimmed);
 }
 
 export function nullifierHexFromBundle(proof: ProofBundle): string {
