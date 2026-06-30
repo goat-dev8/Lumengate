@@ -92,6 +92,8 @@ import {
   connectPersonalSmartAccount,
   assertSmartAccountReadyForSettlement,
   createPersonalSmartAccount,
+  enableLumengateSession as installLumengateSession,
+  getLumengateSessionStatus,
   hydrateSmartAccountPasskeyMetadata,
   isAssembledTransaction,
   isContractAddress,
@@ -100,6 +102,7 @@ import {
   submitWithLumengateSession,
   submitWithSmartAccount,
   type SignableTransaction,
+  type LumengateSessionStatus,
   type SmartAccountAssembledTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
@@ -135,6 +138,8 @@ type AppContextValue = {
     onProgress?: (message: string) => void,
   ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
+  lumengateSessionStatus: LumengateSessionStatus | null;
+  enableLumengateSession: () => Promise<LumengateSessionStatus>;
   passkeyBusy: boolean;
   proverReady: boolean;
   proverWarmupMessage: string | null;
@@ -241,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const settlementAddress = smartAccount?.smartAccountAddress ?? null;
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
+  const [lumengateSessionStatus, setLumengateSessionStatus] = useState<LumengateSessionStatus | null>(null);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
@@ -1358,6 +1364,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [config, smartAccount, settlementAddress, address, walletField, persistSession, persistPasskeySession, pushActivity],
   );
 
+  const refreshLumengateSessionStatus = useCallback(async (): Promise<LumengateSessionStatus | null> => {
+    if (!smartAccount) {
+      setLumengateSessionStatus(null);
+      return null;
+    }
+    const status = await getLumengateSessionStatus(config, smartAccount).catch(() => null);
+    setLumengateSessionStatus(status);
+    return status;
+  }, [config, smartAccount]);
+
+  useEffect(() => {
+    void refreshLumengateSessionStatus();
+  }, [refreshLumengateSessionStatus]);
+
+  const enableLumengateSession = useCallback(async (): Promise<LumengateSessionStatus> => {
+    if (!smartAccount) {
+      throw new Error('Create your passkey smart account before enabling a Lumengate session.');
+    }
+    const status = await installLumengateSession(config, smartAccount);
+    setLumengateSessionStatus(status);
+    pushActivity({
+      kind: 'proof',
+      title: '7-day session enabled',
+      detail: status.enabled
+        ? 'Delegated Lumengate session rules installed on-chain'
+        : `${status.installedContracts.length} session rules installed; ${status.missingContracts.length} missing`,
+      status: status.enabled ? 'success' : 'info',
+    });
+    return status;
+  }, [config, smartAccount, pushActivity]);
+
   const confirmPassportEligibility = useCallback(
     async (
       asset: SettlementAsset = 'rwa',
@@ -1957,6 +1994,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bindSessionProofIfNeeded,
     confirmPassportEligibility,
     sessionProofBound,
+    lumengateSessionStatus,
+    enableLumengateSession,
     passkeyBusy,
     refreshSessionProofBound,
     proverReady,

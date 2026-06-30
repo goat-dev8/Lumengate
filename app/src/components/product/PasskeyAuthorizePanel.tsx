@@ -19,8 +19,10 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
     proof,
     proofLifecycle,
     sessionProofBound,
+    lumengateSessionStatus,
     ensureProofForAsset,
     bindSessionProofIfNeeded,
+    enableLumengateSession,
     refreshSessionProofBound,
   } = useApp();
   const [loading, setLoading] = useState(false);
@@ -38,33 +40,41 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
     activeProof && requestedScope ? proofScopeMatches(activeProof, requestedScope) : Boolean(activeProof);
   const requestedScopeAuthorized =
     Boolean(activeProof && activeProofMatchesScope && sessionProofBound === true);
+  const sessionEnabled = lumengateSessionStatus?.enabled === true;
 
   if (!credential) return null;
   if (asset) {
-    if (requestedScopeAuthorized) return null;
-  } else if (!activeProof || sessionProofBound !== false) {
+    if (requestedScopeAuthorized && sessionEnabled) return null;
+  } else if ((!activeProof || sessionProofBound !== false) && sessionEnabled) {
     return null;
   }
 
   const handleAuthorize = async () => {
     setLoading(true);
     setError(null);
-    setStatus('Opening passkey — confirm with Face ID, fingerprint, or device PIN…');
+    setStatus('Opening passkey — approve the 7-day Lumengate session…');
     try {
-      const proofToBind =
-        asset && (!activeProof || !activeProofMatchesScope)
+      if (!sessionEnabled) {
+        await enableLumengateSession();
+        setStatus('7-day Lumengate session installed. Binding passport eligibility…');
+      }
+      const needsProofBind = asset ? !requestedScopeAuthorized : Boolean(activeProof && sessionProofBound === false);
+      const proofToBind = needsProofBind
+        ? asset && (!activeProof || !activeProofMatchesScope)
           ? (await ensureProofForAsset(asset, (message) => setStatus(message))).proof
-          : activeProof;
-      if (!proofToBind) {
+          : activeProof
+        : null;
+      if (needsProofBind && !proofToBind) {
         throw new Error('Generate your private passport proof before authorizing your passkey.');
       }
-      setStatus('Opening passkey — confirm with Face ID, fingerprint, or device PIN…');
-      const bindHash = await bindSessionProofIfNeeded(proofToBind);
-      await refreshSessionProofBound(proofToBind);
+      const bindHash = proofToBind ? await bindSessionProofIfNeeded(proofToBind) : null;
+      if (proofToBind) {
+        await refreshSessionProofBound(proofToBind);
+      }
       setStatus(
         bindHash
           ? 'Passkey authorized on-chain for this passport scope.'
-          : 'Passkey already authorized for this proof.',
+          : '7-day Lumengate session is ready.',
       );
     } catch (err) {
       setStatus(null);
@@ -81,11 +91,11 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#012b54]">Authorize with your passkey</p>
           <p className="mt-1 text-sm text-[#64748b]">
-            One passkey confirmation binds your proof on-chain so you can send, invest, or register for confidential
-            EURC.
+            Approve a delegated 7-day Lumengate session, then eligible Passport, shield, merge, transfer, unshield,
+            receipt, and disclosure actions reuse it while the on-chain rules remain valid.
           </p>
           <Button className="mt-4" size="sm" loading={loading} onClick={() => void handleAuthorize()}>
-            Authorize passkey
+            {sessionEnabled ? 'Authorize passkey' : 'Enable 7-day session'}
           </Button>
           {status ? (
             <p className="mt-3 text-sm text-[#007dfc]" role="status">

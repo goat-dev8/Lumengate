@@ -101,6 +101,15 @@ type LumengateSessionSigner = {
   expiresAt: number;
 };
 
+export type LumengateSessionStatus = {
+  enabled: boolean;
+  publicKey: string | null;
+  expiresAt: number | null;
+  validUntilLedger: number | null;
+  installedContracts: string[];
+  missingContracts: string[];
+};
+
 function kitCacheKey(state: SmartAccountState): string {
   return `${state.smartAccountAddress}:${state.credentialId}`;
 }
@@ -185,14 +194,101 @@ function extractPrimaryCallContracts(transaction: SmartAccountAssembledTransacti
 
 function fallbackSessionContracts(config: DeploymentConfig): string[] {
   return [
+    config.sessionStoreId,
     config.rwaAdapterId,
     config.rwaTokenId,
     config.complianceSacAdminId,
+    config.compliantDexId,
+    config.compliantPayrollId,
     config.usdcSacId,
     config.eurcSacId,
     config.confidentialTokenId,
     config.confidentialUnderlyingId,
   ].filter((id): id is string => Boolean(id));
+}
+
+function normalizeSessionContractIds(contractIds: string[]): string[] {
+  const normalized = new Set<string>();
+  for (const id of contractIds) {
+    try {
+      const address = Address.fromString(id).toString();
+      if (address.startsWith('C')) normalized.add(address);
+    } catch {
+      // Ignore non-contract values.
+    }
+  }
+  return [...normalized];
+}
+
+function sessionRuleIsUsable(
+  rule: unknown,
+  contractId: string,
+  session: LumengateSessionSigner,
+  config: DeploymentConfig,
+  currentLedger: number,
+): boolean {
+  const expires = (rule as { valid_until?: number | null }).valid_until;
+  return (
+    ruleMatchesCallContract(rule, contractId) &&
+    ruleHasDelegatedSigner(rule, session.publicKey) &&
+    ruleHasCompliancePolicy(rule, config) &&
+    (expires == null || Number(expires) > currentLedger + 100)
+  );
+}
+
+function bestSessionRuleId(
+  rules: unknown[],
+  contractId: string,
+  session: LumengateSessionSigner,
+  config: DeploymentConfig,
+  currentLedger: number,
+): number | null {
+  const matches = rules
+    .filter((rule) => sessionRuleIsUsable(rule, contractId, session, config, currentLedger))
+    .map((rule) => ({
+      id: Number((rule as { id?: number }).id),
+      validUntil: Number((rule as { valid_until?: number | null }).valid_until ?? 0),
+    }))
+    .filter(({ id }) => Number.isFinite(id));
+  matches.sort((a, b) => b.validUntil - a.validUntil || b.id - a.id);
+  return matches[0]?.id ?? null;
+}
+
+function callContractsFromInvocation(invocation: xdr.SorobanAuthorizedInvocation): string[] {
+  const contracts: string[] = [];
+  const fn = invocation.function();
+  if (fn.switch().name === 'sorobanAuthorizedFunctionTypeContractFn') {
+    const contractFn = fn.contractFn();
+    contracts.push(Address.fromScAddress(contractFn.contractAddress()).toString());
+  }
+  for (const sub of invocation.subInvocations()) {
+    contracts.push(...callContractsFromInvocation(sub));
+  }
+  return contracts;
+}
+
+function callContractsFromAuthEntry(entry: xdr.SorobanAuthorizationEntry): string[] {
+  return callContractsFromInvocation(entry.rootInvocation());
+}
+
+function resolveSessionContextRuleIdsForEntry(
+  entry: xdr.SorobanAuthorizationEntry,
+  rules: unknown[],
+  session: LumengateSessionSigner,
+  config: DeploymentConfig,
+  currentLedger: number,
+): number[] {
+  const contracts = callContractsFromAuthEntry(entry);
+  if (contracts.length === 0) {
+    throw new Error('Lumengate session can only authorize contract-call contexts.');
+  }
+  return contracts.map((contractId) => {
+    const ruleId = bestSessionRuleId(rules, contractId, session, config, currentLedger);
+    if (ruleId == null) {
+      throw new Error(`Lumengate session is not enabled for ${contractId}.`);
+    }
+    return ruleId;
+  });
 }
 
 export function invalidateSmartAccountKitCache(): void {
@@ -719,35 +815,23 @@ async function ensureLumengateSessionRule(
   kit: SmartAccountKit,
   session: LumengateSessionSigner,
   contractIds: string[],
-): Promise<void> {
+): Promise<unknown[]> {
   if (!config.compliancePolicyId) {
     throw new Error('Compliance policy is not configured.');
   }
   const latest = await kit.rpc.getLatestLedger();
   const currentLedger = Number(latest.sequence ?? 0);
   const validUntil = currentLedger + Math.round(LUMENGATE_SESSION_LEDGERS);
-  const existingRules = await kit.rules.list().catch(() => []);
-  const targets = [...new Set(contractIds)].filter((id) => {
-    try {
-      return Address.fromString(id).toString().startsWith('C');
-    } catch {
-      return false;
-    }
-  });
+  let existingRules = await kit.rules.list().catch(() => []);
+  const targets = normalizeSessionContractIds(contractIds);
   if (targets.length === 0) {
     throw new Error('No Lumengate contract context available for session setup.');
   }
 
   for (const contractId of targets) {
-    const hasUsableRule = existingRules.some((rule) => {
-      const expires = (rule as { valid_until?: number | null }).valid_until;
-      return (
-        ruleMatchesCallContract(rule, contractId) &&
-        ruleHasDelegatedSigner(rule, session.publicKey) &&
-        ruleHasCompliancePolicy(rule, config) &&
-        (expires == null || Number(expires) > currentLedger + 100)
-      );
-    });
+    const hasUsableRule = existingRules.some((rule) =>
+      sessionRuleIsUsable(rule, contractId, session, config, currentLedger),
+    );
     if (hasUsableRule) continue;
 
     const signer = createDelegatedSigner(session.publicKey);
@@ -765,7 +849,85 @@ async function ensureLumengateSessionRule(
       forceMethod: config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
     });
     await submitResultOrThrow(result, 'Lumengate session setup failed', config.rpcUrl);
+    existingRules = await kit.rules.list().catch(() => existingRules);
   }
+  return existingRules;
+}
+
+export async function enableLumengateSession(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  contractIds?: string[],
+): Promise<LumengateSessionStatus> {
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  await assertSmartAccountReadyForSettlement(config, hydrated);
+  const kit = await connectPersonalSmartAccount(config, hydrated);
+  const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);
+  const targetContracts = normalizeSessionContractIds(contractIds?.length ? contractIds : fallbackSessionContracts(config));
+  const rules = await ensureLumengateSessionRule(config, kit, session, targetContracts);
+  const latest = await kit.rpc.getLatestLedger();
+  const currentLedger = Number(latest.sequence ?? 0);
+  const installedContracts = targetContracts.filter(
+    (contractId) => bestSessionRuleId(rules, contractId, session, config, currentLedger) != null,
+  );
+  const missingContracts = targetContracts.filter((contractId) => !installedContracts.includes(contractId));
+  const validUntilLedger = installedContracts.reduce<number | null>((max, contractId) => {
+    const rule = rules.find((candidate) => {
+      const id = bestSessionRuleId(rules, contractId, session, config, currentLedger);
+      return Number((candidate as { id?: number }).id) === id;
+    });
+    const validUntil = Number((rule as { valid_until?: number | null } | undefined)?.valid_until ?? 0);
+    return validUntil ? Math.max(max ?? 0, validUntil) : max;
+  }, null);
+  return {
+    enabled: missingContracts.length === 0,
+    publicKey: session.publicKey,
+    expiresAt: session.expiresAt,
+    validUntilLedger,
+    installedContracts,
+    missingContracts,
+  };
+}
+
+export async function getLumengateSessionStatus(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  contractIds?: string[],
+): Promise<LumengateSessionStatus> {
+  const session = loadLumengateSession(state.smartAccountAddress);
+  const targetContracts = normalizeSessionContractIds(contractIds?.length ? contractIds : fallbackSessionContracts(config));
+  if (!session) {
+    return {
+      enabled: false,
+      publicKey: null,
+      expiresAt: null,
+      validUntilLedger: null,
+      installedContracts: [],
+      missingContracts: targetContracts,
+    };
+  }
+  const kit = await connectPersonalSmartAccount(config, state);
+  const latest = await kit.rpc.getLatestLedger();
+  const currentLedger = Number(latest.sequence ?? 0);
+  const rules = await kit.rules.list().catch(() => []);
+  const installedContracts = targetContracts.filter(
+    (contractId) => bestSessionRuleId(rules, contractId, session, config, currentLedger) != null,
+  );
+  const missingContracts = targetContracts.filter((contractId) => !installedContracts.includes(contractId));
+  const validUntilLedger = installedContracts.reduce<number | null>((max, contractId) => {
+    const ruleId = bestSessionRuleId(rules, contractId, session, config, currentLedger);
+    const rule = rules.find((candidate) => Number((candidate as { id?: number }).id) === ruleId);
+    const validUntil = Number((rule as { valid_until?: number | null } | undefined)?.valid_until ?? 0);
+    return validUntil ? Math.max(max ?? 0, validUntil) : max;
+  }, null);
+  return {
+    enabled: missingContracts.length === 0,
+    publicKey: session.publicKey,
+    expiresAt: session.expiresAt,
+    validUntilLedger,
+    installedContracts,
+    missingContracts,
+  };
 }
 
 export async function submitWithLumengateSession(
@@ -778,20 +940,27 @@ export async function submitWithLumengateSession(
   await assertSmartAccountReadyForSettlement(config, hydrated);
   const kit = await connectPersonalSmartAccount(config, hydrated);
   const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);
+  let rules: unknown[];
   if (options?.allowSetup !== false) {
     const contractIds = extractPrimaryCallContracts(transaction);
-    await ensureLumengateSessionRule(
+    rules = await ensureLumengateSessionRule(
       config,
       kit,
       session,
       contractIds.length ? contractIds : fallbackSessionContracts(config),
     );
+  } else {
+    rules = await kit.rules.list().catch(() => []);
   }
+  const latest = await kit.rpc.getLatestLedger();
+  const currentLedger = Number(latest.sequence ?? 0);
   kit.externalSigners.addFromSecret(session.secretKey);
   const sessionSigner = createDelegatedSigner(session.publicKey);
-  const selected = kit.multiSigners.buildSelectedSigners([sessionSigner], hydrated.credentialId);
+  const selected = kit.multiSigners.buildSelectedSigners([sessionSigner], undefined);
   const result = await kit.multiSigners.operation(asKitAssembledTransaction(transaction), selected, {
     forceMethod: options?.forceMethod ?? (config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
+    resolveContextRuleIds: async (entry: xdr.SorobanAuthorizationEntry) =>
+      resolveSessionContextRuleIdsForEntry(entry, rules, session, config, currentLedger),
   });
   return submitResultOrThrow(result, 'Lumengate session submission failed', config.rpcUrl);
 }

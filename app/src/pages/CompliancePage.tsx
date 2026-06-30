@@ -190,7 +190,9 @@ export function CompliancePage() {
     try {
       const recipient = config.marketplaceSettlementAddress;
       const amount =
-        transferResult?.amount ||
+        transferResult?.confidential
+          ? '1'
+          : transferResult?.amount ||
         activity.find((e) => e.kind === 'transfer' && e.detail)?.detail.match(/^(\d+)/)?.[1] ||
         '1';
       await verifyDuplicateBlock(recipient, amount);
@@ -328,13 +330,17 @@ export function CompliancePage() {
                 <Card className="overflow-hidden border-emerald-100">
                   <div className="bg-[#012b54] px-6 py-8 text-white">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">Settlement receipt</p>
-                    <p className="mt-3 lg-font-display text-4xl tabular-nums">{transferResult?.amount ?? 'Completed'}</p>
+                    <p className="mt-3 lg-font-display text-4xl tabular-nums">
+                      {transferResult?.confidential ? 'Amount private' : (transferResult?.amount ?? 'Completed')}
+                    </p>
                     <p className="mt-1 text-sm text-white/70">Indexing on-chain receipt…</p>
                   </div>
                   <div className="grid gap-4 bg-white p-6 text-sm text-[#475569] md:grid-cols-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider">Amount</p>
-                      <p className="mt-1 text-lg font-semibold text-navy">{transferResult?.amount ?? 'Completed'}</p>
+                      <p className="mt-1 text-lg font-semibold text-navy">
+                        {transferResult?.confidential ? 'Amount private' : (transferResult?.amount ?? 'Completed')}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider">Recipient</p>

@@ -35,6 +35,7 @@ export type ProofReceiptTransferResult = {
   to: string;
   amount: string;
   success: boolean;
+  confidential?: boolean;
 };
 
 export type ProofReceipt = {

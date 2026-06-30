@@ -70,10 +70,11 @@ function parseAmountValue(raw: string | undefined): number | null {
 }
 
 function isConfidentialReceipt(receipt: ProofReceipt): boolean {
+  if (receipt.transferResult?.confidential) return true;
   const assetText = `${receipt.asset?.label ?? ''} ${receipt.transferResult?.amount ?? ''}`.toLowerCase();
   return assetText.includes('eurc') && receipt.events.some((event) => {
     const topicText = `${event.kind} ${event.summary} ${JSON.stringify(event.rawTopic ?? [])}`.toLowerCase();
-    return topicText.includes('confidential') || topicText.includes('transfer');
+    return topicText.includes('confidential_transfer') || topicText.includes('confidential');
   });
 }
 
@@ -115,7 +116,7 @@ function buildReceiptTimeline(receipt: ProofReceipt): TimelineStep[] {
     steps.push({
       id: 'settlement',
       title: confidential ? 'Confidential settlement' : 'Stellar settlement',
-      detail: `${confidential ? `Shielded amount → ${to}` : amount ? `${amount} → ${to}` : 'Recorded on ledger'}${transferEvent?.ledger ? ` · Ledger #${transferEvent.ledger.toLocaleString()}` : ''}`,
+      detail: `${confidential ? `Amount private by default → ${to}` : amount ? `${amount} → ${to}` : 'Recorded on ledger'}${transferEvent?.ledger ? ` · Ledger #${transferEvent.ledger.toLocaleString()}` : ''}`,
       time: formatIssued(receipt.verificationTimestamp ?? transferEvent?.ledgerClosedAt),
     });
   }

@@ -39,7 +39,9 @@ export function buildUnifiedTimeline(
       id: `receipt-transfer-${receipt.transactions.transfer}`,
       title: 'Settlement verified',
       detail: receipt.transferResult
-        ? `${receipt.transferResult.amount} RWA → ${receipt.transferResult.to.slice(0, 8)}…`
+        ? receipt.transferResult.confidential
+          ? `Amount private by default → ${receipt.transferResult.to.slice(0, 8)}…`
+          : `${receipt.transferResult.amount} RWA → ${receipt.transferResult.to.slice(0, 8)}…`
         : receipt.transactions.transfer,
       timestamp: receipt.verificationTimestamp ?? receipt.createdAt,
       tone: receipt.settlementStatus === 'verified' ? 'ok' : 'warn',

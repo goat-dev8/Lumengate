@@ -49,6 +49,7 @@ import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
+import { formatConfidentialAmount, readConfidentialEurcBalance } from '../lib/confidentialBalance';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -112,6 +113,8 @@ export function TransferPage() {
   const [confidentialMode, setConfidentialMode] = useState(false);
   const [ctRecipientRegistered, setCtRecipientRegistered] = useState<boolean | null>(null);
   const [senderCtRegistered, setSenderCtRegistered] = useState<boolean | null>(null);
+  const [confidentialSpendableBalance, setConfidentialSpendableBalance] = useState<string | null>(null);
+  const [confidentialReceivingBalance, setConfidentialReceivingBalance] = useState<string | null>(null);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -206,16 +209,34 @@ export function TransferPage() {
   useEffect(() => {
     if (!confidentialMode || !config.confidentialTokenId || !settlementAddress) {
       setSenderCtRegistered(null);
+      setConfidentialSpendableBalance(null);
+      setConfidentialReceivingBalance(null);
       return;
     }
     let cancelled = false;
-    void readConfidentialEurcRegistered(config, settlementAddress).then((ok) => {
-      if (!cancelled) setSenderCtRegistered(ok);
+    void (async () => {
+      const ok = await readConfidentialEurcRegistered(config, settlementAddress);
+      if (cancelled) return;
+      setSenderCtRegistered(ok);
+      if (!ok) {
+        setConfidentialSpendableBalance('0');
+        setConfidentialReceivingBalance('0');
+        return;
+      }
+      const balance = await readConfidentialEurcBalance(config, settlementAddress);
+      if (cancelled) return;
+      setConfidentialSpendableBalance(formatConfidentialAmount(balance.spendable));
+      setConfidentialReceivingBalance(formatConfidentialAmount(balance.receiving));
+    })().catch(() => {
+      if (!cancelled) {
+        setConfidentialSpendableBalance(null);
+        setConfidentialReceivingBalance(null);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [confidentialMode, config, settlementAddress, txHash]);
+  }, [confidentialMode, config, settlementAddress, txHash, balanceRefresh]);
 
   const handleTransfer = async () => {
     if (!credential || !to || !amount) return;
@@ -411,9 +432,10 @@ export function TransferPage() {
 
         to: recipient,
 
-        amount,
+        amount: asset === 'eurc' && confidentialMode ? 'Amount private' : amount,
 
         success: true,
+        confidential: asset === 'eurc' && confidentialMode,
 
       });
 
@@ -424,10 +446,13 @@ export function TransferPage() {
             ? `USDC settlement: ${amount}`
             : asset === 'eurc'
               ? confidentialMode
-                ? `Confidential EURC settlement: ${amount}`
+                ? 'Confidential EURC settlement'
                 : `EURC settlement: ${amount}`
               : 'Transfer completed',
-        detail: `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? (confidentialMode ? 'confidential EURC' : 'EURC') : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
+        detail:
+          asset === 'eurc' && confidentialMode
+            ? `Amount private by default → ${truncateMiddle(recipient, 8, 6)}`
+            : `${amount} ${asset === 'usdc' ? 'USDC' : asset === 'eurc' ? 'EURC' : 'units'} → ${truncateMiddle(recipient, 8, 6)}`,
         txHash: hash,
         explorerUrl: explorerTxUrl(config.explorerBaseUrl, hash),
         status: 'success',
@@ -479,7 +504,15 @@ export function TransferPage() {
         ? `${usdcBalance} USDC`
         : 'USDC unavailable'
       : asset === 'eurc'
-        ? eurcBalance !== null
+        ? confidentialMode
+          ? confidentialSpendableBalance !== null
+            ? `${confidentialSpendableBalance} private EURC${
+                confidentialReceivingBalance && confidentialReceivingBalance !== '0'
+                  ? ` · ${confidentialReceivingBalance} receiving`
+                  : ''
+              }`
+            : 'Private EURC unavailable'
+          : eurcBalance !== null
           ? `${eurcBalance} EURC`
           : 'EURC unavailable'
         : rwaBalance !== null
