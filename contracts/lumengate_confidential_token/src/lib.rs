@@ -63,3 +63,6 @@ impl ConfidentialCompliance for LumengateConfidentialToken {
 
 #[contractimpl(contracttrait)]
 impl AccessControl for LumengateConfidentialToken {}
+
+#[cfg(test)]
+mod test;

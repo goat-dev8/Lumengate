@@ -69,3 +69,6 @@ impl SessionStore {
             .get(&(Symbol::new(&env, "proof"), smart_account))
     }
 }
+
+#[cfg(test)]
+mod test;

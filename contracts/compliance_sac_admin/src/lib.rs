@@ -282,4 +282,30 @@ mod test {
         let client = ComplianceSacAdminClient::new(&env, &id);
         assert_eq!(client.sac_address(), sac);
     }
+
+    #[test]
+    fn stores_eurc_sac_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let adapter = Address::generate(&env);
+        let sac = Address::generate(&env);
+        let eurc = Address::generate(&env);
+        let id = env.register(ComplianceSacAdmin, (&admin, &adapter, &sac, &eurc, &1u32));
+        let client = ComplianceSacAdminClient::new(&env, &id);
+        assert_eq!(client.eurc_sac_address(), eurc);
+    }
+
+    #[test]
+    fn stores_adapter_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let adapter = Address::generate(&env);
+        let sac = Address::generate(&env);
+        let eurc = Address::generate(&env);
+        let id = env.register(ComplianceSacAdmin, (&admin, &adapter, &sac, &eurc, &2u32));
+        let client = ComplianceSacAdminClient::new(&env, &id);
+        assert_eq!(client.adapter_address(), adapter);
+    }
 }

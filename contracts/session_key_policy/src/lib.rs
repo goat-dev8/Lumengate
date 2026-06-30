@@ -86,3 +86,6 @@ impl SessionKeyPolicyContract {
         spending_limit::set_spending_limit(&e, spending_limit, &context_rule, &smart_account)
     }
 }
+
+#[cfg(test)]
+mod test;

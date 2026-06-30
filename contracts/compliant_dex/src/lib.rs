@@ -149,3 +149,6 @@ impl CompliantDex {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test;

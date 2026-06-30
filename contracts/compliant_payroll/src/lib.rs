@@ -148,3 +148,6 @@ impl CompliantPayroll {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test;

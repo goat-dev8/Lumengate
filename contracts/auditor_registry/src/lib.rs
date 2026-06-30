@@ -129,3 +129,6 @@ impl AuditorRegistry {
 
 #[contractimpl(contracttrait)]
 impl AccessControl for AuditorRegistry {}
+
+#[cfg(test)]
+mod test;

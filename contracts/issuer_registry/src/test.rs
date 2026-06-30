@@ -44,3 +44,14 @@ fn duplicate_issuer_rejected() {
     client.add_issuer(&admin, &1u32, &sample_pubkey(&env));
     client.add_issuer(&admin, &1u32, &sample_pubkey(&env));
 }
+
+#[test]
+fn get_pubkey_missing_returns_none() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(IssuerRegistry, (&admin,));
+    let client = IssuerRegistryClient::new(&env, &contract_id);
+
+    assert!(client.get_pubkey(&99u32).is_none());
+}

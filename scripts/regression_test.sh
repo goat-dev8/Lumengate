@@ -73,6 +73,11 @@ stellar contract invoke --id "$RWA" --source-account admin --network testnet --s
 check "sanctioned frozen after admin freeze" bash -c "[[ \$(stellar contract invoke --id \"$RWA\" --source-account deployer --network testnet -- is_frozen --holder \"$SANCTIONED\" 2>&1 | tail -1) == \"true\" ]]"
 
 echo "=== Generate fresh eligibility proof + transfer ==="
+ISSUER_SYNC="${ISSUER_SERVICE_URL:-http://127.0.0.1:3001}"
+curl -sf -X POST "$ISSUER_SYNC/registry/sync-root" \
+  -H 'Content-Type: application/json' \
+  -d "{\"walletField\":\"$WALLET_FIELD\",\"policyKey\":\"general-eligibility\"}" >/dev/null \
+  || echo "WARN: registry sync-root failed (continuing)"
 WALLET_FIELD="$WALLET_FIELD" node "$ROOT/scripts/generate_prover_toml.js"
 bash "$ROOT/scripts/build_circuit.sh"
 PROOF_HEX=$(xxd -p "$ROOT/circuits/lumengate/target/proof" | tr -d '\n')

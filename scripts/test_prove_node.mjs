@@ -2,9 +2,16 @@
 /** End-to-end Noir + UltraHonk prove in Node (validates circuit + inputs). */
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { createRequire } from 'module';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const appRequire = createRequire(join(ROOT, 'app/package.json'));
+
+async function importFromApp(specifier) {
+  const resolved = appRequire.resolve(specifier);
+  return import(pathToFileURL(resolved).href);
+}
 
 async function main() {
   const walletField = process.argv[2];
@@ -30,8 +37,8 @@ async function main() {
   }
   if (!credential.proverInputs) throw new Error('No proverInputs');
 
-  const { Noir } = await import('@noir-lang/noir_js');
-  const { UltraHonkBackend } = await import('@aztec/bb.js');
+  const { Noir } = await importFromApp('@noir-lang/noir_js');
+  const { UltraHonkBackend } = await importFromApp('@aztec/bb.js');
   const circuitPath = join(ROOT, 'app/public/circuit/lumengate.json');
   const circuit = JSON.parse(readFileSync(circuitPath, 'utf8'));
 
@@ -56,6 +63,13 @@ async function main() {
   const { proof, publicInputs } = await backend.generateProof(witness, { keccak: true });
   console.log(`Proof OK in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
   console.log('proof bytes', proof.length, 'publicInputs fields', publicInputs.length);
+  if (proof.length !== 14592) {
+    throw new Error(`Expected 14592-byte UltraHonk proof, got ${proof.length}`);
+  }
+  if (publicInputs.length !== 6) {
+    throw new Error(`Expected 6 public input fields, got ${publicInputs.length}`);
+  }
+  console.log('PASS: eligibility circuit witness + UltraHonk proof');
   await backend.destroy();
 }
 

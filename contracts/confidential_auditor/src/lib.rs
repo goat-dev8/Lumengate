@@ -33,3 +33,6 @@ impl ConfidentialAuditor for ConfidentialAuditorContract {
 
 #[contractimpl(contracttrait)]
 impl AccessControl for ConfidentialAuditorContract {}
+
+#[cfg(test)]
+mod test;

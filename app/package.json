@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node ../scripts/fetch_crs_assets.mjs && tsc -b && vite build",
-    "test": "tsc -b --pretty false",
+    "test": "tsc -b --pretty false && node --import tsx --test test/*.test.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test"
   },
@@ -41,6 +41,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vite-plugin-node-polyfills": "^0.22.0"

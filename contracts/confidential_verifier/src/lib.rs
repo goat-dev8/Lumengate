@@ -40,3 +40,6 @@ impl ConfidentialVerifier for ConfidentialVerifierContract {
 
 #[contractimpl(contracttrait)]
 impl AccessControl for ConfidentialVerifierContract {}
+
+#[cfg(test)]
+mod test;

@@ -318,3 +318,6 @@ impl Timelock for TimelockController {
 // Implement AccessControl trait to expose role management functions
 #[contractimpl(contracttrait)]
 impl AccessControl for TimelockController {}
+
+#[cfg(test)]
+mod test;

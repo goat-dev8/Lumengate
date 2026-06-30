@@ -9,9 +9,10 @@ issuer-service/.env
 issuer-service/.env.*
 !issuer-service/.env.example
 
-# --- Internal documentation & planning (README.md is the only public doc) ---
+# --- Internal documentation & planning (README.md + README-linked docs only) ---
 *.md
 !README.md
+!docs/TEST_RESULTS.md
 !contracts/**/README.md
 !vendor/**/README.md
 !app/node_modules/**/README.md
@@ -38,11 +39,6 @@ Lumengate_*.md
 EXECUTION_*
 VISUAL_*
 FRONTEND_*
-
-# --- Canonical docs/ release documentation (tracked) ---
-!docs/
-!docs/**
-!ROOT_CAUSE_SYNC_REPORT.md
 
 # --- Cloned research & documentation repos ---
 research/
@@ -121,3 +117,4 @@ crawls/
 # --- Coverage ---
 coverage/
 .nyc_output/
+.github/

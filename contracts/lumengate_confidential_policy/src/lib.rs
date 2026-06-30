@@ -82,3 +82,6 @@ impl Policy for LumengateConfidentialPolicy {
 
 #[contractimpl(contracttrait)]
 impl AccessControl for LumengateConfidentialPolicy {}
+
+#[cfg(test)]
+mod test;

@@ -111,3 +111,6 @@ impl CompliancePolicy {
         }
     }
 }
+
+#[cfg(test)]
+mod test;

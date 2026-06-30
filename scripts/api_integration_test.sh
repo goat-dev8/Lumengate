@@ -48,13 +48,29 @@ check "pof nullifier" curl -sf -X POST "$ISSUER/pof/nullifier" \
   -d '{"noteSecret":"12345","policyId":"2"}'
 check "issuer offerings" bash -c 'curl -sf "$1/offerings" | python3 -c "import sys,json; d=json.load(sys.stdin); assert len(d.get(\"offerings\",[]))>=6"' _ "$ISSUER"
 
+check "relayer status" bash -c 'curl -sf "$1/relayer/status" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"enabled\" in d and \"configured\" in d"' _ "$ISSUER"
+
+FAUCET_ACCOUNT="${FAUCET_SMART_ACCOUNT:-CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA}"
+check "faucet status" bash -c 'curl -sf "$1/faucet/status?smartAccountAddress=$2" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"assets\" in d"' _ "$ISSUER" "$FAUCET_ACCOUNT"
+
+check "offering by id" bash -c 'curl -sf "$1/offerings/treasury-fund" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d[\"offering\"][\"id\"]==\"treasury-fund\""' _ "$ISSUER"
+
 VIEWING_KEY="${AUDITOR_VIEWING_KEY:-lumengate-auditor-testnet-key}"
 check "disclose store" curl -sf -X POST "$ISSUER/disclose/store" \
   -H 'Content-Type: application/json' \
   -d "{\"viewingKey\":\"$VIEWING_KEY\",\"auditorId\":1,\"pack\":{\"version\":1,\"walletAddress\":\"GTEST\",\"proofPublicInputsHex\":\"00\"}}"
 check "disclose query" bash -c 'curl -sf -X POST "$1/disclose" -H "Content-Type: application/json" -d "{\"viewingKey\":\"$2\",\"auditorId\":1}" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"disclosures\" in d"' _ "$ISSUER" "$VIEWING_KEY"
 
-check "issuer by id" bash -c 'curl -sf "$1/issuer/2" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"issuerId\" in d"' _ "$ISSUER"
+check "issuer by id" bash -c '
+  for attempt in 1 2 3; do
+    if resp=$(curl -sf "$1/issuer/2" 2>/dev/null); then
+      python3 -c "import sys,json; d=json.loads(sys.argv[1]); assert \"issuerId\" in d" "$resp"
+      exit 0
+    fi
+    sleep 2
+  done
+  exit 1
+' _ "$ISSUER"
 
 check "ct deployments" bash -c 'curl -sf "$1/ct/deployments" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get(\"deployment\",{}).get(\"token\",\"\").startswith(\"C\")"' _ "$ISSUER"
 check "ct events" bash -c 'curl -sf "$1/ct/events" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"events\" in d"' _ "$ISSUER"
