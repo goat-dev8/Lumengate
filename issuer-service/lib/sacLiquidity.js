@@ -14,7 +14,8 @@ const {
 const { getNetworkConfig, adminKeypair, waitForTransactionSuccess } = require('./sorobanAdmin');
 
 function isMissingBalanceError(message) {
-  return String(message || '').includes('MissingValue');
+  const msg = String(message || '');
+  return msg.includes('MissingValue') || msg.includes('trustline entry is missing');
 }
 
 async function readSacBalanceRaw(sacId, holder, env = process.env) {
@@ -98,7 +99,12 @@ async function sacTransferFromKeypair(sacId, fromPublicKey, secret, toAddress, a
 async function pickSacFunder(sacId, amountRaw, env = process.env) {
   const needed = BigInt(amountRaw);
   for (const candidate of fundingCandidates(env)) {
-    const balance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+    let balance = 0n;
+    try {
+      balance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+    } catch {
+      balance = 0n;
+    }
     if (balance >= needed) {
       return candidate;
     }
@@ -125,17 +131,26 @@ function humanAmountToStroops(human) {
 }
 
 function getUsdcAsset(env = process.env) {
-  const issuer = env.VITE_USDC_ISSUER || env.USDC_ISSUER;
-  if (!issuer) throw new Error('USDC issuer not configured');
+  const issuer =
+    env.VITE_USDC_ISSUER ||
+    env.USDC_ISSUER ||
+    'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
   return new Asset('USDC', issuer);
+}
+
+function getUsdcSacId(env = process.env) {
+  return env.VITE_USDC_SAC_ID || env.USDC_SAC_ID || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA';
+}
+
+function friendbotUrl(env = process.env) {
+  return env.FRIENDBOT_URL || 'https://friendbot.stellar.org';
 }
 
 async function readClassicUsdcStroops(publicKey, env = process.env) {
   const horizonUrl = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
-  const friendbotUrl = env.FRIENDBOT_URL;
   const usdc = getUsdcAsset(env);
   const horizon = new Horizon.Server(horizonUrl);
-  const account = await loadHorizonAccount(horizon, publicKey, friendbotUrl);
+  const account = await loadHorizonAccount(horizon, publicKey, friendbotUrl(env));
   const row = account.balances.find(
     (balance) => balance.asset_code === 'USDC' && balance.asset_issuer === usdc.getIssuer(),
   );
@@ -146,48 +161,80 @@ async function readClassicUsdcStroops(publicKey, env = process.env) {
 async function ensureClassicUsdcOnAccount(publicKey, secret, minStroops, env = process.env) {
   const usdc = getUsdcAsset(env);
   let classic = await readClassicUsdcStroops(publicKey, env);
-  if (classic >= minStroops) return;
+  if (classic >= minStroops) return classic;
 
   try {
-    await submitClassic(secret, [Operation.changeTrust({ asset: usdc, limit: '10000000' })], env);
+    await submitClassic(secret, [Operation.changeTrust({ asset: usdc, limit: '100000000' })], env);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!/exists|trustline/i.test(message)) throw err;
   }
 
   classic = await readClassicUsdcStroops(publicKey, env);
-  if (classic >= minStroops) return;
+  if (classic >= minStroops) return classic;
 
-  await submitClassic(
-    secret,
-    [
-      Operation.pathPaymentStrictSend({
-        sendAsset: Asset.native(),
-        sendAmount: '25',
-        destination: publicKey,
-        destAsset: usdc,
-        destMin: '1',
-      }),
-    ],
-    env,
-  );
+  for (const xlmSend of ['25', '50', '100']) {
+    try {
+      await submitClassic(
+        secret,
+        [
+          Operation.pathPaymentStrictSend({
+            sendAsset: Asset.native(),
+            sendAmount: xlmSend,
+            destination: publicKey,
+            destAsset: usdc,
+            destMin: '1',
+          }),
+        ],
+        env,
+      );
+    } catch {
+      // Try a larger path payment next.
+    }
+    classic = await readClassicUsdcStroops(publicKey, env);
+    if (classic >= minStroops) return classic;
+  }
+  return classic;
+}
+
+async function depositAvailableClassicToSac(sacId, candidate, targetStroops, env = process.env) {
+  let sacBalance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+  if (sacBalance >= targetStroops) return sacBalance;
+
+  for (let attempt = 0; attempt < 6 && sacBalance < targetStroops; attempt += 1) {
+    const shortfall = targetStroops - sacBalance;
+    await ensureClassicUsdcOnAccount(candidate.publicKey, candidate.secret, shortfall, env);
+    const classic = await readClassicUsdcStroops(candidate.publicKey, env);
+    if (classic <= 0n) break;
+    const reserve = 10000000n; // keep 1 USDC classic for fees/trustline dust
+    const depositable = classic > reserve ? classic - reserve : 0n;
+    const depositAmount = depositable < shortfall ? depositable : shortfall;
+    if (depositAmount <= 0n) break;
+    await depositClassicToSac(sacId, candidate.secret, String(depositAmount), env);
+    sacBalance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+  }
+  return sacBalance;
 }
 
 async function ensureUsdcSacLiquidity(sacId, amountRaw, env = process.env) {
   const needed = BigInt(amountRaw);
-  for (const candidate of fundingCandidates(env)) {
+  const primaryPk = env.CONTRACT_ADMIN_PUBLIC_KEY;
+  const ordered = fundingCandidates(env).sort((a, b) => {
+    if (a.publicKey === primaryPk) return -1;
+    if (b.publicKey === primaryPk) return 1;
+    return 0;
+  });
+
+  for (const candidate of ordered) {
     if (!candidate.secret) continue;
     try {
-      const depositAmount = needed * 50n;
-      await ensureClassicUsdcOnAccount(candidate.publicKey, candidate.secret, depositAmount, env);
-      const sacBalance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
-      if (sacBalance < needed) {
-        await depositClassicToSac(sacId, candidate.secret, String(depositAmount), env);
-      }
-      const toppedUp = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+      const toppedUp = await depositAvailableClassicToSac(sacId, candidate, needed, env);
       if (toppedUp >= needed) return true;
-    } catch {
-      // Try the next configured funder wallet.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[faucet] USDC bootstrap skipped for ${candidate.label}: ${message.slice(0, 160)}`);
+      }
     }
   }
   return false;
@@ -196,10 +243,9 @@ async function ensureUsdcSacLiquidity(sacId, amountRaw, env = process.env) {
 async function submitClassic(sourceSecret, ops, env = process.env) {
   const horizonUrl = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
   const passphrase = env.STELLAR_NETWORK_PASSPHRASE || env.VITE_NETWORK_PASSPHRASE;
-  const friendbotUrl = env.FRIENDBOT_URL;
   const source = Keypair.fromSecret(sourceSecret);
   const horizon = new Horizon.Server(horizonUrl);
-  const account = await loadHorizonAccount(horizon, source.publicKey(), friendbotUrl);
+  const account = await loadHorizonAccount(horizon, source.publicKey(), friendbotUrl(env));
   const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: passphrase });
   ops.forEach((op) => tx.addOperation(op));
   const built = tx.setTimeout(120).build();
@@ -302,7 +348,7 @@ async function ensureSacFaucetLiquidity(sacId, amountRaw, assetLabel, env = proc
   if (funder) return funder;
 
   const eurcSac = env.VITE_EURC_SAC_ID || env.EURC_SAC_ID;
-  const usdcSac = env.VITE_USDC_SAC_ID || env.USDC_SAC_ID;
+  const usdcSac = getUsdcSacId(env);
   if (assetLabel === 'EURC' && sacId === eurcSac) {
     const bootstrapped = await ensureDeployerIssuedEurcLiquidity(sacId, amountRaw, env);
     if (bootstrapped) {
@@ -334,9 +380,11 @@ module.exports = {
   ensureSacFaucetLiquidity,
   ensureUsdcSacLiquidity,
   fundingCandidates,
+  getUsdcSacId,
   mintSacToAddress,
   pickSacFunder,
   readSacBalanceRaw,
+  readClassicUsdcStroops,
   sacTransferForFaucet,
   sacTransferFromKeypair,
 };

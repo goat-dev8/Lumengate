@@ -18,7 +18,8 @@ const { revokeCredential } = require('./lib/revoke');
 const { appendNoteCommitment, syncNoteRootOnChain } = require('./lib/noteMerkle');
 const { issuerMetadata, signCommitment, verifyCommitmentSignature } = require('./lib/ed25519Issuer');
 const { registerPasskeySigner } = require('./lib/smartAccount');
-const { listFaucetStatus, claimTestnetFunds } = require('./lib/faucet');
+const { listFaucetStatus, claimTestnetFunds, LIMITS } = require('./lib/faucet');
+const { ensureUsdcSacLiquidity, getUsdcSacId, pickSacFunder } = require('./lib/sacLiquidity');
 const { isRelayerEnabled, relayerStatus, submitViaChannels } = require('./lib/relayer');
 const { allowRelayerRequest } = require('./lib/relayerRateLimit');
 const {
@@ -556,4 +557,20 @@ app.post('/ct/sync', async (_req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Lumengate issuer service listening on ${HOST}:${PORT}`);
+  if (process.env.STELLAR_NETWORK_NAME !== 'mainnet') {
+    void (async () => {
+      try {
+        const sacId = getUsdcSacId(process.env);
+        const funder = await pickSacFunder(sacId, LIMITS.usdc.amount, process.env);
+        if (funder) {
+          console.log(`[faucet] USDC treasury ready via ${funder.label} (${funder.publicKey})`);
+          return;
+        }
+        const ok = await ensureUsdcSacLiquidity(sacId, LIMITS.usdc.amount, process.env);
+        console.log(ok ? '[faucet] USDC treasury bootstrapped on startup' : '[faucet] USDC treasury bootstrap deferred until first claim');
+      } catch (err) {
+        console.warn('[faucet] USDC startup check failed:', err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }
 });

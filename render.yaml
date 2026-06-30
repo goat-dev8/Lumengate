@@ -48,3 +48,15 @@ services:
         sync: false
       - key: CONFIDENTIAL_DEPLOYED_AT_LEDGER
         sync: false
+      - key: VITE_USDC_SAC_ID
+        sync: false
+      - key: VITE_USDC_ISSUER
+        sync: false
+      - key: USDC_ISSUER
+        sync: false
+      - key: FRIENDBOT_URL
+        value: https://friendbot.stellar.org
+      - key: ELIGIBLE_WALLET_SECRET
+        sync: false
+      - key: DEPLOYER_SECRET_KEY
+        sync: false
