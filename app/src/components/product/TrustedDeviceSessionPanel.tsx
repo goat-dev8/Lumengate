@@ -39,16 +39,14 @@ export function TrustedDeviceSessionPanel() {
   const handleEnable = async () => {
     setEnabling(true);
     setError(null);
-    setStatus('Installing delegated session rules — approve with your passkey when prompted…');
+    setStatus('Checking smart account session rules…');
     try {
       const result = await enableLumengateSession();
       await refreshLumengateSessionStatus();
       if (result.enabled) {
         setStatus('Trusted device session is active for 7 days.');
       } else {
-        setStatus(
-          `Session partially installed (${result.installedContracts.length}/${result.installedContracts.length + result.missingContracts.length} contracts). Retry to finish setup.`,
-        );
+        setStatus('Session rule was not detected on-chain yet. Approve the passkey prompt and try again.');
       }
     } catch (err) {
       setStatus(null);
@@ -79,8 +77,9 @@ export function TrustedDeviceSessionPanel() {
         <div>
           <p className="text-sm font-semibold text-[#012b54]">Trusted device (7 days)</p>
           <p className="mt-1 text-sm text-[#64748b]">
-            One passkey approval installs delegated CallContract session rules. Shield, merge, private send, passport,
-            marketplace, and settlement reuse the session until expiry.
+            One passkey approval installs a Default context rule with your delegated session signer and compliance
+            policy (OpenZeppelin pattern). Shield, merge, private send, passport, marketplace, and settlement reuse
+            it until expiry.
           </p>
         </div>
         <Pill tone={active ? 'success' : 'neutral'}>{active ? 'Active' : 'Off'}</Pill>

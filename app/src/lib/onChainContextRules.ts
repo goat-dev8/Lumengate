@@ -348,6 +348,15 @@ function decodeContextRuleType(val: xdr.ScVal): OnChainContextRule['context_type
 function decodeSigner(val: xdr.ScVal): OnChainExternalSigner {
   const parts = expectScVec(val, 'signer');
   const tag = expectScSymbol(parts[0], 'signer tag');
+  if (tag === 'Delegated') {
+    if (parts.length < 2) {
+      throw new Error(`Delegated signer expected 2 items, got ${parts.length}`);
+    }
+    return {
+      tag: 'Delegated',
+      values: [expectScAddress(parts[1], 'delegated signer address')],
+    } as unknown as OnChainExternalSigner;
+  }
   if (tag !== 'External' || parts.length < 3) {
     throw new Error(`External signer expected 3 items, got ${parts.length} for tag ${tag}`);
   }
@@ -401,14 +410,26 @@ export async function readContextRuleById(
   }
 }
 
-/** Probe get_context_rule(0..n) — matches smart-account-kit@0.3.0 listContextRules. */
+/** Read active context rule count via official get_context_rules_count(). */
+export async function readContextRulesCount(
+  config: DeploymentConfig,
+  smartAccountAddress: string,
+): Promise<number> {
+  const retval = await simulateContractCall(config, smartAccountAddress, 'get_context_rules_count', []);
+  if (!retval || retval.switch().name !== 'scvU32') return 0;
+  return retval.u32();
+}
+
+/** Probe get_context_rule(0..n) — bounded by on-chain rule count. */
 export async function listOnChainContextRules(
   config: DeploymentConfig,
   smartAccountAddress: string,
   options?: { maxRuleId?: number; maxConsecutiveMisses?: number },
 ): Promise<OnChainContextRule[]> {
-  const maxRuleId = options?.maxRuleId ?? DEFAULT_MAX_PROBED_RULE_ID;
+  const count = await readContextRulesCount(config, smartAccountAddress);
   const maxMisses = options?.maxConsecutiveMisses ?? DEFAULT_MAX_CONSECUTIVE_PROBE_MISSES;
+  const cap = options?.maxRuleId ?? DEFAULT_MAX_PROBED_RULE_ID;
+  const maxRuleId = Math.min(cap, Math.max(count + maxMisses, maxMisses));
   const rules: OnChainContextRule[] = [];
   let misses = 0;
 
