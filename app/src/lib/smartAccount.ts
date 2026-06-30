@@ -167,6 +167,53 @@ function getOrCreateLumengateSession(smartAccountAddress: string): LumengateSess
   return session;
 }
 
+async function ensureDelegatedSessionAccountExists(
+  config: DeploymentConfig,
+  publicKey: string,
+): Promise<void> {
+  const server = new rpc.Server(config.rpcUrl);
+  try {
+    await server.getAccount(publicKey);
+    return;
+  } catch {
+    // Continue below. Delegated G-address signers must exist on-chain because
+    // OpenZeppelin authenticates them with Address::require_auth_for_args().
+  }
+
+  if (!config.networkPassphrase.includes('Test')) {
+    throw new Error(
+      'Trusted device session signer is not funded. Delegated G-address session signers must exist on-chain before they can authorize smart-account calls.',
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`, {
+      signal: controller.signal,
+    });
+    if (!response.ok && response.status !== 400) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Friendbot funding failed (${response.status})${text ? `: ${text}` : ''}`);
+    }
+  } finally {
+    window.clearTimeout(timeout);
+  }
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      await server.getAccount(publicKey);
+      return;
+    } catch {
+      if (attempt < 11) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+  }
+
+  throw new Error('Trusted device session signer was funded but is not visible on Soroban RPC yet. Retry in a moment.');
+}
+
 function ruleHasDelegatedSigner(rule: unknown, publicKey: string): boolean {
   const signers = (rule as { signers?: unknown[] })?.signers ?? [];
   return signers.some((signer) => {
@@ -928,6 +975,7 @@ export async function enableLumengateSession(
   invalidateSmartAccountKitCache();
   const kit = await connectPersonalSmartAccount(config, hydrated);
   const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);
+  await ensureDelegatedSessionAccountExists(config, session.publicKey);
   const targetContracts = normalizeSessionContractIds(contractIds?.length ? contractIds : fallbackSessionContracts(config));
   const rules = await ensureLumengateSessionRule(config, kit, session, targetContracts, {
     installWithPasskey: true,
@@ -1012,6 +1060,7 @@ export async function submitWithLumengateSession(
   if (!session) {
     throw new Error('Enable Trusted device (7 days) before using delegated session signing.');
   }
+  await ensureDelegatedSessionAccountExists(config, session.publicKey);
   const rules = await listSessionContextRules(config, state.smartAccountAddress);
   const latest = await kit.rpc.getLatestLedger();
   const currentLedger = Number(latest.sequence ?? 0);
