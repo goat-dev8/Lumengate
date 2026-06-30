@@ -201,6 +201,7 @@ export function SendTransferForm({
                     assetKey={confidentialAssetKey}
                     suggestedAmount={amount}
                     onShielded={onConfidentialBalanceRefresh}
+                    onRegistered={onConfidentialBalanceRefresh}
                   />
                 </motion.div>
               ) : null}

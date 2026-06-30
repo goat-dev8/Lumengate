@@ -85,7 +85,21 @@ export function TestnetFaucetPanel({
     try {
       const result = await claimTestnetFaucet(config.issuerServiceUrl, smartAccountAddress, asset);
       setLastTx(result.txHash);
-      await refresh();
+      setAssets((prev) => ({
+        ...prev,
+        [asset]: {
+          amount: prev[asset]?.amount ?? '',
+          label: prev[asset]?.label ?? ASSET_META[asset].label,
+          available: false,
+          nextClaimAt: result.nextClaimAt,
+          lastClaimAt: Date.now(),
+        },
+      }));
+      try {
+        await refresh();
+      } catch {
+        // Claim succeeded; status refresh can fail transiently on cold Render — do not show as claim error.
+      }
       onClaimed?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
