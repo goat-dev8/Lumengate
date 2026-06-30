@@ -148,7 +148,9 @@ type AppContextValue = {
   ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
   lumengateSessionStatus: LumengateSessionStatus | null;
-  enableLumengateSession: () => Promise<LumengateSessionStatus>;
+  enableLumengateSession: (options?: {
+    onProgress?: (progress: LumengateSessionEnableProgress) => void;
+  }) => Promise<LumengateSessionStatus>;
   revokeLumengateSession: () => Promise<void>;
   refreshLumengateSessionStatus: () => Promise<LumengateSessionStatus | null>;
   confidentialEurcBalance: ConfidentialEurcBalance | null;
@@ -220,6 +222,11 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 
 const emptyReceiptTxs: ProofReceiptTransactions = {};
+
+export type LumengateSessionEnableProgress = {
+  stage: 'bind-eligibility' | 'install-session' | 'done';
+  message: string;
+};
 
 export type RefreshProofReceiptOptions = {
   transactions?: ProofReceiptTransactions;
@@ -1447,7 +1454,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [confidentialEurcBalance, confidentialBalanceLoading, refreshConfidentialEurcBalance]);
 
-  const enableLumengateSession = useCallback(async (): Promise<LumengateSessionStatus> => {
+  const enableLumengateSession = useCallback(async (options?: {
+    onProgress?: (progress: LumengateSessionEnableProgress) => void;
+  }): Promise<LumengateSessionStatus> => {
     if (!smartAccount) {
       throw new Error('Create your passkey smart account before enabling a Lumengate session.');
     }
@@ -1467,11 +1476,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isProofBoundLocally(proof) ||
       (await isSessionProofBoundOnChain(config, settlementAddress, proof));
     if (!proofAlreadyBound) {
+      options?.onProgress?.({
+        stage: 'bind-eligibility',
+        message: 'Passkey step 1 of 2 — approve with Face ID, fingerprint, or device PIN to bind eligibility.',
+      });
       await bindSessionProofIfNeeded(proof);
       setSessionProofBound(true);
     }
 
+    options?.onProgress?.({
+      stage: 'install-session',
+      message: 'Passkey step 2 of 2 — approve again to install the 7-day session rule on-chain.',
+    });
     const status = await installLumengateSession(config, smartAccount);
+    options?.onProgress?.({
+      stage: 'done',
+      message: 'Trusted device session is active for 7 days.',
+    });
     setLumengateSessionStatus(status);
     pushActivity({
       kind: 'proof',

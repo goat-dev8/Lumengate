@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Fingerprint } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { StageProgress, SESSION_ENABLE_STAGES } from '../design/StageProgress';
 import { useApp } from '../../context/AppContext';
+import type { LumengateSessionEnableProgress } from '../../context/AppContext';
 import { proofMatchesCredential } from '../../lib/credentialProof';
 import {
   ASSET_SCOPES,
@@ -28,6 +30,7 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [sessionStage, setSessionStage] = useState<LumengateSessionEnableProgress['stage'] | null>(null);
 
   const proofReadyForCredential =
     proofLifecycle.lifecycle === 'ready' &&
@@ -52,14 +55,17 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
   const handleAuthorize = async () => {
     setLoading(true);
     setError(null);
-    setStatus(
-      sessionEnabled
-        ? 'Opening passkey — binding passport eligibility on-chain…'
-        : 'Opening passkey — bind eligibility, then install the 7-day session…',
-    );
+    setSessionStage(null);
+    setStatus(null);
     try {
       if (!sessionEnabled) {
-        await enableLumengateSession();
+        await enableLumengateSession({
+          onProgress: (progress) => {
+            setSessionStage(progress.stage);
+            setStatus(progress.message);
+          },
+        });
+        setSessionStage('done');
         setStatus('7-day Lumengate session installed and passport eligibility is bound.');
       } else {
         const needsProofBind = asset ? !requestedScopeAuthorized : Boolean(activeProof && sessionProofBound === false);
@@ -82,6 +88,7 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
         );
       }
     } catch (err) {
+      setSessionStage(null);
       setStatus(null);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -99,9 +106,24 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
             Approve a delegated 7-day Lumengate session, then eligible Passport, shield, merge, transfer, unshield,
             receipt, and disclosure actions reuse it while the on-chain rules remain valid.
           </p>
+          {!sessionEnabled ? (
+            <p className="mt-2 text-xs text-[#64748b]">
+              You will see two passkey prompts in order: bind eligibility, then install the session rule.
+            </p>
+          ) : null}
           <Button className="mt-4" size="sm" loading={loading} onClick={() => void handleAuthorize()}>
             {sessionEnabled ? 'Authorize passkey' : 'Enable 7-day session'}
           </Button>
+          {loading && !sessionEnabled ? (
+            <div className="mt-4 rounded-2xl border border-[#007dfc]/15 bg-white px-4 py-4 shadow-[0_12px_32px_rgba(1,43,84,0.06)]">
+              <StageProgress
+                stages={SESSION_ENABLE_STAGES}
+                currentStageId={sessionStage}
+                indeterminate={sessionStage !== 'done' && sessionStage !== null}
+                aria-label="Enable 7-day session progress"
+              />
+            </div>
+          ) : null}
           {status ? (
             <p className="mt-3 text-sm text-[#007dfc]" role="status">
               {status}

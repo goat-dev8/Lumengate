@@ -111,3 +111,18 @@ export const PASSPORT_REQUEST_STAGES: StageProgressItem[] = [
   { id: 'issuing', label: 'Issuing passport', hint: 'Building attestation materials' },
   { id: 'complete', label: 'Passport ready' },
 ];
+
+/** Two passkey ceremonies when enabling the 7-day trusted-device session. */
+export const SESSION_ENABLE_STAGES: StageProgressItem[] = [
+  {
+    id: 'bind-eligibility',
+    label: 'Bind passport eligibility',
+    hint: 'Passkey confirmation (1 of 2) — stores your EURC scope in the session store',
+  },
+  {
+    id: 'install-session',
+    label: 'Install 7-day session rule',
+    hint: 'Passkey confirmation (2 of 2) — adds your delegated device signer on-chain',
+  },
+  { id: 'done', label: 'Session active', hint: 'Shield, send, and marketplace reuse this device session' },
+];
