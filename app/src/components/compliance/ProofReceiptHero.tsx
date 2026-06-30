@@ -3,6 +3,8 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   RefreshCw,
   Share2,
   Shield,
@@ -64,9 +66,69 @@ function formatIssued(isoOrMs: string | number | undefined): string {
 
 function parseAmountValue(raw: string | undefined): number | null {
   if (!raw) return null;
-  if (raw.toLowerCase().includes('shielded')) return null;
+  if (/amount private|shielded/i.test(raw)) return null;
   const n = Number.parseFloat(raw.replace(/[^\d.]/g, ''));
   return Number.isFinite(n) ? n : null;
+}
+
+function ConfidentialAmountHero({
+  amount,
+  assetLabel,
+  revealed,
+  onToggleReveal,
+}: {
+  amount: string;
+  assetLabel: string;
+  revealed: boolean;
+  onToggleReveal: () => void;
+}) {
+  const numeric = parseAmountValue(amount);
+  const counted = useCountUp(numeric != null ? Math.round(numeric * 100) : 0, 1200, 0, false);
+  const displayValue =
+    numeric != null
+      ? numeric >= 1
+        ? String(counted / 100)
+        : (counted / 100).toFixed(2)
+      : amount;
+
+  return (
+    <div className="mt-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <motion.p
+          key={revealed ? 'revealed' : 'masked'}
+          className="lg-font-display text-5xl tabular-nums tracking-tight md:text-6xl"
+          initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 0.55, ease: EASE }}
+        >
+          {revealed ? (
+            <>
+              {displayValue}
+              <span className="ml-2 text-3xl font-normal text-white/80 md:text-4xl">
+                {assetLabel.split('·')[0]?.trim() || 'EURC'}
+              </span>
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-3">
+              <span aria-hidden className="tracking-[0.2em] text-white/90">
+                ••••••
+              </span>
+              <span className="text-lg font-normal text-white/55 md:text-xl">shielded</span>
+            </span>
+          )}
+        </motion.p>
+        <button
+          type="button"
+          onClick={onToggleReveal}
+          className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20"
+          aria-label={revealed ? 'Hide shielded amount' : 'Reveal shielded amount'}
+        >
+          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {revealed ? 'Hide amount' : 'Reveal amount'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function isConfidentialReceipt(receipt: ProofReceipt): boolean {
@@ -200,13 +262,17 @@ export function ProofReceiptHero({
   storeError,
 }: Props) {
   const advanced = useAdvancedMode();
+  const [amountRevealed, setAmountRevealed] = useState(false);
   const timeline = useMemo(() => buildReceiptTimeline(receipt), [receipt]);
 
   const receiptId = receipt.transactions.transfer
     ? `RCPT-${receipt.transactions.transfer.slice(0, 8).toUpperCase()}`
     : 'RCPT-PENDING';
   const confidentialReceipt = isConfidentialReceipt(receipt);
-  const displayAmount = confidentialReceipt ? 'Shielded amount' : (receipt.transferResult?.amount ?? '—');
+  const rawAmount = receipt.transferResult?.amount ?? '';
+  const displayAmount = confidentialReceipt
+    ? rawAmount || '—'
+    : rawAmount || '—';
   const assetLabel = receiptDisplayAssetLabel(receipt);
   const ledger =
     receipt.events.find((e) => e.txHash === receipt.transactions.transfer)?.ledger ??
@@ -215,6 +281,14 @@ export function ProofReceiptHero({
     ? truncateMiddle(receipt.transferResult.to, 10, 8)
     : '—';
   const isSealed = receipt.settlementStatus === 'verified';
+  const statusLabel = isSealed
+    ? 'Sealed'
+    : receipt.settlementStatus === 'failed'
+      ? 'Failed'
+      : receipt.transactions.transfer
+        ? 'Confirming'
+        : 'Pending';
+  const footerBadge = isSealed ? 'Compliant' : receipt.transactions.transfer ? 'Confirming on-chain' : 'Awaiting settlement';
 
   const downloadJson = () => {
     const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
@@ -269,7 +343,16 @@ export function ProofReceiptHero({
 
         <div className="relative mt-8 grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:items-end">
           <div>
-            <AnimatedAmount amount={displayAmount} assetLabel={assetLabel} />
+            {confidentialReceipt ? (
+              <ConfidentialAmountHero
+                amount={displayAmount}
+                assetLabel={assetLabel}
+                revealed={amountRevealed}
+                onToggleReveal={() => setAmountRevealed((v) => !v)}
+              />
+            ) : (
+              <AnimatedAmount amount={displayAmount} assetLabel={assetLabel} />
+            )}
             <motion.p
               className="mt-2 text-sm text-white/70"
               initial={{ opacity: 0 }}
@@ -296,7 +379,7 @@ export function ProofReceiptHero({
               { label: 'Proof', value: confidentialReceipt ? 'ZK verified' : truncateMiddle(receipt.nullifier, 6, 4) },
               {
                 label: 'Status',
-                value: isSealed ? 'Sealed' : receipt.settlementStatus === 'failed' ? 'Failed' : 'Pending',
+                value: statusLabel,
                 status: true,
               },
             ].map(({ label, value, status }) => (
@@ -460,7 +543,7 @@ export function ProofReceiptHero({
             Refresh status
           </Button>
         ) : null}
-        <Badge tone={isSealed ? 'ok' : 'warn'}>{isSealed ? 'Compliant' : 'Pending verification'}</Badge>
+        <Badge tone={isSealed ? 'ok' : receipt.transactions.transfer ? 'neutral' : 'warn'}>{footerBadge}</Badge>
         {receipt.nullifierSpent ? (
           <Badge tone="neutral">Nullifier spent — one-time use</Badge>
         ) : null}

@@ -431,7 +431,7 @@ export function TransferPage() {
 
         to: recipient,
 
-        amount: asset === 'eurc' && confidentialMode ? 'Amount private' : amount,
+        amount,
 
         success: true,
         confidential: asset === 'eurc' && confidentialMode,
@@ -644,6 +644,7 @@ export function TransferPage() {
                 onConfidentialModeChange={setConfidentialMode}
                 ctRecipientRegistered={ctRecipientRegistered}
                 confidentialRecipientWarning={confidentialRecipientWarning}
+                onConfidentialBalanceRefresh={() => void refreshConfidentialEurcBalance()}
               />
             )}
 

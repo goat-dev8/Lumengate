@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
   Check,
@@ -11,6 +11,7 @@ import {
 import { Pill } from '../design/Primitives';
 import { Button } from '../ui/Button';
 import { truncateMiddle } from '../../lib/utils';
+import { ConfidentialEurcShieldControls } from '../product/ConfidentialEurcShieldControls';
 
 type AssetKind = 'rwa' | 'usdc' | 'eurc';
 
@@ -41,6 +42,7 @@ type Props = {
   onConfidentialModeChange?: (enabled: boolean) => void;
   ctRecipientRegistered?: boolean | null;
   confidentialRecipientWarning?: string | null;
+  onConfidentialBalanceRefresh?: () => void;
 };
 
 function ComplianceLineRow({ label, status, ok }: ComplianceLine) {
@@ -88,6 +90,7 @@ export function SendTransferForm({
   onConfidentialModeChange,
   ctRecipientRegistered = null,
   confidentialRecipientWarning = null,
+  onConfidentialBalanceRefresh,
 }: Props) {
   const assetPills: { id: AssetKind; label: string; disabled?: boolean }[] = [
     ...(showTreasuryOption ? [{ id: 'rwa' as const, label: 'Treasury' }] : []),
@@ -158,7 +161,10 @@ export function SendTransferForm({
             </p>
 
             {asset === 'eurc' && confidentialAvailable ? (
-              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-[#007dfc]/15 bg-[#f6f9fc]/60 px-4 py-3.5">
+              <motion.label
+                layout
+                className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-[#007dfc]/15 bg-[#f6f9fc]/60 px-4 py-3.5 transition-shadow hover:shadow-[0_8px_24px_rgba(0,125,252,0.08)]"
+              >
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 rounded border-[var(--lg-border)] text-[#007dfc]"
@@ -172,8 +178,27 @@ export function SendTransferForm({
                     smart account (C… address), not a funding wallet (G…).
                   </span>
                 </span>
-              </label>
+              </motion.label>
             ) : null}
+
+            <AnimatePresence>
+              {asset === 'eurc' && confidentialMode && confidentialAvailable ? (
+                <motion.div
+                  key="send-shield-panel"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="mt-4 overflow-hidden"
+                >
+                  <ConfidentialEurcShieldControls
+                    variant="send"
+                    suggestedAmount={amount}
+                    onShielded={onConfidentialBalanceRefresh}
+                  />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
 
             <div className="mt-10">
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">

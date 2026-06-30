@@ -175,8 +175,15 @@ export async function buildProofReceipt(input: BuildProofReceiptInput): Promise<
   const targets = loadComplianceAssetTargets();
   const hasTransferTx = Boolean(txs.transfer);
   const transferSucceeded = input.transferResult?.success !== false;
-  const settlementVerified =
-    hasTransferTx && transferSucceeded && nullifierSpent && rootsMatchOnChain;
+  const isConfidentialTransfer = input.transferResult?.confidential === true;
+  const txConfirmed = Boolean(
+    verificationTimestamp ||
+      events.some((event) => event.txHash === txs.transfer) ||
+      ledgerCloseTime,
+  );
+  const settlementVerified = isConfidentialTransfer
+    ? hasTransferTx && transferSucceeded && txConfirmed
+    : hasTransferTx && transferSucceeded && nullifierSpent && rootsMatchOnChain;
   const settlementStatus: SettlementStatus = settlementVerified
     ? 'verified'
     : hasTransferTx && input.transferResult?.success === false

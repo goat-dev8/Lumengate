@@ -18,7 +18,10 @@ issuer-service/.env.*
 !app/node_modules/**/README.md
 !issuer-service/node_modules/**/README.md
 
-# --- Reports, audits, gap analysis, masterplans ---
+# --- Reports, audits, gap analysis, masterplans (repo root) ---
+/LUMENGATE_ENGINEERING_BIBLE.md
+/MASTER_PRODUCT_AUDIT.md
+/RECOVERY_HANDOFF.md
 *_REPORT.md
 *_REPORTS/
 FINAL_*
