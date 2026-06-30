@@ -231,6 +231,7 @@ export class StateEngine {
    * Soroban RPC event indexing can lag behind transaction SUCCESS.
    */
   async waitUntilVerified(options?: WaitUntilVerifiedOptions): Promise<AccountState> {
+    const prior = await this.current();
     if (options?.afterTxHash && options.rpcUrl) {
       const { waitForTransactionStatus } = await import("../../contracts.js");
       await waitForTransactionStatus(options.rpcUrl, options.afterTxHash);
@@ -260,6 +261,7 @@ export class StateEngine {
             (!options?.requireSpendable || rebuilt.spendableOk)
           : rebuilt.ok;
       if (rebuiltOk) return state;
+      await this.cfg.store.save(prior);
     }
     throw new Error("Confidential balance sync timed out waiting for Stellar events.");
   }
@@ -317,6 +319,14 @@ export class StateEngine {
       }
     }
 
+    // Accounts created during older buggy builds can contain optimistic markers
+    // plus stale openings. Try an authoritative event replay, but only keep it
+    // if it verifies; otherwise restore the optimistic state.
+    if (hadOptimistic) {
+      const repaired = await this.tryVerifiedRebuild((v) => v.spendableOk || v.receivingOk);
+      if (repaired) return repaired;
+    }
+
     // Best effort: never lose optimistic shield/merge state on the way out.
     if (hadOptimistic) {
       await this.cfg.store.save(prior);
@@ -337,5 +347,22 @@ export class StateEngine {
     if (!state.optimisticTxHashes?.length) return;
     state.optimisticTxHashes = undefined;
     await this.cfg.store.save(state);
+  }
+
+  private async tryVerifiedRebuild(
+    accepts: (verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean }) => boolean,
+  ): Promise<{
+    state: AccountState;
+    verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean };
+  } | null> {
+    const prior = await this.current();
+    const rebuiltState = await this.rebuildFromEvents();
+    const rebuiltVerified = await this.verifyAgainstChain();
+    if (accepts(rebuiltVerified)) {
+      await this.clearOptimisticMarkersIfVerified(rebuiltVerified);
+      return { state: rebuiltState, verified: rebuiltVerified };
+    }
+    await this.cfg.store.save(prior);
+    return null;
   }
 }

@@ -320,7 +320,7 @@ export async function executeConfidentialEurcSettlement(input: {
       afterTxHash: depositHash,
       requireReceiving: true,
       skipSync: true,
-      allowRebuild: false,
+      allowRebuild: true,
     });
     verified = await engine.verifyAgainstChain();
   }
@@ -339,7 +339,7 @@ export async function executeConfidentialEurcSettlement(input: {
       afterTxHash: mergeHash,
       requireSpendable: true,
       skipSync: true,
-      allowRebuild: false,
+      allowRebuild: true,
     });
     verified = await engine.verifyAgainstChain();
   }
@@ -431,7 +431,7 @@ export async function shieldConfidentialEurc(input: {
     afterTxHash: depositHash,
     requireReceiving: true,
     skipSync: true,
-    allowRebuild: false,
+    allowRebuild: true,
   });
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
     throw new Error('Shield deposit succeeded, but no private receiving balance was found.');
@@ -447,7 +447,7 @@ export async function shieldConfidentialEurc(input: {
     afterTxHash: mergeHash,
     requireSpendable: true,
     skipSync: true,
-    allowRebuild: false,
+    allowRebuild: true,
   });
   if (state.spendable.v < amountRaw) {
     throw new Error('Shield merge completed, but private spendable balance did not match the shielded amount.');
@@ -465,9 +465,21 @@ export async function mergeConfidentialEurc(input: {
   const { config, txSource, smartAccount, onProgress, submitTx } = input;
   const keys = await resolveCtKeys(config, smartAccount);
   const engine = await ctStateEngine(config, smartAccount, keys);
-  const state = await engine.sync();
+  let { state, verified } = await engine.reconcileForRead(config.rpcUrl);
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
     throw new Error('No received private EURC is waiting to merge.');
+  }
+  if (!verified.receivingOk) {
+    onProgress?.({ step: 'merge', message: 'Synchronizing received private EURC before merge…' });
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      requireReceiving: true,
+      allowRebuild: true,
+    });
+    verified = await engine.verifyAgainstChain();
+  }
+  if (!verified.receivingOk) {
+    throw new Error('Received private EURC is still syncing with Stellar. Wait a moment before merging.');
   }
   onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
@@ -478,7 +490,7 @@ export async function mergeConfidentialEurc(input: {
     afterTxHash: txHash,
     requireSpendable: true,
     skipSync: true,
-    allowRebuild: false,
+    allowRebuild: true,
   });
   return { txHash, steps: [txHash] };
 }
@@ -512,7 +524,7 @@ export async function unshieldConfidentialEurc(input: {
       afterTxHash: mergeHash,
       requireSpendable: true,
       skipSync: true,
-      allowRebuild: false,
+      allowRebuild: true,
     });
   }
   if (state.spendable.v < amountRaw) {
