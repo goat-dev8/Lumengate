@@ -113,6 +113,7 @@ import {
   readCachedConfidentialEurcBalance,
   type ConfidentialEurcBalance,
 } from '../lib/confidentialBalance';
+import { ctTrace } from '../lib/ctSyncDiagnostics';
 import {
   buildFundSmartAccountEurcXdr,
   buildFundSmartAccountUsdcXdr,
@@ -1403,7 +1404,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cached) setConfidentialEurcBalance((prev) => prev ?? cached);
     }
     try {
+      ctTrace('app.refresh.start', { account: settlementAddress, background: Boolean(options?.background) });
       const balance = await readConfidentialEurcBalance(config, settlementAddress);
+      ctTrace('app.refresh.result', {
+        account: settlementAddress,
+        registered: balance.registered,
+        spendableSynced: balance.spendableSynced,
+        receivingSynced: balance.receivingSynced,
+        syncError: balance.syncError,
+      });
       setConfidentialEurcBalance(balance);
       if (balance.spendableSynced) {
         ctResyncAttemptsRef.current = 0;

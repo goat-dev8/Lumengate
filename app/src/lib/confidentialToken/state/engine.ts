@@ -34,6 +34,10 @@ import type { ChainClient } from "../chain/client.js";
 import { type ConfidentialEvent } from "../chain/events.js";
 import { hybridFetchEvents } from "../chain/event-source.js";
 import type { IndexerClient } from "../chain/indexer.js";
+import type { IssuerCtIndexerClient } from "../chain/issuer-indexer.js";
+import { ctTrace } from "../../ctSyncDiagnostics.js";
+
+type CtHistoryIndexer = IndexerClient | IssuerCtIndexerClient;
 import type { StateStore } from "./store.js";
 import { freshState, type AccountState, type Opening } from "./types.js";
 
@@ -67,7 +71,7 @@ export interface StateEngineConfig {
    * window. When omitted, sync is RPC-only (the original behavior): events
    * older than retention are unavailable.
    */
-  indexer?: IndexerClient;
+  indexer?: CtHistoryIndexer;
 }
 
 export class StateEngine {
@@ -144,6 +148,14 @@ export class StateEngine {
       { fromLedger: this.cfg.fromLedger, startCursor: state.cursor },
     );
 
+    ctTrace("engine.sync", {
+      account: this.cfg.address,
+      priorCursor: state.cursor,
+      eventCount: events.length,
+      latestLedger,
+      optimistic: state.optimisticTxHashes?.length ?? 0,
+    });
+
     for (const ev of events) this.apply(state, ev);
     if (cursor) state.cursor = cursor;
     state.syncedLedger = Math.max(state.syncedLedger, latestLedger);
@@ -160,6 +172,13 @@ export class StateEngine {
       this.cfg.indexer,
       { fromLedger: this.cfg.fromLedger },
     );
+
+    ctTrace("engine.rebuild", {
+      account: this.cfg.address,
+      fromLedger: this.cfg.fromLedger,
+      eventCount: events.length,
+      latestLedger,
+    });
 
     for (const ev of events) this.apply(state, ev);
     if (cursor) state.cursor = cursor;
@@ -197,7 +216,14 @@ export class StateEngine {
     if (!onchain) return { ok: false, spendableOk: false, receivingOk: false };
     const spendableOk = commit(state.spendable.v, state.spendable.r).equals(onchain.spendableBalance);
     const receivingOk = commit(state.receiving.v, state.receiving.r).equals(onchain.receivingBalance);
-    return { ok: spendableOk && receivingOk, spendableOk, receivingOk };
+    const result = { ok: spendableOk && receivingOk, spendableOk, receivingOk };
+    ctTrace("engine.verify", {
+      account: this.cfg.address,
+      ...result,
+      spendableV: state.spendable.v.toString(),
+      receivingV: state.receiving.v.toString(),
+    });
+    return result;
   }
 
   /** Credit receiving locally after a deposit tx is confirmed (events may lag behind RPC). */
@@ -293,9 +319,8 @@ export class StateEngine {
       return { state, verified };
     }
 
-    // Fresh device/account with no optimistic state: a single rebuild from the
-    // event stream is safe and often resolves a cold cache immediately.
-    if (!hadOptimistic) {
+    // Authoritative replay from the event stream (clears stale optimistic markers).
+    {
       const rebuilt = await this.rebuildFromEvents();
       const rebuiltVerified = await this.verifyAgainstChain();
       if (rebuiltVerified.spendableOk) {

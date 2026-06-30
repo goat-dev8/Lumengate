@@ -17,7 +17,8 @@ import { buildTransferWitness } from './confidentialToken/witness/transfer';
 import { buildWithdrawWitness } from './confidentialToken/witness/withdraw';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
-import { createConfidentialEurcStateEngine } from './confidentialBalance';
+import { createConfidentialEurcStateEngine, initializeCtStateFromEvents } from './confidentialBalance';
+import { ctTrace } from './ctSyncDiagnostics';
 import {
   buildCtConfidentialTransferTransaction,
   buildCtDepositTransaction,
@@ -225,6 +226,9 @@ export async function registerConfidentialEurcAccount(input: {
   const hash = await submitTx(registerTx, 'register');
   if (hash && config.confidentialTokenId) {
     markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+    ctTrace('flow.register.confirmed', { account: smartAccount, txHash: hash });
+    await initializeCtStateFromEvents(config, smartAccount);
+    ctTrace('flow.register.initialized', { account: smartAccount, txHash: hash });
   }
   return hash;
 }
@@ -269,6 +273,7 @@ export async function executeConfidentialEurcSettlement(input: {
     hashes.push(await submitTx(registerTx, 'register'));
     if (config.confidentialTokenId) {
       markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+      await initializeCtStateFromEvents(config, smartAccount);
     }
     registered = true;
   }
@@ -314,12 +319,11 @@ export async function executeConfidentialEurcSettlement(input: {
     );
     const depositHash = await submitTx(depositTx, 'deposit');
     hashes.push(depositHash);
-    await engine.creditReceiving(depositRaw, depositHash);
+    ctTrace('flow.deposit.submitted', { account: smartAccount, txHash: depositHash, amount: depositRaw.toString() });
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: depositHash,
       requireReceiving: true,
-      skipSync: true,
       allowRebuild: true,
     });
     verified = await engine.verifyAgainstChain();
@@ -333,12 +337,11 @@ export async function executeConfidentialEurcSettlement(input: {
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
     hashes.push(mergeHash);
-    await engine.applyMergeLocal(mergeHash);
+    ctTrace('flow.merge.submitted', { account: smartAccount, txHash: mergeHash });
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: mergeHash,
       requireSpendable: true,
-      skipSync: true,
       allowRebuild: true,
     });
     verified = await engine.verifyAgainstChain();
@@ -418,6 +421,7 @@ export async function shieldConfidentialEurc(input: {
     hashes.push(await submitTx(registerTx, 'register'));
     if (config.confidentialTokenId) {
       markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+      await initializeCtStateFromEvents(config, smartAccount);
     }
   }
 
@@ -425,12 +429,11 @@ export async function shieldConfidentialEurc(input: {
   const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
   const depositHash = await submitTx(depositTx, 'deposit');
   hashes.push(depositHash);
-  await engine.creditReceiving(amountRaw, depositHash);
+  ctTrace('flow.shield.deposit', { account: smartAccount, txHash: depositHash, amount: amountRaw.toString() });
   let state = await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: depositHash,
     requireReceiving: true,
-    skipSync: true,
     allowRebuild: true,
   });
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
@@ -441,12 +444,11 @@ export async function shieldConfidentialEurc(input: {
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const mergeHash = await submitTx(mergeTx, 'merge');
   hashes.push(mergeHash);
-  await engine.applyMergeLocal(mergeHash);
+  ctTrace('flow.shield.merge', { account: smartAccount, txHash: mergeHash });
   state = await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: mergeHash,
     requireSpendable: true,
-    skipSync: true,
     allowRebuild: true,
   });
   if (state.spendable.v < amountRaw) {
@@ -484,12 +486,11 @@ export async function mergeConfidentialEurc(input: {
   onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const txHash = await submitTx(mergeTx, 'merge');
-  await engine.applyMergeLocal(txHash);
+  ctTrace('flow.merge.submitted', { account: smartAccount, txHash });
   await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: txHash,
     requireSpendable: true,
-    skipSync: true,
     allowRebuild: true,
   });
   return { txHash, steps: [txHash] };
@@ -518,12 +519,11 @@ export async function unshieldConfidentialEurc(input: {
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
     hashes.push(mergeHash);
-    await engine.applyMergeLocal(mergeHash);
+    ctTrace('flow.unshield.merge', { account: smartAccount, txHash: mergeHash });
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: mergeHash,
       requireSpendable: true,
-      skipSync: true,
       allowRebuild: true,
     });
   }

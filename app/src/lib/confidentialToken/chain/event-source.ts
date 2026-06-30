@@ -30,6 +30,10 @@ import {
 } from "./events.js";
 import type { ChainClient } from "./client.js";
 import type { IndexerClient } from "./indexer.js";
+import type { IssuerCtIndexerClient } from "./issuer-indexer.js";
+import { ctTrace } from "../../ctSyncDiagnostics.js";
+
+type CtHistoryIndexer = IndexerClient | IssuerCtIndexerClient;
 
 /**
  * Number of ledgers of headroom above the RPC's reported `oldestLedger` at
@@ -75,7 +79,7 @@ async function rpcOldestLedger(client: ChainClient): Promise<number> {
  */
 export async function hybridFetchEvents(
   client: ChainClient,
-  indexer: IndexerClient | undefined,
+  indexer: CtHistoryIndexer | undefined,
   opts: { fromLedger: number; startCursor?: string },
 ): Promise<FetchEventsResult> {
   const tokenId = client.cfg.contracts.token;
@@ -95,12 +99,6 @@ export async function hybridFetchEvents(
   let recent: FetchEventsResult;
 
   if (indexer && rpcOldest > 0 && next < rpcOldest) {
-    // Backfill the pre-window portion from the indexer, then take the RPC tail
-    // from a seam a margin above the live retention floor (so the RPC call
-    // can't reject a startLedger that aged out during the backfill). The seam
-    // is a clean ledger boundary: indexer owns [next, seam-1], RPC owns
-    // [seam, head], disjoint by construction. The stale cursor (if any) is
-    // discarded — it points before the window and the RPC would reject it.
     const seam = rpcOldest + RPC_SEAM_MARGIN;
     try {
       const res = await indexer.fetchEvents({
@@ -109,11 +107,24 @@ export async function hybridFetchEvents(
         endLedger: seam - 1,
       });
       old = res.events;
+      ctTrace("hybrid.indexer.backfill", {
+        account: tokenId,
+        startLedger: next,
+        endLedger: seam - 1,
+        eventCount: old.length,
+        latestLedger: res.latestLedger,
+      });
     } catch (e) {
       console.warn(
         `[ctd] indexer backfill failed (${String((e as Error)?.message ?? e)}); ` +
           `pre-window history before ledger ${seam} is unavailable this sync`,
       );
+      ctTrace("hybrid.indexer.backfill_failed", {
+        account: tokenId,
+        startLedger: next,
+        endLedger: seam - 1,
+        error: String((e as Error)?.message ?? e),
+      });
     }
     recent = await fetchEvents(client, { startLedger: seam });
   } else if (opts.startCursor) {
@@ -147,7 +158,7 @@ export async function hybridFetchEvents(
  */
 export async function hybridResolveEventRef(
   client: ChainClient,
-  indexer: IndexerClient | undefined,
+  indexer: CtHistoryIndexer | undefined,
   ref: EventRef,
 ): Promise<ConfidentialEvent | null> {
   const fromRpc = await resolveEventRef(client, ref).catch(() => null);

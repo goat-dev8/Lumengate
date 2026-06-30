@@ -2,6 +2,7 @@ import type { DeploymentConfig } from './config';
 import { resolveCtKeys } from './confidentialFlow';
 import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
+import { IssuerCtIndexerClient } from './confidentialToken/chain/issuer-indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
 import { reviveState } from './confidentialToken/state/store';
@@ -76,10 +77,35 @@ function ctChainClient(config: DeploymentConfig): ChainClient {
   });
 }
 
-function ctIndexer(config: DeploymentConfig): IndexerClient | undefined {
-  return config.confidentialIndexerUrl
-    ? new IndexerClient({ baseUrl: config.confidentialIndexerUrl })
-    : undefined;
+type CtHistoryIndexer = IndexerClient | IssuerCtIndexerClient;
+
+/** Resolve the durable CT event backfill client (issuer `/ct/events` or Goldsky Worker). */
+function ctIndexer(config: DeploymentConfig): CtHistoryIndexer | undefined {
+  const issuerBase = config.issuerServiceUrl?.replace(/\/$/, '');
+  const configured = config.confidentialIndexerUrl?.replace(/\/$/, '');
+
+  // Lumengate issuer `/ct` is NOT the Goldsky Worker API. Using IndexerClient
+  // against it 404s and silently drops pre-window history during hybrid sync.
+  if (configured && issuerBase && (configured === `${issuerBase}/ct` || configured.endsWith('/ct'))) {
+    return new IssuerCtIndexerClient({ baseUrl: issuerBase });
+  }
+  if (configured && !configured.endsWith('/ct')) {
+    return new IndexerClient({ baseUrl: configured });
+  }
+  if (issuerBase) {
+    return new IssuerCtIndexerClient({ baseUrl: issuerBase });
+  }
+  return undefined;
+}
+
+/** Authoritative cold-start initialization after CT register (demo wallet.refresh baseline). */
+export async function initializeCtStateFromEvents(
+  config: DeploymentConfig,
+  smartAccount: string,
+): Promise<void> {
+  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
+  await engine.rebuildFromEvents();
+  await engine.verifyAgainstChain();
 }
 
 export async function createConfidentialEurcStateEngine(
