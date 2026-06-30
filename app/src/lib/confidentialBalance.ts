@@ -11,6 +11,8 @@ export type ConfidentialEurcBalance = {
   spendable: bigint;
   receiving: bigint;
   total: bigint;
+  spendableSynced: boolean;
+  receivingSynced: boolean;
   synced: boolean;
 };
 
@@ -61,7 +63,15 @@ export async function readConfidentialEurcBalance(
 ): Promise<ConfidentialEurcBalance> {
   const registered = await readCtRegistered(config, smartAccount);
   if (!registered || !config.confidentialTokenId) {
-    return { registered: false, spendable: 0n, receiving: 0n, total: 0n, synced: true };
+    return {
+      registered: false,
+      spendable: 0n,
+      receiving: 0n,
+      total: 0n,
+      spendableSynced: true,
+      receivingSynced: true,
+      synced: true,
+    };
   }
   const engine = await createConfidentialEurcStateEngine(config, smartAccount);
   let state = await engine.sync();
@@ -77,6 +87,8 @@ export async function readConfidentialEurcBalance(
     spendable,
     receiving,
     total: spendable + receiving,
+    spendableSynced: verified.spendableOk,
+    receivingSynced: verified.receivingOk,
     synced: verified.ok,
   };
 }

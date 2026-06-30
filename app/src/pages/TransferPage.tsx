@@ -306,8 +306,8 @@ export function TransferPage() {
         return;
       }
       const balance = confidentialEurcBalance ?? (await refreshConfidentialEurcBalance());
-      if (!balance?.synced) {
-        setError('Confidential balance is syncing with Stellar. Wait a moment and try again.');
+      if (!balance?.spendableSynced) {
+        setError('Confidential spendable balance is syncing with Stellar. Wait a moment and try again.');
         return;
       }
     }

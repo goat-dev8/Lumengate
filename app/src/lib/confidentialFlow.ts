@@ -237,15 +237,29 @@ export async function executeConfidentialEurcSettlement(input: {
     throw new Error('Recipient confidential account could not be read from Stellar.');
   }
 
-  progress('register', 'Syncing confidential balance…');
-  let state = await engine.waitUntilVerified({ rpcUrl: config.rpcUrl });
+  progress('register', 'Syncing spendable confidential balance…');
+  let state = await engine.sync();
+  let verified = await engine.verifyAgainstChain();
+  if (!verified.spendableOk) {
+    state = await engine.rebuildFromEvents();
+    verified = await engine.verifyAgainstChain();
+  }
+  if (!verified.spendableOk) {
+    throw new Error('Confidential spendable balance is syncing with Stellar. Wait a moment and try again.');
+  }
   if (!state.registered && registered) {
     state.registered = true;
     await ctStateStore(contracts.token).save(state);
   }
 
-  const totalConfidential = state.spendable.v + state.receiving.v;
+  const usableReceiving = verified.receivingOk ? state.receiving.v : 0n;
+  const totalConfidential = state.spendable.v + usableReceiving;
   if (totalConfidential < amountRaw) {
+    if (!verified.receivingOk && state.receiving.v > 0n) {
+      throw new Error(
+        'Received private EURC is still syncing with Stellar. Spendable EURC can be sent now, but wait before auto-shielding or merging additional received balance.',
+      );
+    }
     const depositRaw = amountRaw - totalConfidential;
     progress('deposit', `Shielding ${amount} EURC into confidential balance…`);
     const depositTx = await buildCtDepositTransaction(
@@ -264,9 +278,13 @@ export async function executeConfidentialEurcSettlement(input: {
       requireReceiving: true,
       skipSync: true,
     });
+    verified = await engine.verifyAgainstChain();
   }
 
-  if (state.receiving.v > 0n || state.receiving.r !== 0n) {
+  if (state.spendable.v < amountRaw && (state.receiving.v > 0n || state.receiving.r !== 0n)) {
+    if (!verified.receivingOk) {
+      throw new Error('Received private EURC is syncing with Stellar. Wait a moment before merging it into spendable balance.');
+    }
     progress('merge', 'Consolidating confidential balance…');
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
@@ -278,6 +296,7 @@ export async function executeConfidentialEurcSettlement(input: {
       requireSpendable: true,
       skipSync: true,
     });
+    verified = await engine.verifyAgainstChain();
   }
 
   if (state.spendable.v < amountRaw) {
