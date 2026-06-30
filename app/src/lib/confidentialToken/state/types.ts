@@ -27,6 +27,8 @@ export interface AccountState {
   cursor?: string;
   /** Highest ledger reflected in this state. */
   syncedLedger: number;
+  /** Transaction hashes whose effects were applied optimistically before event sync. */
+  optimisticTxHashes?: string[];
 }
 
 export function freshState(address: string): AccountState {

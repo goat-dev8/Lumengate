@@ -257,11 +257,12 @@ export async function executeConfidentialEurcSettlement(input: {
     );
     const depositHash = await submitTx(depositTx, 'deposit');
     hashes.push(depositHash);
-    await engine.creditReceiving(depositRaw);
+    await engine.creditReceiving(depositRaw, depositHash);
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: depositHash,
       requireReceiving: true,
+      skipSync: true,
     });
   }
 
@@ -270,11 +271,12 @@ export async function executeConfidentialEurcSettlement(input: {
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
     hashes.push(mergeHash);
-    await engine.applyMergeLocal();
+    await engine.applyMergeLocal(mergeHash);
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: mergeHash,
       requireSpendable: true,
+      skipSync: true,
     });
   }
 
@@ -356,11 +358,12 @@ export async function shieldConfidentialEurc(input: {
   const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
   const depositHash = await submitTx(depositTx, 'deposit');
   hashes.push(depositHash);
-  await engine.creditReceiving(amountRaw);
+  await engine.creditReceiving(amountRaw, depositHash);
   let state = await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: depositHash,
     requireReceiving: true,
+    skipSync: true,
   });
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
     throw new Error('Shield deposit succeeded, but no private receiving balance was found.');
@@ -370,11 +373,12 @@ export async function shieldConfidentialEurc(input: {
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const mergeHash = await submitTx(mergeTx, 'merge');
   hashes.push(mergeHash);
-  await engine.applyMergeLocal();
+  await engine.applyMergeLocal(mergeHash);
   state = await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: mergeHash,
     requireSpendable: true,
+    skipSync: true,
   });
   if (state.spendable.v < amountRaw) {
     throw new Error('Shield merge completed, but private spendable balance did not match the shielded amount.');
@@ -399,11 +403,12 @@ export async function mergeConfidentialEurc(input: {
   onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const txHash = await submitTx(mergeTx, 'merge');
-  await engine.applyMergeLocal();
+  await engine.applyMergeLocal(txHash);
   await engine.waitUntilVerified({
     rpcUrl: config.rpcUrl,
     afterTxHash: txHash,
     requireSpendable: true,
+    skipSync: true,
   });
   return { txHash, steps: [txHash] };
 }
@@ -431,11 +436,12 @@ export async function unshieldConfidentialEurc(input: {
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
     const mergeHash = await submitTx(mergeTx, 'merge');
     hashes.push(mergeHash);
-    await engine.applyMergeLocal();
+    await engine.applyMergeLocal(mergeHash);
     state = await engine.waitUntilVerified({
       rpcUrl: config.rpcUrl,
       afterTxHash: mergeHash,
       requireSpendable: true,
+      skipSync: true,
     });
   }
   if (state.spendable.v < amountRaw) {

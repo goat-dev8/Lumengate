@@ -44,6 +44,7 @@ export type WaitUntilVerifiedOptions = {
   intervalMs?: number;
   requireSpendable?: boolean;
   requireReceiving?: boolean;
+  skipSync?: boolean;
 };
 
 export interface StateEngineConfig {
@@ -87,6 +88,10 @@ export class StateEngine {
 
   /** Apply one event in-place to `state`. */
   private apply(state: AccountState, ev: ConfidentialEvent): void {
+    if (state.optimisticTxHashes?.includes(ev.txHash)) {
+      state.syncedLedger = Math.max(state.syncedLedger, ev.ledger);
+      return;
+    }
     const me = state.address;
     switch (ev.type) {
       case "register":
@@ -145,6 +150,23 @@ export class StateEngine {
     return state;
   }
 
+  /** Rebuild local openings from the event stream, ignoring any cached cursor/state. */
+  async rebuildFromEvents(): Promise<AccountState> {
+    const state = freshState(this.cfg.address);
+    const { events, cursor, latestLedger } = await hybridFetchEvents(
+      this.cfg.client,
+      this.cfg.indexer,
+      { fromLedger: this.cfg.fromLedger },
+    );
+
+    for (const ev of events) this.apply(state, ev);
+    if (cursor) state.cursor = cursor;
+    state.syncedLedger = Math.max(state.syncedLedger, latestLedger);
+
+    await this.cfg.store.save(state);
+    return state;
+  }
+
   /** Read current state without syncing (or a fresh zero-state). */
   async current(): Promise<AccountState> {
     return (await this.cfg.store.load(this.cfg.address)) ?? freshState(this.cfg.address);
@@ -177,21 +199,27 @@ export class StateEngine {
   }
 
   /** Credit receiving locally after a deposit tx is confirmed (events may lag behind RPC). */
-  async creditReceiving(amount: bigint): Promise<AccountState> {
+  async creditReceiving(amount: bigint, txHash?: string): Promise<AccountState> {
     const state = await this.current();
     state.receiving = { v: state.receiving.v + amount, r: state.receiving.r };
+    if (txHash) {
+      state.optimisticTxHashes = [...new Set([...(state.optimisticTxHashes ?? []), txHash])];
+    }
     await this.cfg.store.save(state);
     return state;
   }
 
   /** Move receiving into spendable locally after a merge tx is confirmed. */
-  async applyMergeLocal(): Promise<AccountState> {
+  async applyMergeLocal(txHash?: string): Promise<AccountState> {
     const state = await this.current();
     state.spendable = {
       v: state.spendable.v + state.receiving.v,
       r: frAdd(state.spendable.r, state.receiving.r),
     };
     state.receiving = { v: 0n, r: 0n };
+    if (txHash) {
+      state.optimisticTxHashes = [...new Set([...(state.optimisticTxHashes ?? []), txHash])];
+    }
     await this.cfg.store.save(state);
     return state;
   }
@@ -207,7 +235,7 @@ export class StateEngine {
     }
     const maxAttempts = options?.maxAttempts ?? 40;
     const intervalMs = options?.intervalMs ?? 1500;
-    let state = await this.sync();
+    let state = options?.skipSync ? await this.current() : await this.sync();
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const verified = await this.verifyAgainstChain();
       const ok =
@@ -218,9 +246,17 @@ export class StateEngine {
       if (ok) return state;
       if (attempt < maxAttempts - 1) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
-        state = await this.sync();
+        state = options?.skipSync ? await this.current() : await this.sync();
       }
     }
+    state = await this.rebuildFromEvents();
+    const rebuilt = await this.verifyAgainstChain();
+    const rebuiltOk =
+      options?.requireReceiving || options?.requireSpendable
+        ? (!options?.requireReceiving || rebuilt.receivingOk) &&
+          (!options?.requireSpendable || rebuilt.spendableOk)
+        : rebuilt.ok;
+    if (rebuiltOk) return state;
     throw new Error("Confidential balance sync timed out waiting for Stellar events.");
   }
 }

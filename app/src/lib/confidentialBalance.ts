@@ -64,8 +64,12 @@ export async function readConfidentialEurcBalance(
     return { registered: false, spendable: 0n, receiving: 0n, total: 0n, synced: true };
   }
   const engine = await createConfidentialEurcStateEngine(config, smartAccount);
-  const state = await engine.sync();
-  const verified = await engine.verifyAgainstChain();
+  let state = await engine.sync();
+  let verified = await engine.verifyAgainstChain();
+  if (!verified.ok) {
+    state = await engine.rebuildFromEvents();
+    verified = await engine.verifyAgainstChain();
+  }
   const spendable = state.spendable.v;
   const receiving = state.receiving.v;
   return {

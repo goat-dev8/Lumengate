@@ -35,6 +35,9 @@ export function reviveState(raw: Record<string, unknown>): AccountState {
     registered: raw.registered as boolean,
     cursor: raw.cursor as string | undefined,
     syncedLedger: raw.syncedLedger as number,
+    optimisticTxHashes: Array.isArray(raw.optimisticTxHashes)
+      ? (raw.optimisticTxHashes as string[])
+      : undefined,
   };
 }
 
@@ -46,6 +49,7 @@ export function cloneState(s: AccountState): AccountState {
     registered: s.registered,
     cursor: s.cursor,
     syncedLedger: s.syncedLedger,
+    optimisticTxHashes: s.optimisticTxHashes ? [...s.optimisticTxHashes] : undefined,
   };
 }
 
