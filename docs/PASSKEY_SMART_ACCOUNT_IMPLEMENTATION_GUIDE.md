@@ -314,7 +314,13 @@ Do not leave permanent placeholders. `Reading...` is acceptable only while an ac
 **Cause:** single-shot balance/API reads failed during cold RPC or fresh ledger state.  
 **Fix:** bounded exponential retries, skeletons while active, zero/error fallback afterward.
 
-### 8. Weak Shield progress feedback
+### 8. Enable 7-day session fails with Auth InvalidAction on new accounts
+
+**Symptom:** `Re-simulation failed: HostError: Error(Auth, InvalidAction)` when clicking Enable 7-day session; event log shows `get_proof` / `add_context_rule`.  
+**Cause:** `CompliancePolicy.enforce` reads `session_store.get_proof` for every smart-account auth except `session_store.set_proof`. The UI tried `add_context_rule` before binding passport eligibility.  
+**Fix:** `enableLumengateSession` binds session proof first (`set_proof`, policy-exempt), then installs the Default session rule.
+
+### 9. Weak Shield progress feedback
 
 **Symptom:** user thought Shield froze.  
 **Cause:** only a small text status changed during long blockchain/proof work.  

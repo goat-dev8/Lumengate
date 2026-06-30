@@ -52,30 +52,35 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
   const handleAuthorize = async () => {
     setLoading(true);
     setError(null);
-    setStatus('Opening passkey — approve the 7-day Lumengate session…');
+    setStatus(
+      sessionEnabled
+        ? 'Opening passkey — binding passport eligibility on-chain…'
+        : 'Opening passkey — bind eligibility, then install the 7-day session…',
+    );
     try {
       if (!sessionEnabled) {
         await enableLumengateSession();
-        setStatus('7-day Lumengate session installed. Binding passport eligibility…');
+        setStatus('7-day Lumengate session installed and passport eligibility is bound.');
+      } else {
+        const needsProofBind = asset ? !requestedScopeAuthorized : Boolean(activeProof && sessionProofBound === false);
+        const proofToBind = needsProofBind
+          ? asset && (!activeProof || !activeProofMatchesScope)
+            ? (await ensureProofForAsset(asset, (message) => setStatus(message))).proof
+            : activeProof
+          : null;
+        if (needsProofBind && !proofToBind) {
+          throw new Error('Generate your private passport proof before authorizing your passkey.');
+        }
+        const bindHash = proofToBind ? await bindSessionProofIfNeeded(proofToBind) : null;
+        if (proofToBind) {
+          await refreshSessionProofBound(proofToBind);
+        }
+        setStatus(
+          bindHash
+            ? 'Passkey authorized on-chain for this passport scope.'
+            : '7-day Lumengate session is ready.',
+        );
       }
-      const needsProofBind = asset ? !requestedScopeAuthorized : Boolean(activeProof && sessionProofBound === false);
-      const proofToBind = needsProofBind
-        ? asset && (!activeProof || !activeProofMatchesScope)
-          ? (await ensureProofForAsset(asset, (message) => setStatus(message))).proof
-          : activeProof
-        : null;
-      if (needsProofBind && !proofToBind) {
-        throw new Error('Generate your private passport proof before authorizing your passkey.');
-      }
-      const bindHash = proofToBind ? await bindSessionProofIfNeeded(proofToBind) : null;
-      if (proofToBind) {
-        await refreshSessionProofBound(proofToBind);
-      }
-      setStatus(
-        bindHash
-          ? 'Passkey authorized on-chain for this passport scope.'
-          : '7-day Lumengate session is ready.',
-      );
     } catch (err) {
       setStatus(null);
       setError(err instanceof Error ? err.message : String(err));

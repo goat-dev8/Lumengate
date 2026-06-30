@@ -882,6 +882,12 @@ export function formatSorobanUserError(message: string): string {
   }
   if (message.includes('Error(Auth, InvalidAction)') || message.includes('__check_auth')) {
     hints.push('Smart account __check_auth rejected the authorization entry.');
+    if (message.includes('get_proof') || message.includes('add_context_rule')) {
+      hints.push(
+        'Enable the 7-day session only after your passport eligibility is bound on-chain. ' +
+          'On Verify, complete passport confirmation first — Lumengate binds eligibility, then installs the session rule.',
+      );
+    }
   }
   if (message.includes('contract re-entry is not allowed')) {
     hints.push(

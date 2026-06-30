@@ -1451,6 +1451,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!smartAccount) {
       throw new Error('Create your passkey smart account before enabling a Lumengate session.');
     }
+    if (!settlementAddress || !config.sessionStoreId) {
+      throw new Error('Smart account settlement address is not ready yet.');
+    }
+
+    // CompliancePolicy.enforce reads session_store.get_proof for every smart-account
+    // auth except session_store.set_proof. add_context_rule fails with Auth InvalidAction
+    // when eligibility is not bound yet — bind first, then install the session rule.
+    if (!proof || !credential || !proofMatchesCredential(proof, credential)) {
+      throw new Error(
+        'Request and confirm your Private Financial Passport on Verify before enabling the 7-day session.',
+      );
+    }
+    const proofAlreadyBound =
+      isProofBoundLocally(proof) ||
+      (await isSessionProofBoundOnChain(config, settlementAddress, proof));
+    if (!proofAlreadyBound) {
+      await bindSessionProofIfNeeded(proof);
+      setSessionProofBound(true);
+    }
+
     const status = await installLumengateSession(config, smartAccount);
     setLumengateSessionStatus(status);
     pushActivity({
@@ -1462,7 +1482,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       status: status.enabled ? 'success' : 'info',
     });
     return status;
-  }, [config, smartAccount, pushActivity]);
+  }, [
+    config,
+    smartAccount,
+    settlementAddress,
+    proof,
+    credential,
+    bindSessionProofIfNeeded,
+    pushActivity,
+  ]);
 
   const revokeLumengateSession = useCallback(async (): Promise<void> => {
     if (!smartAccount) return;
