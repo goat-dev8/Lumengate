@@ -505,15 +505,17 @@ export function TransferPage() {
         : 'USDC unavailable'
       : asset === 'eurc'
         ? confidentialMode
-          ? confidentialBalanceLoading
+          ? confidentialBalanceLoading && !confidentialEurcBalance
             ? 'Syncing private EURC…'
-            : confidentialSpendableBalance !== null
-              ? `${confidentialSpendableBalance} spendable private EURC${
-                  confidentialReceivingBalance && confidentialReceivingBalance !== '0'
-                    ? ` · ${confidentialReceivingBalance} receiving`
-                    : ''
-                }`
-              : 'Private EURC unavailable'
+            : !confidentialEurcBalance?.spendableSynced
+              ? 'Syncing private EURC…'
+              : confidentialSpendableBalance !== null
+                ? `${confidentialSpendableBalance} spendable private EURC${
+                    confidentialReceivingBalance && confidentialReceivingBalance !== '0'
+                      ? ` · ${confidentialReceivingBalance} receiving`
+                      : ''
+                  }`
+                : 'Private EURC unavailable'
           : eurcBalance !== null
           ? `${eurcBalance} EURC`
           : 'EURC unavailable'

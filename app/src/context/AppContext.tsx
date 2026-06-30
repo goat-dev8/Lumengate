@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -150,7 +151,7 @@ type AppContextValue = {
   refreshLumengateSessionStatus: () => Promise<LumengateSessionStatus | null>;
   confidentialEurcBalance: ConfidentialEurcBalance | null;
   confidentialBalanceLoading: boolean;
-  refreshConfidentialEurcBalance: () => Promise<ConfidentialEurcBalance | null>;
+  refreshConfidentialEurcBalance: (options?: { background?: boolean }) => Promise<ConfidentialEurcBalance | null>;
   passkeyBusy: boolean;
   proverReady: boolean;
   proverWarmupMessage: string | null;
@@ -260,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lumengateSessionStatus, setLumengateSessionStatus] = useState<LumengateSessionStatus | null>(null);
   const [confidentialEurcBalance, setConfidentialEurcBalance] = useState<ConfidentialEurcBalance | null>(null);
   const [confidentialBalanceLoading, setConfidentialBalanceLoading] = useState(false);
+  const ctResyncAttemptsRef = useRef(0);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
@@ -1387,36 +1389,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refreshLumengateSessionStatus();
   }, [refreshLumengateSessionStatus]);
 
-  const refreshConfidentialEurcBalance = useCallback(async (): Promise<ConfidentialEurcBalance | null> => {
+  const refreshConfidentialEurcBalance = useCallback(async (options?: { background?: boolean }): Promise<ConfidentialEurcBalance | null> => {
     if (!settlementAddress || !config.confidentialTokenId) {
       setConfidentialEurcBalance(null);
       return null;
     }
-    setConfidentialBalanceLoading(true);
+    if (!options?.background) {
+      setConfidentialBalanceLoading(true);
+    }
     try {
       const balance = await withRetry(
         () => readConfidentialEurcBalance(config, settlementAddress),
         { attempts: 5, baseDelayMs: 900, maxDelayMs: 6_000 },
       );
       setConfidentialEurcBalance(balance);
+      if (balance.spendableSynced) {
+        ctResyncAttemptsRef.current = 0;
+      }
       return balance;
     } catch {
       setConfidentialEurcBalance(null);
       return null;
     } finally {
-      setConfidentialBalanceLoading(false);
+      if (!options?.background) {
+        setConfidentialBalanceLoading(false);
+      }
     }
   }, [config, settlementAddress]);
 
   useEffect(() => {
+    ctResyncAttemptsRef.current = 0;
+    setConfidentialEurcBalance(null);
     void refreshConfidentialEurcBalance();
-  }, [refreshConfidentialEurcBalance]);
+  }, [settlementAddress, config.confidentialTokenId, refreshConfidentialEurcBalance]);
 
   useEffect(() => {
-    if (!confidentialEurcBalance || confidentialEurcBalance.synced || confidentialBalanceLoading) return;
-    const delayMs = retryDelay(2, { baseDelayMs: 1500, maxDelayMs: 8_000 });
+    if (!confidentialEurcBalance || confidentialEurcBalance.spendableSynced || confidentialBalanceLoading) return;
+    if (ctResyncAttemptsRef.current >= 12) return;
+    ctResyncAttemptsRef.current += 1;
+    const delayMs = retryDelay(ctResyncAttemptsRef.current, { baseDelayMs: 2000, maxDelayMs: 10_000 });
     const timer = window.setTimeout(() => {
-      void refreshConfidentialEurcBalance();
+      void refreshConfidentialEurcBalance({ background: true });
     }, delayMs);
     return () => window.clearTimeout(timer);
   }, [confidentialEurcBalance, confidentialBalanceLoading, refreshConfidentialEurcBalance]);

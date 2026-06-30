@@ -1,5 +1,5 @@
 import type { DeploymentConfig } from './config';
-import { getOrCreateCtKeys } from './confidentialFlow';
+import { getOrCreateCtKeys, loadCtKeys } from './confidentialFlow';
 import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
@@ -57,6 +57,55 @@ export async function createConfidentialEurcStateEngine(
   });
 }
 
+async function waitForVerifiedBalance(
+  config: DeploymentConfig,
+  engine: StateEngine,
+  verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean },
+): Promise<{ state: Awaited<ReturnType<StateEngine['sync']>>; verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean } }> {
+  let state = await engine.current();
+  let nextVerified = verified;
+  if (nextVerified.ok) {
+    return { state, verified: nextVerified };
+  }
+
+  try {
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      maxAttempts: 30,
+      intervalMs: 1500,
+      requireSpendable: !nextVerified.spendableOk,
+      requireReceiving: !nextVerified.receivingOk,
+    });
+    nextVerified = await engine.verifyAgainstChain();
+    if (nextVerified.ok || nextVerified.spendableOk) {
+      return { state, verified: nextVerified };
+    }
+  } catch {
+    /* fall through to rebuild */
+  }
+
+  state = await engine.rebuildFromEvents();
+  nextVerified = await engine.verifyAgainstChain();
+  if (nextVerified.ok || nextVerified.spendableOk) {
+    return { state, verified: nextVerified };
+  }
+
+  try {
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      maxAttempts: 20,
+      intervalMs: 2000,
+      requireSpendable: !nextVerified.spendableOk,
+      requireReceiving: !nextVerified.receivingOk,
+    });
+    nextVerified = await engine.verifyAgainstChain();
+  } catch {
+    /* return best effort below */
+  }
+
+  return { state, verified: nextVerified };
+}
+
 export async function readConfidentialEurcBalance(
   config: DeploymentConfig,
   smartAccount: string,
@@ -73,13 +122,27 @@ export async function readConfidentialEurcBalance(
       synced: true,
     };
   }
-  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
-  let state = await engine.sync();
-  let verified = await engine.verifyAgainstChain();
-  if (!verified.ok) {
-    state = await engine.rebuildFromEvents();
-    verified = await engine.verifyAgainstChain();
+
+  const client = ctChainClient(config);
+  const onchain = await client.confidentialBalance(smartAccount);
+  const storedKeys = loadCtKeys(smartAccount, config.confidentialTokenId);
+  if (onchain && storedKeys && !storedKeys.PVK.equals(onchain.viewingPublicKey)) {
+    return {
+      registered: true,
+      spendable: 0n,
+      receiving: 0n,
+      total: 0n,
+      spendableSynced: false,
+      receivingSynced: false,
+      synced: false,
+    };
   }
+
+  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
+  await engine.sync();
+  let verified = await engine.verifyAgainstChain();
+  const { state, verified: settled } = await waitForVerifiedBalance(config, engine, verified);
+  verified = settled;
   const spendable = state.spendable.v;
   const receiving = state.receiving.v;
   return {

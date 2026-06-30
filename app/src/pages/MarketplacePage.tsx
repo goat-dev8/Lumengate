@@ -177,24 +177,18 @@ export function MarketplacePage() {
 
 
   useEffect(() => {
-
     let cancelled = false;
-    if (!address) {
-
+    const balanceHolder = currentSettlementOwner(config, address, settlementAddress);
+    if (!balanceHolder) {
       setBalance(null);
       setUsdcBalance(null);
       setUsdcBalanceRaw(null);
       setEurcBalance(null);
       setEurcBalanceRaw(null);
       setBalanceLoading(false);
-
       setBalanceError(null);
-
       return;
-
     }
-
-    const balanceHolder = currentSettlementOwner(config, address, settlementAddress) ?? address;
     setBalanceLoading(true);
     setBalanceError(null);
     void (async () => {

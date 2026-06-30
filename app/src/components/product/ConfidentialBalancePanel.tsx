@@ -182,10 +182,12 @@ export function ConfidentialBalancePanel() {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">Spendable</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums text-[#012b54]">
-            {loading
+            {loading && !balance
               ? '…'
               : !registered
                 ? '—'
+                : !balance?.spendableSynced
+                  ? 'Syncing…'
                 : revealed
                   ? `${formatConfidentialAmount(balance?.spendable ?? 0n)} EURC`
                   : '••••••'}
