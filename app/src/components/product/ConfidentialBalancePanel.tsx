@@ -264,6 +264,11 @@ export function ConfidentialBalancePanel() {
           {error}
         </p>
       ) : null}
+      {!error && balance?.syncError ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+          {balance.syncError}
+        </p>
+      ) : null}
       {status ? (
         <p className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]" role="status">
           {status}

@@ -97,6 +97,35 @@ export function getOrCreateCtKeys(config: DeploymentConfig, smartAccount: string
   return keys;
 }
 
+/** Resolve CT keys for an account that may already be registered on-chain. */
+export async function resolveCtKeys(config: DeploymentConfig, smartAccount: string): Promise<KeyPair> {
+  const tokenId = requireCtConfig(config).token;
+  const existing = loadCtKeys(smartAccount, tokenId);
+  const registered = await readCtRegistered(config, smartAccount);
+  if (!registered) {
+    return getOrCreateCtKeys(config, smartAccount);
+  }
+
+  const client = ctChainClient(config);
+  const onchain = await client.confidentialBalance(smartAccount);
+  if (!onchain) {
+    return getOrCreateCtKeys(config, smartAccount);
+  }
+
+  if (existing) {
+    if (!existing.PVK.equals(onchain.viewingPublicKey)) {
+      throw new Error(
+        'Private EURC keys on this device do not match your on-chain account. Open Settings, revoke private EURC, and register again on this device.',
+      );
+    }
+    return existing;
+  }
+
+  throw new Error(
+    'This smart account is registered for private EURC, but this browser is missing the local key material needed to open your balance.',
+  );
+}
+
 async function ensureCtProver(circuit: CtCircuit): Promise<CtProver> {
   const pending = ctProvers.get(circuit);
   if (pending) return pending;
@@ -199,7 +228,7 @@ export async function executeConfidentialEurcSettlement(input: {
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
 
   const client = ctChainClient(config);
-  const keys = getOrCreateCtKeys(config, smartAccount);
+  const keys = await resolveCtKeys(config, smartAccount);
   const engine = await ctStateEngine(config, smartAccount, keys);
   const hashes: string[] = [];
 
@@ -238,12 +267,7 @@ export async function executeConfidentialEurcSettlement(input: {
   }
 
   progress('register', 'Syncing spendable confidential balance…');
-  let state = await engine.sync();
-  let verified = await engine.verifyAgainstChain();
-  if (!verified.spendableOk) {
-    state = await engine.rebuildFromEvents();
-    verified = await engine.verifyAgainstChain();
-  }
+  let { state, verified } = await engine.reconcileForRead(config.rpcUrl);
   if (!verified.spendableOk) {
     throw new Error('Confidential spendable balance is syncing with Stellar. Wait a moment and try again.');
   }
@@ -277,6 +301,7 @@ export async function executeConfidentialEurcSettlement(input: {
       afterTxHash: depositHash,
       requireReceiving: true,
       skipSync: true,
+      allowRebuild: false,
     });
     verified = await engine.verifyAgainstChain();
   }
@@ -295,6 +320,7 @@ export async function executeConfidentialEurcSettlement(input: {
       afterTxHash: mergeHash,
       requireSpendable: true,
       skipSync: true,
+      allowRebuild: false,
     });
     verified = await engine.verifyAgainstChain();
   }
@@ -353,7 +379,7 @@ export async function shieldConfidentialEurc(input: {
   const { config, txSource, smartAccount, amount, onProgress, submitTx } = input;
   const amountRaw = parseStellarAmount(amount);
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
-  const keys = getOrCreateCtKeys(config, smartAccount);
+  const keys = await resolveCtKeys(config, smartAccount);
   const engine = await ctStateEngine(config, smartAccount, keys);
   const hashes: string[] = [];
   const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
@@ -383,6 +409,7 @@ export async function shieldConfidentialEurc(input: {
     afterTxHash: depositHash,
     requireReceiving: true,
     skipSync: true,
+    allowRebuild: false,
   });
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
     throw new Error('Shield deposit succeeded, but no private receiving balance was found.');
@@ -398,6 +425,7 @@ export async function shieldConfidentialEurc(input: {
     afterTxHash: mergeHash,
     requireSpendable: true,
     skipSync: true,
+    allowRebuild: false,
   });
   if (state.spendable.v < amountRaw) {
     throw new Error('Shield merge completed, but private spendable balance did not match the shielded amount.');
@@ -413,7 +441,7 @@ export async function mergeConfidentialEurc(input: {
   submitTx: SubmitCtTx;
 }): Promise<{ txHash: string; steps: string[] }> {
   const { config, txSource, smartAccount, onProgress, submitTx } = input;
-  const keys = getOrCreateCtKeys(config, smartAccount);
+  const keys = await resolveCtKeys(config, smartAccount);
   const engine = await ctStateEngine(config, smartAccount, keys);
   const state = await engine.sync();
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
@@ -428,6 +456,7 @@ export async function mergeConfidentialEurc(input: {
     afterTxHash: txHash,
     requireSpendable: true,
     skipSync: true,
+    allowRebuild: false,
   });
   return { txHash, steps: [txHash] };
 }
@@ -444,7 +473,7 @@ export async function unshieldConfidentialEurc(input: {
   const amountRaw = parseStellarAmount(amount);
   if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
   const client = ctChainClient(config);
-  const keys = getOrCreateCtKeys(config, smartAccount);
+  const keys = await resolveCtKeys(config, smartAccount);
   const engine = await ctStateEngine(config, smartAccount, keys);
   const hashes: string[] = [];
   const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
@@ -461,6 +490,7 @@ export async function unshieldConfidentialEurc(input: {
       afterTxHash: mergeHash,
       requireSpendable: true,
       skipSync: true,
+      allowRebuild: false,
     });
   }
   if (state.spendable.v < amountRaw) {

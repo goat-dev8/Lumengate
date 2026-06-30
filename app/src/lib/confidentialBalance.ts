@@ -1,5 +1,5 @@
 import type { DeploymentConfig } from './config';
-import { getOrCreateCtKeys, loadCtKeys } from './confidentialFlow';
+import { resolveCtKeys } from './confidentialFlow';
 import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
@@ -14,6 +14,7 @@ export type ConfidentialEurcBalance = {
   spendableSynced: boolean;
   receivingSynced: boolean;
   synced: boolean;
+  syncError?: string;
 };
 
 function ctChainClient(config: DeploymentConfig): ChainClient {
@@ -41,7 +42,7 @@ export async function createConfidentialEurcStateEngine(
   config: DeploymentConfig,
   smartAccount: string,
 ): Promise<StateEngine> {
-  const keys = getOrCreateCtKeys(config, smartAccount);
+  const keys = await resolveCtKeys(config, smartAccount);
   const client = ctChainClient(config);
   const fromLedger = Math.max(
     0,
@@ -55,55 +56,6 @@ export async function createConfidentialEurcStateEngine(
     fromLedger,
     indexer: ctIndexer(config),
   });
-}
-
-async function waitForVerifiedBalance(
-  config: DeploymentConfig,
-  engine: StateEngine,
-  verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean },
-): Promise<{ state: Awaited<ReturnType<StateEngine['sync']>>; verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean } }> {
-  let state = await engine.current();
-  let nextVerified = verified;
-  if (nextVerified.ok) {
-    return { state, verified: nextVerified };
-  }
-
-  try {
-    state = await engine.waitUntilVerified({
-      rpcUrl: config.rpcUrl,
-      maxAttempts: 30,
-      intervalMs: 1500,
-      requireSpendable: !nextVerified.spendableOk,
-      requireReceiving: !nextVerified.receivingOk,
-    });
-    nextVerified = await engine.verifyAgainstChain();
-    if (nextVerified.ok || nextVerified.spendableOk) {
-      return { state, verified: nextVerified };
-    }
-  } catch {
-    /* fall through to rebuild */
-  }
-
-  state = await engine.rebuildFromEvents();
-  nextVerified = await engine.verifyAgainstChain();
-  if (nextVerified.ok || nextVerified.spendableOk) {
-    return { state, verified: nextVerified };
-  }
-
-  try {
-    state = await engine.waitUntilVerified({
-      rpcUrl: config.rpcUrl,
-      maxAttempts: 20,
-      intervalMs: 2000,
-      requireSpendable: !nextVerified.spendableOk,
-      requireReceiving: !nextVerified.receivingOk,
-    });
-    nextVerified = await engine.verifyAgainstChain();
-  } catch {
-    /* return best effort below */
-  }
-
-  return { state, verified: nextVerified };
 }
 
 export async function readConfidentialEurcBalance(
@@ -123,10 +75,22 @@ export async function readConfidentialEurcBalance(
     };
   }
 
-  const client = ctChainClient(config);
-  const onchain = await client.confidentialBalance(smartAccount);
-  const storedKeys = loadCtKeys(smartAccount, config.confidentialTokenId);
-  if (onchain && storedKeys && !storedKeys.PVK.equals(onchain.viewingPublicKey)) {
+  try {
+    const engine = await createConfidentialEurcStateEngine(config, smartAccount);
+    const { state, verified } = await engine.reconcileForRead(config.rpcUrl);
+    const spendable = state.spendable.v;
+    const receiving = state.receiving.v;
+    return {
+      registered: state.registered || registered,
+      spendable,
+      receiving,
+      total: spendable + receiving,
+      spendableSynced: verified.spendableOk,
+      receivingSynced: verified.receivingOk,
+      synced: verified.ok,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return {
       registered: true,
       spendable: 0n,
@@ -135,25 +99,9 @@ export async function readConfidentialEurcBalance(
       spendableSynced: false,
       receivingSynced: false,
       synced: false,
+      syncError: message,
     };
   }
-
-  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
-  await engine.sync();
-  let verified = await engine.verifyAgainstChain();
-  const { state, verified: settled } = await waitForVerifiedBalance(config, engine, verified);
-  verified = settled;
-  const spendable = state.spendable.v;
-  const receiving = state.receiving.v;
-  return {
-    registered: state.registered || registered,
-    spendable,
-    receiving,
-    total: spendable + receiving,
-    spendableSynced: verified.spendableOk,
-    receivingSynced: verified.receivingOk,
-    synced: verified.ok,
-  };
 }
 
 export function formatConfidentialAmount(raw: bigint, decimals = 7): string {

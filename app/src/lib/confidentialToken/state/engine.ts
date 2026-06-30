@@ -45,6 +45,8 @@ export type WaitUntilVerifiedOptions = {
   requireSpendable?: boolean;
   requireReceiving?: boolean;
   skipSync?: boolean;
+  /** When false, never discard optimistic local state via rebuildFromEvents. */
+  allowRebuild?: boolean;
 };
 
 export interface StateEngineConfig {
@@ -249,14 +251,115 @@ export class StateEngine {
         state = options?.skipSync ? await this.current() : await this.sync();
       }
     }
-    state = await this.rebuildFromEvents();
-    const rebuilt = await this.verifyAgainstChain();
-    const rebuiltOk =
-      options?.requireReceiving || options?.requireSpendable
-        ? (!options?.requireReceiving || rebuilt.receivingOk) &&
-          (!options?.requireSpendable || rebuilt.spendableOk)
-        : rebuilt.ok;
-    if (rebuiltOk) return state;
+    if (options?.allowRebuild !== false) {
+      state = await this.rebuildFromEvents();
+      const rebuilt = await this.verifyAgainstChain();
+      const rebuiltOk =
+        options?.requireReceiving || options?.requireSpendable
+          ? (!options?.requireReceiving || rebuilt.receivingOk) &&
+            (!options?.requireSpendable || rebuilt.spendableOk)
+          : rebuilt.ok;
+      if (rebuiltOk) return state;
+    }
     throw new Error("Confidential balance sync timed out waiting for Stellar events.");
+  }
+
+  /**
+   * Read-path reconciliation: sync against chain without destroying optimistic
+   * shield/merge state on new accounts while Soroban event indexing catches up.
+   */
+  async reconcileForRead(rpcUrl: string): Promise<{
+    state: AccountState;
+    verified: { ok: boolean; spendableOk: boolean; receivingOk: boolean };
+  }> {
+    const prior = await this.current();
+    const hadOptimistic = (prior.optimisticTxHashes?.length ?? 0) > 0;
+
+    let state = await this.sync();
+    let verified = await this.verifyAgainstChain();
+    if (verified.ok) {
+      await this.clearOptimisticMarkersIfVerified(verified);
+      return { state, verified };
+    }
+
+    const poll = async (opts: WaitUntilVerifiedOptions): Promise<boolean> => {
+      try {
+        state = await this.waitUntilVerified(opts);
+        verified = await this.verifyAgainstChain();
+        if (verified.spendableOk) {
+          await this.clearOptimisticMarkersIfVerified(verified);
+        }
+        return verified.spendableOk;
+      } catch {
+        return false;
+      }
+    };
+
+    if (
+      await poll({
+        rpcUrl,
+        maxAttempts: hadOptimistic ? 50 : 35,
+        intervalMs: 1500,
+        skipSync: hadOptimistic,
+        requireSpendable: !verified.spendableOk,
+        requireReceiving: !verified.receivingOk,
+        allowRebuild: !hadOptimistic,
+      })
+    ) {
+      return { state, verified };
+    }
+
+    if (hadOptimistic) {
+      await this.cfg.store.save(prior);
+      if (
+        await poll({
+          rpcUrl,
+          maxAttempts: 45,
+          intervalMs: 2000,
+          skipSync: true,
+          requireSpendable: true,
+          allowRebuild: false,
+        })
+      ) {
+        return { state, verified };
+      }
+    }
+
+    if (!hadOptimistic) {
+      state = await this.rebuildFromEvents();
+      verified = await this.verifyAgainstChain();
+      if (verified.spendableOk) {
+        await this.clearOptimisticMarkersIfVerified(verified);
+        return { state, verified };
+      }
+
+      if (
+        await poll({
+          rpcUrl,
+          maxAttempts: 25,
+          intervalMs: 2000,
+          requireSpendable: !verified.spendableOk,
+          requireReceiving: !verified.receivingOk,
+          allowRebuild: false,
+        })
+      ) {
+        return { state, verified };
+      }
+    }
+
+    state = await this.current();
+    return { state, verified };
+  }
+
+  private async clearOptimisticMarkersIfVerified(verified: {
+    ok: boolean;
+    spendableOk: boolean;
+    receivingOk: boolean;
+  }): Promise<void> {
+    if (!verified.ok) return;
+    const state = await this.current();
+    if (!state.optimisticTxHashes?.length) return;
+    state.optimisticTxHashes = undefined;
+    await this.cfg.store.save(state);
   }
 }

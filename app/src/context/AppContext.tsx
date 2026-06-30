@@ -117,7 +117,7 @@ import {
   buildFundSmartAccountUsdcXdr,
   buildFundSmartAccountXlmXdr,
 } from '../lib/smartAccountFunding';
-import { retryDelay, withRetry } from '../lib/retry';
+import { retryDelay } from '../lib/retry';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -1398,10 +1398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConfidentialBalanceLoading(true);
     }
     try {
-      const balance = await withRetry(
-        () => readConfidentialEurcBalance(config, settlementAddress),
-        { attempts: 5, baseDelayMs: 900, maxDelayMs: 6_000 },
-      );
+      const balance = await readConfidentialEurcBalance(config, settlementAddress);
       setConfidentialEurcBalance(balance);
       if (balance.spendableSynced) {
         ctResyncAttemptsRef.current = 0;
@@ -1425,7 +1422,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!confidentialEurcBalance || confidentialEurcBalance.spendableSynced || confidentialBalanceLoading) return;
-    if (ctResyncAttemptsRef.current >= 12) return;
+    if (ctResyncAttemptsRef.current >= 8) return;
     ctResyncAttemptsRef.current += 1;
     const delayMs = retryDelay(ctResyncAttemptsRef.current, { baseDelayMs: 2000, maxDelayMs: 10_000 });
     const timer = window.setTimeout(() => {
