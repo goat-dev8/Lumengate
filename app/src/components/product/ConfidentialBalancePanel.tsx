@@ -82,6 +82,7 @@ export function ConfidentialBalancePanel() {
 
   const balance = confidentialEurcBalance;
   const loading = confidentialBalanceLoading;
+  const registrationSettled = balance !== null || !loading;
   const registered = balance?.registered === true;
   const hasShielded = balance ? balance.total > 0n : false;
   const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
@@ -164,7 +165,9 @@ export function ConfidentialBalancePanel() {
             before it appears here.
           </p>
         </div>
-        {registered ? (
+        {!registrationSettled ? (
+          <Pill tone="neutral">Checking…</Pill>
+        ) : registered ? (
           <Pill tone={hasShielded ? 'success' : 'neutral'}>{hasShielded ? 'Shielded' : 'Registered'}</Pill>
         ) : (
           <Pill tone="warning">Not registered</Pill>
@@ -184,6 +187,8 @@ export function ConfidentialBalancePanel() {
           <p className="mt-1 text-2xl font-semibold tabular-nums text-[#012b54]">
             {loading && !balance
               ? '…'
+              : !registrationSettled
+                ? '…'
               : !registered
                 ? '—'
                 : !balance?.spendableSynced

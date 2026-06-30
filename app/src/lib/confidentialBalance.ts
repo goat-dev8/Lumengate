@@ -4,7 +4,7 @@ import { ChainClient } from './confidentialToken/chain/client';
 import { IndexerClient } from './confidentialToken/chain/indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
-import { readCtRegistered } from './confidentialSettlement';
+import { readCtRegistrationStatus, markCtRegisteredLocally } from './ctRegistration';
 
 export type ConfidentialEurcBalance = {
   registered: boolean;
@@ -62,8 +62,8 @@ export async function readConfidentialEurcBalance(
   config: DeploymentConfig,
   smartAccount: string,
 ): Promise<ConfidentialEurcBalance> {
-  const registered = await readCtRegistered(config, smartAccount);
-  if (!registered || !config.confidentialTokenId) {
+  const registration = await readCtRegistrationStatus(config, smartAccount);
+  if (!registration.registered || !config.confidentialTokenId) {
     return {
       registered: false,
       spendable: 0n,
@@ -78,10 +78,13 @@ export async function readConfidentialEurcBalance(
   try {
     const engine = await createConfidentialEurcStateEngine(config, smartAccount);
     const { state, verified } = await engine.reconcileForRead(config.rpcUrl);
+    if (registration.onChain) {
+      markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+    }
     const spendable = state.spendable.v;
     const receiving = state.receiving.v;
     return {
-      registered: state.registered || registered,
+      registered: true,
       spendable,
       receiving,
       total: spendable + receiving,

@@ -509,10 +509,12 @@ export function TransferPage() {
       : asset === 'eurc'
         ? confidentialMode
           ? confidentialBalanceLoading && !confidentialEurcBalance
-            ? 'Syncing private EURC…'
-            : !confidentialEurcBalance?.spendableSynced
-              ? 'Syncing private EURC…'
-              : confidentialSpendableBalance !== null
+            ? 'Checking private EURC…'
+            : confidentialEurcBalance?.registered === false
+              ? 'Register private EURC on Dashboard'
+              : !confidentialEurcBalance?.spendableSynced
+                ? 'Syncing private EURC…'
+                : confidentialSpendableBalance !== null
                 ? `${confidentialSpendableBalance} spendable private EURC${
                     confidentialReceivingBalance && confidentialReceivingBalance !== '0'
                       ? ` · ${confidentialReceivingBalance} receiving`

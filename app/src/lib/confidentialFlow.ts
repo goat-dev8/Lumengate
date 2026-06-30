@@ -26,6 +26,7 @@ import {
   buildCtWithdrawTransaction,
   readCtRegistered,
 } from './confidentialSettlement';
+import { isCtRegisteredLocally, markCtRegisteredLocally, readCtRegistrationStatus } from './ctRegistration';
 
 type CtCircuit = 'register' | 'transfer' | 'withdraw';
 
@@ -86,6 +87,11 @@ export function getOrCreateCtKeys(config: DeploymentConfig, smartAccount: string
   const existing = loadCtKeys(smartAccount, tokenId);
   if (existing) {
     if (existing.addrF !== addrF) {
+      if (isCtRegisteredLocally(smartAccount, tokenId)) {
+        throw new Error(
+          'Private EURC keys on this device cannot be replaced after registration. Clear Lumengate site data only if support asks you to reset this account.',
+        );
+      }
       const keys = generateKeys(addrF);
       saveCtKeys(smartAccount, tokenId, keys);
       return keys;
@@ -101,24 +107,30 @@ export function getOrCreateCtKeys(config: DeploymentConfig, smartAccount: string
 export async function resolveCtKeys(config: DeploymentConfig, smartAccount: string): Promise<KeyPair> {
   const tokenId = requireCtConfig(config).token;
   const existing = loadCtKeys(smartAccount, tokenId);
-  const registered = await readCtRegistered(config, smartAccount);
-  if (!registered) {
+  const registration = await readCtRegistrationStatus(config, smartAccount);
+  if (!registration.registered) {
     return getOrCreateCtKeys(config, smartAccount);
   }
 
   const client = ctChainClient(config);
-  const onchain = await client.confidentialBalance(smartAccount);
-  if (!onchain) {
+  const onchain = registration.onChain ? await client.confidentialBalance(smartAccount) : null;
+  if (registration.onChain && !onchain) {
     return getOrCreateCtKeys(config, smartAccount);
   }
 
   if (existing) {
-    if (!existing.PVK.equals(onchain.viewingPublicKey)) {
+    if (onchain && !existing.PVK.equals(onchain.viewingPublicKey)) {
       throw new Error(
-        'Private EURC keys on this device do not match your on-chain account. Open Settings, revoke private EURC, and register again on this device.',
+        'Private EURC keys on this device do not match your on-chain account. Create a fresh smart account on this device to use private EURC.',
       );
     }
     return existing;
+  }
+
+  if (registration.local) {
+    throw new Error(
+      'Private EURC registration was started on this device, but the local key material is missing. Create a fresh smart account and register again.',
+    );
   }
 
   throw new Error(
@@ -210,7 +222,11 @@ export async function registerConfidentialEurcAccount(input: {
     witness,
     proof,
   );
-  return submitTx(registerTx, 'register');
+  const hash = await submitTx(registerTx, 'register');
+  if (hash && config.confidentialTokenId) {
+    markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+  }
+  return hash;
 }
 
 export async function executeConfidentialEurcSettlement(input: {
@@ -251,6 +267,9 @@ export async function executeConfidentialEurcSettlement(input: {
       proof,
     );
     hashes.push(await submitTx(registerTx, 'register'));
+    if (config.confidentialTokenId) {
+      markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+    }
     registered = true;
   }
 
@@ -397,6 +416,9 @@ export async function shieldConfidentialEurc(input: {
       proof,
     );
     hashes.push(await submitTx(registerTx, 'register'));
+    if (config.confidentialTokenId) {
+      markCtRegisteredLocally(smartAccount, config.confidentialTokenId);
+    }
   }
 
   progress('deposit', `Shielding ${amount} EURC…`);
@@ -533,6 +555,6 @@ export async function readConfidentialEurcRegistered(
   config: DeploymentConfig,
   account: string,
 ): Promise<boolean> {
-  if (!config.confidentialTokenId) return false;
-  return readCtRegistered(config, account);
+  const status = await readCtRegistrationStatus(config, account);
+  return status.registered;
 }

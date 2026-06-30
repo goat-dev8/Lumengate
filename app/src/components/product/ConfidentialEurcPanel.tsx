@@ -27,6 +27,7 @@ export function ConfidentialEurcPanel() {
     consumedTxHash,
     sessionProofBound,
     proofLifecycle,
+    refreshConfidentialEurcBalance,
   } = useApp();
   const [registered, setRegistered] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +86,7 @@ export function ConfidentialEurcPanel() {
       });
       if (hash) setTxHash(hash);
       await refresh();
+      await refreshConfidentialEurcBalance();
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       setError(formatSorobanUserError(raw));

@@ -10,7 +10,7 @@ import type { DeploymentConfig } from './config';
 import type { SmartAccountAssembledTransaction } from './smartAccount';
 import { resolvePasskeySimulationSource } from './smartAccount';
 import { encodeRegisterData, encodeTransferData, encodeWithdrawData } from './confidentialToken/chain/payload';
-import { ChainClient } from './confidentialToken/chain/client';
+import { readCtRegisteredOnChain } from './ctRegistration';
 import type { RegisterWitness } from './confidentialToken/witness/register';
 import type { TransferWitness } from './confidentialToken/witness/transfer';
 import type { WithdrawWitness } from './confidentialToken/witness/withdraw';
@@ -182,19 +182,5 @@ export async function readCtRegistered(
   config: DeploymentConfig,
   account: string,
 ): Promise<boolean> {
-  if (!config.confidentialTokenId) return false;
-  try {
-    const client = new ChainClient({
-      rpcUrl: config.rpcUrl,
-      networkPassphrase: config.networkPassphrase,
-      contracts: {
-        token: config.confidentialTokenId,
-        verifier: config.confidentialVerifierId || config.confidentialTokenId,
-        auditor: config.confidentialAuditorId || config.confidentialTokenId,
-      },
-    });
-    return client.isRegistered(account);
-  } catch {
-    return false;
-  }
+  return readCtRegisteredOnChain(config, account);
 }
