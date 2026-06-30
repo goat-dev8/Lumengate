@@ -343,6 +343,8 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     accountWasmHash: config.lumengateSmartAccountWasmHash,
     webauthnVerifierAddress: config.webauthnVerifierId,
     relayerUrl: config.relayerEnabled ? config.openZeppelinRelayerUrl : undefined,
+    // Soroban RPC rule probing — the default SDF indexer often times out in production browsers.
+    indexerUrl: false,
     storage,
     contextRuleProbe: {
       maxRuleId: 64,
@@ -803,6 +805,16 @@ export async function submitWithSmartAccount(
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
 }
 
+async function listSessionContextRules(
+  config: DeploymentConfig,
+  smartAccountAddress: string,
+): Promise<unknown[]> {
+  return listOnChainContextRules(config, smartAccountAddress, {
+    maxRuleId: 64,
+    maxConsecutiveMisses: 8,
+  });
+}
+
 async function ensureLumengateSessionRule(
   config: DeploymentConfig,
   kit: SmartAccountKit,
@@ -816,7 +828,7 @@ async function ensureLumengateSessionRule(
   const latest = await kit.rpc.getLatestLedger();
   const currentLedger = Number(latest.sequence ?? 0);
   const validUntil = currentLedger + Math.round(LUMENGATE_SESSION_LEDGERS);
-  let existingRules = await kit.rules.list().catch(() => []);
+  let existingRules = await listSessionContextRules(config, session.smartAccountAddress);
   const targets = normalizeSessionContractIds(contractIds);
   if (targets.length === 0) {
     throw new Error('No Lumengate contract context available for session setup.');
@@ -845,7 +857,7 @@ async function ensureLumengateSessionRule(
         forceMethod: config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
       });
       await submitResultOrThrow(result, 'Lumengate session setup failed', config.rpcUrl);
-      existingRules = await kit.rules.list().catch(() => existingRules);
+      existingRules = await listSessionContextRules(config, session.smartAccountAddress);
     }
   };
 
@@ -863,6 +875,7 @@ export async function enableLumengateSession(
 ): Promise<LumengateSessionStatus> {
   const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
   await assertSmartAccountReadyForSettlement(config, hydrated);
+  invalidateSmartAccountKitCache();
   const kit = await connectPersonalSmartAccount(config, hydrated);
   const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);
   const targetContracts = normalizeSessionContractIds(contractIds?.length ? contractIds : fallbackSessionContracts(config));
@@ -913,7 +926,7 @@ export async function getLumengateSessionStatus(
   const kit = await connectPersonalSmartAccount(config, state);
   const latest = await kit.rpc.getLatestLedger();
   const currentLedger = Number(latest.sequence ?? 0);
-  const rules = await kit.rules.list().catch(() => []);
+  const rules = await listSessionContextRules(config, state.smartAccountAddress);
   const installedContracts = targetContracts.filter(
     (contractId) => bestSessionRuleId(rules, contractId, session, config, currentLedger) != null,
   );
@@ -947,7 +960,7 @@ export async function submitWithLumengateSession(
   if (!session) {
     throw new Error('Enable Trusted device (7 days) before using delegated session signing.');
   }
-  const rules = await kit.rules.list().catch(() => []);
+  const rules = await listSessionContextRules(config, state.smartAccountAddress);
   const latest = await kit.rpc.getLatestLedger();
   const currentLedger = Number(latest.sequence ?? 0);
   kit.externalSigners.addFromSecret(session.secretKey);

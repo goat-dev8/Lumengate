@@ -107,6 +107,9 @@ export function coerceKeyDataBuffer(keyDataRaw: unknown): Buffer | null {
 
 function parseSigner(raw: unknown): OnChainExternalSigner | null {
   if (Array.isArray(raw)) {
+    if (raw[0] === 'Delegated' && raw.length >= 2) {
+      return { tag: 'Delegated', values: [String(raw[1])] } as unknown as OnChainExternalSigner;
+    }
     if (raw[0] !== 'External' || raw.length < 3) return null;
     const verifier = String(raw[1]);
     const keyData = coerceKeyDataBuffer(raw[2]);
@@ -115,6 +118,9 @@ function parseSigner(raw: unknown): OnChainExternalSigner | null {
   }
   if (!raw || typeof raw !== 'object') return null;
   const signer = raw as { tag?: string; values?: unknown[] };
+  if (signer.tag === 'Delegated' && signer.values?.[0]) {
+    return { tag: 'Delegated', values: [String(signer.values[0])] } as unknown as OnChainExternalSigner;
+  }
   if (signer.tag !== 'External' || !Array.isArray(signer.values) || signer.values.length < 2) {
     return null;
   }
