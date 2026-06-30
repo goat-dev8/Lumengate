@@ -4,6 +4,11 @@ import { Button } from '../ui/Button';
 import { Pill } from '../design/Primitives';
 import { useApp } from '../../context/AppContext';
 import {
+  mergeConfidentialEurc,
+  shieldConfidentialEurc,
+  unshieldConfidentialEurc,
+} from '../../lib/confidentialFlow';
+import {
   formatConfidentialAmount,
   readConfidentialEurcBalance,
   type ConfidentialEurcBalance,
@@ -11,11 +16,19 @@ import {
 import { readEurcSacBalance } from '../../lib/contracts';
 
 export function ConfidentialBalancePanel() {
-  const { config, settlementAddress } = useApp();
+  const {
+    config,
+    settlementAddress,
+    ensureProofForAsset,
+    signAndSubmitSettlement,
+  } = useApp();
   const [balance, setBalance] = useState<ConfidentialEurcBalance | null>(null);
   const [publicBalance, setPublicBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<'shield' | 'merge' | 'unshield' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
   const [revealed, setRevealed] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -49,6 +62,51 @@ export function ConfidentialBalancePanel() {
   const hasShielded = balance ? balance.total > 0n : false;
   const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
 
+  const runAction = async (kind: 'shield' | 'merge' | 'unshield') => {
+    setActionLoading(kind);
+    setError(null);
+    setStatus(null);
+    try {
+      const ensured = await ensureProofForAsset('eurc', setStatus);
+      const submitTx = (tx: Parameters<typeof signAndSubmitSettlement>[2]) =>
+        signAndSubmitSettlement(settlementAddress, ensured.proof, tx);
+      if (kind === 'shield') {
+        await shieldConfidentialEurc({
+          config,
+          txSource: settlementAddress,
+          smartAccount: settlementAddress,
+          amount,
+          onProgress: (p) => setStatus(p.message),
+          submitTx,
+        });
+      } else if (kind === 'merge') {
+        await mergeConfidentialEurc({
+          config,
+          txSource: settlementAddress,
+          smartAccount: settlementAddress,
+          onProgress: (p) => setStatus(p.message),
+          submitTx,
+        });
+      } else {
+        await unshieldConfidentialEurc({
+          config,
+          txSource: settlementAddress,
+          smartAccount: settlementAddress,
+          amount,
+          onProgress: (p) => setStatus(p.message),
+          submitTx,
+        });
+      }
+      setAmount('');
+      await refresh();
+      setStatus(kind === 'merge' ? 'Private EURC is now spendable.' : 'Private EURC balance updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="lg-surface-card p-6">
       <div className="flex items-start justify-between gap-4">
@@ -68,8 +126,8 @@ export function ConfidentialBalancePanel() {
 
       {registered && publicEurcAvailable ? (
         <p className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]">
-          {publicBalance} public EURC is available in this smart account. It will be shielded automatically when you
-          send confidential EURC.
+          {publicBalance} public EURC is available in this smart account. Shield it here, or Lumengate will shield
+          the needed amount during a private send.
         </p>
       ) : null}
 
@@ -108,9 +166,58 @@ export function ConfidentialBalancePanel() {
         </div>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-[var(--lg-border)] bg-white p-4">
+        <p className="text-sm font-semibold text-[#012b54]">Move EURC between public and private</p>
+        <p className="mt-1 text-xs text-[#64748b]">
+          Shield public EURC before private settlement, merge received private EURC into spendable balance, or unshield
+          back to public EURC.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            placeholder="Amount"
+            className="min-w-[9rem] flex-1 rounded-xl border border-[var(--lg-border)] bg-[#f6f9fc] px-3 py-2 text-sm outline-none focus:border-[#007dfc]/40"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={actionLoading === 'shield'}
+            disabled={!amount || Boolean(actionLoading)}
+            onClick={() => void runAction('shield')}
+          >
+            Shield
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={actionLoading === 'unshield'}
+            disabled={!amount || !registered || Boolean(actionLoading)}
+            onClick={() => void runAction('unshield')}
+          >
+            Unshield
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={actionLoading === 'merge'}
+            disabled={!registered || !balance || balance.receiving <= 0n || Boolean(actionLoading)}
+            onClick={() => void runAction('merge')}
+          >
+            Merge received
+          </Button>
+        </div>
+      </div>
+
       {error ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
           {error}
+        </p>
+      ) : null}
+      {status ? (
+        <p className="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-[#335b7e]" role="status">
+          {status}
         </p>
       ) : null}
     </div>

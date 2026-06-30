@@ -97,6 +97,7 @@ import {
   isContractAddress,
   resolveLegacySmartAccountPolicyForUi,
   resolvePasskeySimulationSource,
+  submitWithLumengateSession,
   submitWithSmartAccount,
   type SignableTransaction,
   type SmartAccountAssembledTransaction,
@@ -1836,7 +1837,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         passkeyIndex += 1;
         onPasskeyStep?.('settle', passkeyIndex, passkeySteps);
-        return await submitWithSmartAccount(config, smartAccount, tx);
+        try {
+          return await submitWithLumengateSession(config, smartAccount, tx);
+        } catch {
+          return await submitWithSmartAccount(config, smartAccount, tx);
+        }
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);

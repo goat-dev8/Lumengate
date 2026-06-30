@@ -49,7 +49,6 @@ import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
-import { ConfidentialEurcPanel } from '../components/product/ConfidentialEurcPanel';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -283,13 +282,9 @@ export function TransferPage() {
       setError(confidentialRecipientWarning ?? 'Use a C… smart account address for confidential EURC.');
       return;
     }
-    if (asset === 'eurc' && confidentialMode && senderCtRegistered === false) {
-      setError('Register your confidential EURC account in Settings before sending.');
-      return;
-    }
     if (asset === 'eurc' && confidentialMode && ctRecipientRegistered === false) {
       setError(
-        'Recipient is not registered for confidential EURC. Use their Lumengate smart account address (C…), not a funding wallet (G…). They must register in Settings first.',
+        'Recipient is not registered for confidential EURC. Use their Lumengate smart account address (C…), not a funding wallet (G…). They must open Private Mode once before receiving.',
       );
       return;
     }
@@ -609,10 +604,6 @@ export function TransferPage() {
                 confidentialRecipientWarning={confidentialRecipientWarning}
               />
             )}
-
-            {confidentialMode && config.confidentialTokenId && senderCtRegistered === false ? (
-              <ConfidentialEurcPanel />
-            ) : null}
 
             {txHash ? (
               <>

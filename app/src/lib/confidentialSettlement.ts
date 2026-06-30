@@ -9,10 +9,11 @@ import {
 import type { DeploymentConfig } from './config';
 import type { SmartAccountAssembledTransaction } from './smartAccount';
 import { resolvePasskeySimulationSource } from './smartAccount';
-import { encodeRegisterData, encodeTransferData } from './confidentialToken/chain/payload';
+import { encodeRegisterData, encodeTransferData, encodeWithdrawData } from './confidentialToken/chain/payload';
 import { ChainClient } from './confidentialToken/chain/client';
 import type { RegisterWitness } from './confidentialToken/witness/register';
 import type { TransferWitness } from './confidentialToken/witness/transfer';
+import type { WithdrawWitness } from './confidentialToken/witness/withdraw';
 
 function server(rpcUrl: string) {
   return new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
@@ -139,6 +140,37 @@ export async function buildCtConfidentialTransferTransaction(
         nativeToScVal(from, { type: 'address' }),
         nativeToScVal(to, { type: 'address' }),
         encodeTransferData(witness, proof),
+      ),
+    )
+    .setTimeout(120)
+    .build();
+  return simulateAssembledTx(s, draft);
+}
+
+export async function buildCtWithdrawTransaction(
+  config: DeploymentConfig,
+  source: string,
+  from: string,
+  to: string,
+  amountRaw: bigint,
+  witness: WithdrawWitness,
+  proof: Uint8Array,
+): Promise<SmartAccountAssembledTransaction> {
+  const tokenId = requireCtToken(config);
+  const s = server(config.rpcUrl);
+  const acct = await passkeySimulationAccount(config, source);
+  const contract = new Contract(tokenId);
+  const draft = new TransactionBuilder(acct, {
+    fee: String(Number(BASE_FEE) * 100),
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      contract.call(
+        'withdraw',
+        nativeToScVal(from, { type: 'address' }),
+        nativeToScVal(to, { type: 'address' }),
+        nativeToScVal(amountRaw, { type: 'i128' }),
+        encodeWithdrawData(witness, proof),
       ),
     )
     .setTimeout(120)

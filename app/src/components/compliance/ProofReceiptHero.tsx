@@ -64,14 +64,24 @@ function formatIssued(isoOrMs: string | number | undefined): string {
 
 function parseAmountValue(raw: string | undefined): number | null {
   if (!raw) return null;
+  if (raw.toLowerCase().includes('shielded')) return null;
   const n = Number.parseFloat(raw.replace(/[^\d.]/g, ''));
   return Number.isFinite(n) ? n : null;
+}
+
+function isConfidentialReceipt(receipt: ProofReceipt): boolean {
+  const assetText = `${receipt.asset?.label ?? ''} ${receipt.transferResult?.amount ?? ''}`.toLowerCase();
+  return assetText.includes('eurc') && receipt.events.some((event) => {
+    const topicText = `${event.kind} ${event.summary} ${JSON.stringify(event.rawTopic ?? [])}`.toLowerCase();
+    return topicText.includes('confidential') || topicText.includes('transfer');
+  });
 }
 
 function buildReceiptTimeline(receipt: ProofReceipt): TimelineStep[] {
   const transferEvent = receipt.events.find((e) => e.txHash === receipt.transactions.transfer);
   const bindEvent = receipt.events.find((e) => e.txHash === receipt.transactions.sessionBind);
   const assetLabel = receiptDisplayAssetLabel(receipt);
+  const confidential = isConfidentialReceipt(receipt);
   const steps: TimelineStep[] = [];
 
   steps.push({
@@ -104,8 +114,8 @@ function buildReceiptTimeline(receipt: ProofReceipt): TimelineStep[] {
     const to = receipt.transferResult?.to ? truncateMiddle(receipt.transferResult.to, 8, 6) : 'counterparty';
     steps.push({
       id: 'settlement',
-      title: 'Stellar settlement',
-      detail: `${amount ? `${amount} → ${to}` : 'Recorded on ledger'}${transferEvent?.ledger ? ` · Ledger #${transferEvent.ledger.toLocaleString()}` : ''}`,
+      title: confidential ? 'Confidential settlement' : 'Stellar settlement',
+      detail: `${confidential ? `Shielded amount → ${to}` : amount ? `${amount} → ${to}` : 'Recorded on ledger'}${transferEvent?.ledger ? ` · Ledger #${transferEvent.ledger.toLocaleString()}` : ''}`,
       time: formatIssued(receipt.verificationTimestamp ?? transferEvent?.ledgerClosedAt),
     });
   }
@@ -194,7 +204,8 @@ export function ProofReceiptHero({
   const receiptId = receipt.transactions.transfer
     ? `RCPT-${receipt.transactions.transfer.slice(0, 8).toUpperCase()}`
     : 'RCPT-PENDING';
-  const displayAmount = receipt.transferResult?.amount ?? '—';
+  const confidentialReceipt = isConfidentialReceipt(receipt);
+  const displayAmount = confidentialReceipt ? 'Shielded amount' : (receipt.transferResult?.amount ?? '—');
   const assetLabel = receiptDisplayAssetLabel(receipt);
   const ledger =
     receipt.events.find((e) => e.txHash === receipt.transactions.transfer)?.ledger ??
@@ -233,7 +244,9 @@ export function ProofReceiptHero({
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/55">Lumengate</p>
-              <p className="text-sm font-semibold tracking-wide text-white/90">Settlement receipt</p>
+              <p className="text-sm font-semibold tracking-wide text-white/90">
+                {confidentialReceipt ? 'Confidential settlement receipt' : 'Settlement receipt'}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -262,7 +275,9 @@ export function ProofReceiptHero({
               animate={{ opacity: 1 }}
               transition={{ delay: 0.35, duration: 0.5 }}
             >
-              {assetLabel} · Stellar {receipt.network}
+              {confidentialReceipt
+                ? `${assetLabel} · amount private by default · Stellar ${receipt.network}`
+                : `${assetLabel} · Stellar ${receipt.network}`}
             </motion.p>
           </div>
 
@@ -277,7 +292,7 @@ export function ProofReceiptHero({
               { label: 'Issued', value: formatIssued(receipt.verificationTimestamp ?? receipt.createdAt) },
               { label: 'Counterparty', value: counterparty },
               { label: 'Ledger', value: ledger ? `#${ledger.toLocaleString()}` : '—' },
-              { label: 'Proof', value: truncateMiddle(receipt.nullifier, 6, 4) },
+              { label: 'Proof', value: confidentialReceipt ? 'ZK verified' : truncateMiddle(receipt.nullifier, 6, 4) },
               {
                 label: 'Status',
                 value: isSealed ? 'Sealed' : receipt.settlementStatus === 'failed' ? 'Failed' : 'Pending',

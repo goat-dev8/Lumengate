@@ -42,6 +42,8 @@ export function MarketplaceProductCard({
   const asset =
     offering.settlementAsset === 'usdc'
       ? 'USDC'
+      : offering.settlementAsset === 'eurc'
+        ? 'Private EURC'
       : offering.settlementRoute === 'dex'
         ? 'DEX'
         : offering.settlementRoute === 'payroll'
@@ -85,6 +87,11 @@ export function MarketplaceProductCard({
         </div>
 
         <p className="mt-3 line-clamp-2 text-sm text-[#64748b]">{offering.description}</p>
+        {offering.settlementAsset === 'eurc' ? (
+          <p className="mt-3 rounded-xl border border-[#007dfc]/15 bg-[#f6f9fc] px-3 py-2 text-xs leading-relaxed text-[#335b7e]">
+            Private settlement available: EURC is shielded into the confidential wrapper before investment settlement.
+          </p>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-4 gap-3 border-t border-[var(--lg-border)] pt-4">
           <Metric label="Min" value={offering.minimumAmount} highlight />

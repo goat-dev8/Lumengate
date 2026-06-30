@@ -8,8 +8,6 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { AssetPolicyMatrix } from '../components/product/AssetPolicyMatrix';
 import { FundSmartAccountPanel } from '../components/product/FundSmartAccountPanel';
-import { ConfidentialEurcPanel } from '../components/product/ConfidentialEurcPanel';
-import { ConfidentialBalancePanel } from '../components/product/ConfidentialBalancePanel';
 import { UsdcCompliancePanel } from '../components/product/UsdcCompliancePanel';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { useApp } from '../context/AppContext';
@@ -170,13 +168,6 @@ export function SettingsPage() {
               onFundEurc={fundSmartAccountEurc}
               onFundXlm={fundSmartAccountXlm}
             />
-          ) : null}
-
-          {config.confidentialTokenId ? (
-            <>
-              <ConfidentialEurcPanel />
-              <ConfidentialBalancePanel />
-            </>
           ) : null}
 
           <Card>

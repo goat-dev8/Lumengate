@@ -14,6 +14,7 @@ import {
 } from './confidentialToken/crypto/keys';
 import { buildRegisterWitness } from './confidentialToken/witness/register';
 import { buildTransferWitness } from './confidentialToken/witness/transfer';
+import { buildWithdrawWitness } from './confidentialToken/witness/withdraw';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
 import {
@@ -21,10 +22,11 @@ import {
   buildCtDepositTransaction,
   buildCtMergeTransaction,
   buildCtRegisterTransaction,
+  buildCtWithdrawTransaction,
   readCtRegistered,
 } from './confidentialSettlement';
 
-type CtCircuit = 'register' | 'transfer';
+type CtCircuit = 'register' | 'transfer' | 'withdraw';
 
 type CtProver = {
   noir: import('@noir-lang/noir_js').Noir;
@@ -152,7 +154,9 @@ export type ConfidentialSettlementStep =
   | 'deposit'
   | 'merge'
   | 'prove-transfer'
-  | 'transfer';
+  | 'transfer'
+  | 'prove-withdraw'
+  | 'withdraw';
 
 export type ConfidentialSettlementProgress = {
   step: ConfidentialSettlementStep;
@@ -236,7 +240,7 @@ export async function executeConfidentialEurcSettlement(input: {
   if (!recipientRegistered) {
     throw new Error(
       `Recipient ${recipient} is not registered for confidential EURC. ` +
-        'The recipient must open Lumengate, complete passport verification, and register their confidential account in Settings before receiving.',
+        'The recipient must open Lumengate Private Mode once so their confidential account can be created before receiving.',
     );
   }
   const recipientAccount = await client.confidentialBalance(recipient);
@@ -246,6 +250,10 @@ export async function executeConfidentialEurcSettlement(input: {
 
   progress('register', 'Syncing confidential balance…');
   let state = await engine.sync();
+  const synced = await engine.verifyAgainstChain();
+  if (!synced.ok) {
+    throw new Error('Confidential EURC local state is out of sync. Refresh the balance before sending.');
+  }
   if (!state.registered && registered) {
     state.registered = true;
     await ctStateStore(contracts.token).save(state);
@@ -313,6 +321,130 @@ export async function executeConfidentialEurcSettlement(input: {
 
   await engine.setSpendable(witness.next);
 
+  return { txHash, steps: hashes };
+}
+
+export async function shieldConfidentialEurc(input: {
+  config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  amount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  const { config, txSource, smartAccount, amount, onProgress, submitTx } = input;
+  const amountRaw = parseStellarAmount(amount);
+  if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
+  const keys = getOrCreateCtKeys(config, smartAccount);
+  const engine = await ctStateEngine(config, smartAccount, keys);
+  const hashes: string[] = [];
+  const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
+
+  if (!(await readCtRegistered(config, smartAccount))) {
+    progress('register', 'Creating your private EURC account…');
+    const witness = buildRegisterWitness(keys);
+    const proof = await proveCtCircuit('register', witness.inputs);
+    const registerTx = await buildCtRegisterTransaction(
+      config,
+      txSource,
+      smartAccount,
+      config.confidentialAuditorIdNum ?? 1,
+      witness,
+      proof,
+    );
+    hashes.push(await submitTx(registerTx, 'register'));
+  }
+
+  progress('deposit', `Shielding ${amount} EURC…`);
+  const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
+  const txHash = await submitTx(depositTx, 'deposit');
+  hashes.push(txHash);
+  await engine.sync();
+  return { txHash, steps: hashes };
+}
+
+export async function mergeConfidentialEurc(input: {
+  config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  const { config, txSource, smartAccount, onProgress, submitTx } = input;
+  const keys = getOrCreateCtKeys(config, smartAccount);
+  const engine = await ctStateEngine(config, smartAccount, keys);
+  const state = await engine.sync();
+  if (state.receiving.v <= 0n && state.receiving.r === 0n) {
+    throw new Error('No received private EURC is waiting to merge.');
+  }
+  onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
+  const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
+  const txHash = await submitTx(mergeTx, 'merge');
+  await engine.sync();
+  return { txHash, steps: [txHash] };
+}
+
+export async function unshieldConfidentialEurc(input: {
+  config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  amount: string;
+  onProgress?: (progress: ConfidentialSettlementProgress) => void;
+  submitTx: SubmitCtTx;
+}): Promise<{ txHash: string; steps: string[] }> {
+  const { config, txSource, smartAccount, amount, onProgress, submitTx } = input;
+  const amountRaw = parseStellarAmount(amount);
+  if (amountRaw <= 0n) throw new Error('Enter a positive amount.');
+  const client = ctChainClient(config);
+  const keys = getOrCreateCtKeys(config, smartAccount);
+  const engine = await ctStateEngine(config, smartAccount, keys);
+  const hashes: string[] = [];
+  const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
+
+  let state = await engine.sync();
+  const synced = await engine.verifyAgainstChain();
+  if (!synced.ok) {
+    throw new Error('Confidential EURC local state is out of sync. Refresh the balance before unshielding.');
+  }
+  if (state.spendable.v < amountRaw && state.receiving.v > 0n) {
+    progress('merge', 'Preparing received private EURC for unshield…');
+    const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
+    hashes.push(await submitTx(mergeTx, 'merge'));
+    state = await engine.sync();
+  }
+  if (state.spendable.v < amountRaw) {
+    throw new Error(
+      `Insufficient private EURC to unshield (have ${state.spendable.v}, need ${amountRaw}).`,
+    );
+  }
+
+  const senderOnChain = await client.confidentialBalance(smartAccount);
+  if (!senderOnChain) {
+    throw new Error('Confidential EURC account is not registered on chain.');
+  }
+  const kAudS = await client.auditorKey(senderOnChain.auditorId);
+  progress('prove-withdraw', 'Generating unshield proof…');
+  const witness = buildWithdrawWitness({
+    keys,
+    v: state.spendable.v,
+    r: state.spendable.r,
+    amount: amountRaw,
+    kAudS,
+  });
+  const proof = await proveCtCircuit('withdraw', witness.inputs);
+  progress('withdraw', `Unshielding ${amount} EURC to public balance…`);
+  const withdrawTx = await buildCtWithdrawTransaction(
+    config,
+    txSource,
+    smartAccount,
+    smartAccount,
+    amountRaw,
+    witness,
+    proof,
+  );
+  const txHash = await submitTx(withdrawTx, 'withdraw');
+  hashes.push(txHash);
+  await engine.setSpendable(witness.next);
   return { txHash, steps: hashes };
 }
 

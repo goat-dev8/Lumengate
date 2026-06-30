@@ -8,6 +8,8 @@ import {
 import base64url from 'base64url';
 import { Client as SmartAccountClient } from 'smart-account-kit-bindings';
 import {
+  createCallContractContext,
+  createDelegatedSigner,
   IndexedDBStorage,
   SmartAccountKit,
   type CreateWalletResult,
@@ -83,14 +85,114 @@ export type SmartAccountAssembledTransaction = {
 export type SignableTransaction = string | SmartAccountAssembledTransaction;
 
 const storage = new IndexedDBStorage();
+const LUMENGATE_SESSION_DAYS = 7;
+const LUMENGATE_SESSION_LEDGERS = LUMENGATE_SESSION_DAYS * 24 * 60 * 60 / 5;
+const LUMENGATE_SESSION_STORAGE_PREFIX = 'lumengate.smartAccount.session.v1';
 
 let connectedKitCache: {
   key: string;
   kit: SmartAccountKit;
 } | null = null;
 
+type LumengateSessionSigner = {
+  smartAccountAddress: string;
+  publicKey: string;
+  secretKey: string;
+  expiresAt: number;
+};
+
 function kitCacheKey(state: SmartAccountState): string {
   return `${state.smartAccountAddress}:${state.credentialId}`;
+}
+
+function sessionStorageKey(smartAccountAddress: string): string {
+  return `${LUMENGATE_SESSION_STORAGE_PREFIX}:${smartAccountAddress}`;
+}
+
+function loadLumengateSession(smartAccountAddress: string): LumengateSessionSigner | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(sessionStorageKey(smartAccountAddress));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LumengateSessionSigner;
+    if (
+      parsed.smartAccountAddress !== smartAccountAddress ||
+      !parsed.publicKey ||
+      !parsed.secretKey ||
+      parsed.expiresAt <= Date.now()
+    ) {
+      return null;
+    }
+    Keypair.fromSecret(parsed.secretKey);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveLumengateSession(session: LumengateSessionSigner): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(sessionStorageKey(session.smartAccountAddress), JSON.stringify(session));
+}
+
+function getOrCreateLumengateSession(smartAccountAddress: string): LumengateSessionSigner {
+  const existing = loadLumengateSession(smartAccountAddress);
+  if (existing) return existing;
+  const keypair = Keypair.random();
+  const session: LumengateSessionSigner = {
+    smartAccountAddress,
+    publicKey: keypair.publicKey(),
+    secretKey: keypair.secret(),
+    expiresAt: Date.now() + LUMENGATE_SESSION_DAYS * 24 * 60 * 60 * 1000,
+  };
+  saveLumengateSession(session);
+  return session;
+}
+
+function ruleHasDelegatedSigner(rule: unknown, publicKey: string): boolean {
+  const signers = (rule as { signers?: unknown[] })?.signers ?? [];
+  return signers.some((signer) => {
+    const typed = signer as { tag?: string; values?: unknown[] };
+    return typed?.tag === 'Delegated' && String(typed.values?.[0] ?? '') === publicKey;
+  });
+}
+
+function ruleHasCompliancePolicy(rule: unknown, config: DeploymentConfig): boolean {
+  const policies = (rule as { policies?: unknown[] })?.policies ?? [];
+  return Boolean(config.compliancePolicyId && policies.map(String).includes(config.compliancePolicyId));
+}
+
+function ruleMatchesCallContract(rule: unknown, contractId: string): boolean {
+  const contextType = (rule as { context_type?: { tag?: string; values?: unknown[] } })?.context_type;
+  return contextType?.tag === 'CallContract' && String(contextType.values?.[0] ?? '') === contractId;
+}
+
+function extractPrimaryCallContracts(transaction: SmartAccountAssembledTransaction): string[] {
+  const built = transaction.built as { operations?: unknown[] } | undefined;
+  const contracts = new Set<string>();
+  for (const operation of built?.operations ?? []) {
+    const func = (operation as { func?: xdr.HostFunction }).func;
+    try {
+      if (func?.switch().name !== 'hostFunctionTypeInvokeContract') continue;
+      const args = func.invokeContract();
+      contracts.add(Address.fromScAddress(args.contractAddress()).toString());
+    } catch {
+      // Fall through to configured contract fallbacks.
+    }
+  }
+  return [...contracts];
+}
+
+function fallbackSessionContracts(config: DeploymentConfig): string[] {
+  return [
+    config.rwaAdapterId,
+    config.rwaTokenId,
+    config.complianceSacAdminId,
+    config.usdcSacId,
+    config.eurcSacId,
+    config.confidentialTokenId,
+    config.confidentialUnderlyingId,
+  ].filter((id): id is string => Boolean(id));
 }
 
 export function invalidateSmartAccountKitCache(): void {
@@ -606,6 +708,88 @@ export async function submitWithSmartAccount(
     forceMethod: options?.forceMethod ?? (config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
   });
   return submitResultOrThrow(result, 'Smart account submission failed', config.rpcUrl);
+}
+
+async function ensureLumengateSessionRule(
+  config: DeploymentConfig,
+  kit: SmartAccountKit,
+  session: LumengateSessionSigner,
+  contractIds: string[],
+): Promise<void> {
+  if (!config.compliancePolicyId) {
+    throw new Error('Compliance policy is not configured.');
+  }
+  const latest = await kit.rpc.getLatestLedger();
+  const currentLedger = Number(latest.sequence ?? 0);
+  const validUntil = currentLedger + Math.round(LUMENGATE_SESSION_LEDGERS);
+  const existingRules = await kit.rules.list().catch(() => []);
+  const targets = [...new Set(contractIds)].filter((id) => {
+    try {
+      return Address.fromString(id).toString().startsWith('C');
+    } catch {
+      return false;
+    }
+  });
+  if (targets.length === 0) {
+    throw new Error('No Lumengate contract context available for session setup.');
+  }
+
+  for (const contractId of targets) {
+    const hasUsableRule = existingRules.some((rule) => {
+      const expires = (rule as { valid_until?: number | null }).valid_until;
+      return (
+        ruleMatchesCallContract(rule, contractId) &&
+        ruleHasDelegatedSigner(rule, session.publicKey) &&
+        ruleHasCompliancePolicy(rule, config) &&
+        (expires == null || Number(expires) > currentLedger + 100)
+      );
+    });
+    if (hasUsableRule) continue;
+
+    const signer = createDelegatedSigner(session.publicKey);
+    const policies = new Map<string, xdr.ScVal>();
+    policies.set(config.compliancePolicyId, complianceInstallParamScVal(config));
+    const ruleTx = await kit.rules.add(
+      createCallContractContext(contractId),
+      'Lumen Session',
+      [signer],
+      policies,
+      validUntil,
+    );
+    const result = await kit.signAndSubmit(ruleTx, {
+      credentialId: kit.credentialId,
+      forceMethod: config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc',
+    });
+    await submitResultOrThrow(result, 'Lumengate session setup failed', config.rpcUrl);
+  }
+}
+
+export async function submitWithLumengateSession(
+  config: DeploymentConfig,
+  state: SmartAccountState,
+  transaction: SmartAccountAssembledTransaction,
+  options?: { forceMethod?: 'relayer' | 'rpc'; allowSetup?: boolean },
+): Promise<string> {
+  const hydrated = await hydrateSmartAccountPasskeyMetadata(config, state);
+  await assertSmartAccountReadyForSettlement(config, hydrated);
+  const kit = await connectPersonalSmartAccount(config, hydrated);
+  const session = getOrCreateLumengateSession(hydrated.smartAccountAddress);
+  if (options?.allowSetup !== false) {
+    const contractIds = extractPrimaryCallContracts(transaction);
+    await ensureLumengateSessionRule(
+      config,
+      kit,
+      session,
+      contractIds.length ? contractIds : fallbackSessionContracts(config),
+    );
+  }
+  kit.externalSigners.addFromSecret(session.secretKey);
+  const sessionSigner = createDelegatedSigner(session.publicKey);
+  const selected = kit.multiSigners.buildSelectedSigners([sessionSigner], hydrated.credentialId);
+  const result = await kit.multiSigners.operation(asKitAssembledTransaction(transaction), selected, {
+    forceMethod: options?.forceMethod ?? (config.relayerEnabled && config.openZeppelinRelayerUrl ? 'relayer' : 'rpc'),
+  });
+  return submitResultOrThrow(result, 'Lumengate session submission failed', config.rpcUrl);
 }
 
 export function isAssembledTransaction(tx: SignableTransaction): tx is SmartAccountAssembledTransaction {

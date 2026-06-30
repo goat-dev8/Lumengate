@@ -246,6 +246,35 @@ export function SendTransferForm({
         </motion.div>
 
         <aside className="space-y-4">
+          {confidentialMode ? (
+            <motion.div
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.05 }}
+              className="lg-surface-card p-6"
+            >
+              <p className="text-sm font-semibold text-[#012b54]">Private EURC lifecycle</p>
+              <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-3 text-sm">
+                {[
+                  ['1', 'Public EURC', 'Visible balance in your Lumengate account.'],
+                  ['2', 'Shield', 'Deposited into the Confidential Token wrapper.'],
+                  ['3', 'Private transfer', 'Amount moves with a zero-knowledge proof.'],
+                  ['4', 'Receipt', 'Auditor disclosure is optional and local.'],
+                ].map(([n, title, text]) => (
+                  <div key={n} className="contents">
+                    <span className="grid h-6 w-6 place-items-center rounded-full bg-[#007dfc]/10 text-xs font-bold text-[#007dfc]">
+                      {n}
+                    </span>
+                    <span>
+                      <span className="block font-semibold text-[#012b54]">{title}</span>
+                      <span className="block text-xs text-[#64748b]">{text}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : null}
+
           <motion.div
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
