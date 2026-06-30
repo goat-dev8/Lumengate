@@ -1,8 +1,14 @@
 # Lumengate Documentation Index
 
-**Last updated:** 2026-06-30 · commit `a8fed62`
+**Last updated:** 2026-06-30 · commit `e423435`
 
 Read these documents in order for a full picture of the project today.
+
+## Primary (start here)
+
+| Document | Description |
+|----------|-------------|
+| [**LUMENGATE_MASTER_DOCUMENTATION.md**](./LUMENGATE_MASTER_DOCUMENTATION.md) | **Canonical reference** — entire project in one document |
 
 ## Release documentation (2026-06-30)
 
