@@ -4,13 +4,13 @@ import {
   TransactionBuilder,
   nativeToScVal,
   BASE_FEE,
-  Account,
   type Transaction,
 } from '@stellar/stellar-sdk';
 import type { DeploymentConfig } from './config';
 import type { SmartAccountAssembledTransaction } from './smartAccount';
 import { resolvePasskeySimulationSource } from './smartAccount';
 import { encodeRegisterData, encodeTransferData } from './confidentialToken/chain/payload';
+import { ChainClient } from './confidentialToken/chain/client';
 import type { RegisterWitness } from './confidentialToken/witness/register';
 import type { TransferWitness } from './confidentialToken/witness/transfer';
 
@@ -152,18 +152,16 @@ export async function readCtRegistered(
 ): Promise<boolean> {
   if (!config.confidentialTokenId) return false;
   try {
-    const s = server(config.rpcUrl);
-    const contract = new Contract(config.confidentialTokenId);
-    const tx = new TransactionBuilder(new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'), {
-      fee: '100000',
+    const client = new ChainClient({
+      rpcUrl: config.rpcUrl,
       networkPassphrase: config.networkPassphrase,
-    })
-      .addOperation(contract.call('confidential_balance', nativeToScVal(account, { type: 'address' })))
-      .setTimeout(30)
-      .build();
-    const sim = await s.simulateTransaction(tx);
-    if (rpc.Api.isSimulationError(sim)) return false;
-    return Boolean(sim.result?.retval);
+      contracts: {
+        token: config.confidentialTokenId,
+        verifier: config.confidentialVerifierId || config.confidentialTokenId,
+        auditor: config.confidentialAuditorId || config.confidentialTokenId,
+      },
+    });
+    return client.isRegistered(account);
   } catch {
     return false;
   }

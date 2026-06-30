@@ -48,7 +48,8 @@ import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
-import { executeConfidentialEurcSettlement } from '../lib/confidentialFlow';
+import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
+import { ConfidentialEurcPanel } from '../components/product/ConfidentialEurcPanel';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -110,6 +111,8 @@ export function TransferPage() {
   const [scopeBlocked, setScopeBlocked] = useState<ProofLifecycleState | null>(null);
   const [passkeyStep, setPasskeyStep] = useState<{ index: number; total: number } | null>(null);
   const [confidentialMode, setConfidentialMode] = useState(false);
+  const [ctRecipientRegistered, setCtRecipientRegistered] = useState<boolean | null>(null);
+  const [senderCtRegistered, setSenderCtRegistered] = useState<boolean | null>(null);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -187,6 +190,34 @@ export function TransferPage() {
     };
   }, [credential, asset, scope, config, consumedTxHash]);
 
+  useEffect(() => {
+    if (!confidentialMode || !config.confidentialTokenId || !to || !validateStellarAddress(to.trim())) {
+      setCtRecipientRegistered(null);
+      return;
+    }
+    let cancelled = false;
+    void readConfidentialEurcRegistered(config, to.trim()).then((ok) => {
+      if (!cancelled) setCtRecipientRegistered(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [confidentialMode, config, to]);
+
+  useEffect(() => {
+    if (!confidentialMode || !config.confidentialTokenId || !settlementAddress) {
+      setSenderCtRegistered(null);
+      return;
+    }
+    let cancelled = false;
+    void readConfidentialEurcRegistered(config, settlementAddress).then((ok) => {
+      if (!cancelled) setSenderCtRegistered(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [confidentialMode, config, settlementAddress, txHash]);
+
   const handleTransfer = async () => {
     if (!credential || !to || !amount) return;
     if (!smartAccount || !settlementAddress) {
@@ -246,6 +277,21 @@ export function TransferPage() {
         return;
       }
 
+    }
+
+    if (asset === 'eurc' && confidentialMode && confidentialRecipientIsG) {
+      setError(confidentialRecipientWarning ?? 'Use a C… smart account address for confidential EURC.');
+      return;
+    }
+    if (asset === 'eurc' && confidentialMode && senderCtRegistered === false) {
+      setError('Register your confidential EURC account in Settings before sending.');
+      return;
+    }
+    if (asset === 'eurc' && confidentialMode && ctRecipientRegistered === false) {
+      setError(
+        'Recipient is not registered for confidential EURC. Use their Lumengate smart account address (C…), not a funding wallet (G…). They must register in Settings first.',
+      );
+      return;
     }
 
     setLoading(true);
@@ -426,6 +472,11 @@ export function TransferPage() {
   };
 
   const assetProofReady = Boolean(activeProof);
+  const confidentialRecipientIsG =
+    confidentialMode && to.trim().startsWith('G') && validateStellarAddress(to.trim());
+  const confidentialRecipientWarning = confidentialRecipientIsG
+    ? 'Confidential EURC requires the recipient’s Lumengate smart account (C… address). G… funding wallets cannot receive shielded EURC.'
+    : null;
 
   const balanceLabel =
     asset === 'usdc'
@@ -442,6 +493,20 @@ export function TransferPage() {
 
   const recipientValid = to ? validateStellarAddress(to) : null;
   const complianceLines = [
+    ...(confidentialMode && config.confidentialTokenId
+      ? [
+          {
+            label: 'Your confidential account',
+            status:
+              senderCtRegistered === true
+                ? 'Registered'
+                : senderCtRegistered === false
+                  ? 'Register in Settings'
+                  : 'Checking…',
+            ok: senderCtRegistered === true,
+          },
+        ]
+      : []),
     {
       label: 'Passport eligibility',
       status: assetProofReady ? 'Ready' : credential ? 'Prepared on send' : 'Passport needed',
@@ -454,8 +519,22 @@ export function TransferPage() {
     },
     {
       label: 'Counterparty allowlist',
-      status: recipientValid ? 'Verified' : to ? 'Invalid address' : 'Enter recipient',
-      ok: Boolean(recipientValid),
+      status: recipientValid
+        ? confidentialRecipientIsG
+          ? 'Use C… smart account'
+          : confidentialMode && ctRecipientRegistered === false
+          ? 'Not CT registered'
+          : confidentialMode && ctRecipientRegistered === true
+            ? 'CT registered'
+            : 'Verified'
+        : to
+          ? 'Invalid address'
+          : 'Enter recipient',
+      ok: Boolean(
+        recipientValid &&
+          !confidentialRecipientIsG &&
+          (!confidentialMode || ctRecipientRegistered === true || ctRecipientRegistered === null),
+      ),
     },
     {
       label: 'Receipt generation',
@@ -515,6 +594,7 @@ export function TransferPage() {
                   !to ||
                   !amount ||
                   recipientValid === false ||
+                  confidentialRecipientIsG ||
                   scopeBlocked?.lifecycle === 'consumed' ||
                   loading
                 }
@@ -525,8 +605,14 @@ export function TransferPage() {
                 confidentialAvailable={confidentialAvailable}
                 confidentialMode={confidentialMode}
                 onConfidentialModeChange={setConfidentialMode}
+                ctRecipientRegistered={ctRecipientRegistered}
+                confidentialRecipientWarning={confidentialRecipientWarning}
               />
             )}
+
+            {confidentialMode && config.confidentialTokenId && senderCtRegistered === false ? (
+              <ConfidentialEurcPanel />
+            ) : null}
 
             {txHash ? (
               <>

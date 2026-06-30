@@ -39,6 +39,8 @@ type Props = {
   confidentialAvailable?: boolean;
   confidentialMode?: boolean;
   onConfidentialModeChange?: (enabled: boolean) => void;
+  ctRecipientRegistered?: boolean | null;
+  confidentialRecipientWarning?: string | null;
 };
 
 function ComplianceLineRow({ label, status, ok }: ComplianceLine) {
@@ -84,6 +86,8 @@ export function SendTransferForm({
   confidentialAvailable = false,
   confidentialMode = false,
   onConfidentialModeChange,
+  ctRecipientRegistered = null,
+  confidentialRecipientWarning = null,
 }: Props) {
   const assetPills: { id: AssetKind; label: string; disabled?: boolean }[] = [
     ...(showTreasuryOption ? [{ id: 'rwa' as const, label: 'Treasury' }] : []),
@@ -164,8 +168,8 @@ export function SendTransferForm({
                 <span className="text-sm text-[#334155]">
                   <span className="font-semibold text-[#012b54]">Confidential EURC settlement</span>
                   <span className="mt-1 block text-[#64748b]">
-                    Shield amount on-chain with zero-knowledge proofs. Recipient must already be registered for
-                    confidential EURC.
+                    Shield amount on-chain with zero-knowledge proofs. Recipient must be a registered Lumengate
+                    smart account (C… address), not a funding wallet (G…).
                   </span>
                 </span>
               </label>
@@ -182,14 +186,27 @@ export function SendTransferForm({
                   onChange={(e) => onToChange(e.target.value)}
                   className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none text-[#012b54]"
                   aria-label="Recipient Stellar address"
-                  placeholder="G… Stellar address"
+                  placeholder={confidentialMode ? 'C… Lumengate smart account' : 'G… Stellar address'}
                 />
                 {recipientValid === true ? (
-                  <Pill tone="success">Verified</Pill>
+                  confidentialMode && confidentialRecipientWarning ? (
+                    <Pill tone="warning">G wallet</Pill>
+                  ) : confidentialMode && ctRecipientRegistered === false ? (
+                    <Pill tone="warning">Not CT registered</Pill>
+                  ) : confidentialMode && ctRecipientRegistered === true ? (
+                    <Pill tone="success">CT ready</Pill>
+                  ) : (
+                    <Pill tone="success">Verified</Pill>
+                  )
                 ) : recipientValid === false && to ? (
                   <Pill tone="warning">Invalid</Pill>
                 ) : null}
               </div>
+              {confidentialMode && confidentialRecipientWarning ? (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="alert">
+                  {confidentialRecipientWarning}
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-8 rounded-2xl border border-[#007dfc]/10 bg-gradient-to-br from-[#007dfc]/[0.04] to-transparent p-5">

@@ -21,6 +21,7 @@ import { HomeJourneyProgress } from '../components/dashboard/HomeJourneyProgress
 import { HomeQuickActions } from '../components/dashboard/HomeQuickActions';
 import { RecentSettlements } from '../components/dashboard/RecentSettlements';
 import { FloatingTestnetFaucet } from '../components/product/FloatingTestnetFaucet';
+import { ConfidentialBalancePanel } from '../components/product/ConfidentialBalancePanel';
 import { getOnboardingPath } from '../components/product/OnboardingPathPicker';
 
 export function DashboardPage() {
@@ -205,13 +206,14 @@ export function DashboardPage() {
         <HomeJourneyProgress steps={productSteps} />
 
         <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-8">
             <DashboardHoldings
               config={config}
               settlementOwner={settlementOwner}
               activity={activity}
               offerings={offerings}
             />
+            {config.confidentialTokenId && settlementOwner ? <ConfidentialBalancePanel /> : null}
           </div>
           <DashboardActivityFeed activity={activity} />
         </div>

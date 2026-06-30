@@ -67,6 +67,32 @@ function dataField(value, name) {
   throw new Error(`unsupported field type for ${name}`);
 }
 
+function fieldHex(value, name) {
+  return `0x${dataField(value, name).toString(16)}`;
+}
+
+function pointField(value, name) {
+  const byName = new Map();
+  for (const e of value.map() ?? []) {
+    byName.set(e.key().sym().toString(), e.val());
+  }
+  const v = byName.get(name);
+  if (!v) throw new Error(`event data missing field "${name}"`);
+  const bytes = new Uint8Array(v.bytes());
+  if (bytes.length !== 64) throw new Error(`expected 64-byte point for ${name}`);
+  let allZero = true;
+  for (const b of bytes) {
+    if (b !== 0) {
+      allZero = false;
+      break;
+    }
+  }
+  if (allZero) return { x: '0x0', y: '0x0' };
+  const x = fromBytesBE(bytes.subarray(0, 32));
+  const y = fromBytesBE(bytes.subarray(32, 64));
+  return { x: `0x${x.toString(16)}`, y: `0x${y.toString(16)}` };
+}
+
 function parseRpcEvent(ev) {
   const topics = ev.topic;
   if (!topics || topics.length === 0) return null;
@@ -104,7 +130,14 @@ function parseRpcEvent(ev) {
         ...base,
         from: addr(1),
         to: addr(2),
-        sigma: `0x${dataField(ev.value, 'sigma').toString(16)}`,
+        rE: pointField(ev.value, 'r_e'),
+        sigma: fieldHex(ev.value, 'sigma'),
+        vTilde: fieldHex(ev.value, 'v_tilde'),
+        bTilde: fieldHex(ev.value, 'b_tilde'),
+        vAudR: fieldHex(ev.value, 'v_aud_r'),
+        rAudR: fieldHex(ev.value, 'r_aud_r'),
+        vAudS: fieldHex(ev.value, 'v_aud_s'),
+        bAudS: fieldHex(ev.value, 'b_aud_s'),
       };
     default:
       return null;

@@ -19,6 +19,7 @@ import {
   SelectiveDisclosureDiagram,
   SELECTIVE_DISCLOSURE_TERMS,
 } from '../components/education/diagrams/SelectiveDisclosureDiagram';
+import { CtAuditorPanel } from '../components/product/CtAuditorPanel';
 
 const RESULT_LABELS: Record<string, string> = {
   'Disclosure pack version': 'Eligibility record valid',
@@ -380,6 +381,8 @@ export function AuditorPage() {
             </ul>
           </Card>
         ) : null}
+
+        {config.confidentialTokenId ? <CtAuditorPanel /> : null}
 
         <ZkExplainerSection
           id="auditor-selective-disclosure"

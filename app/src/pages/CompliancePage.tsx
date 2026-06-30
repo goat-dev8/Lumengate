@@ -31,6 +31,7 @@ import {
   SettlementPrivacyDiagram,
   SETTLEMENT_PRIVACY_TERMS,
 } from '../components/education/diagrams/SettlementPrivacyDiagram';
+import { CtDisclosurePanel } from '../components/product/CtDisclosurePanel';
 import { useApp } from '../context/AppContext';
 import { currentSettlementOwner } from '../lib/settlementOwner';
 import { cn } from '../lib/cn';
@@ -366,6 +367,7 @@ export function CompliancePage() {
                     terms={SELECTIVE_DISCLOSURE_TERMS}
                     defaultOpen={Boolean(generatedViewingKey)}
                   />
+                  {config.confidentialTokenId ? <CtDisclosurePanel /> : null}
                 </>
               ) : null}
             </>

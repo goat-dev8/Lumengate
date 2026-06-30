@@ -164,6 +164,33 @@ export type SubmitCtTx = (
   stepLabel: string,
 ) => Promise<string>;
 
+export async function registerConfidentialEurcAccount(input: {
+  config: DeploymentConfig;
+  txSource: string;
+  smartAccount: string;
+  onProgress?: (message: string) => void;
+  submitTx: SubmitCtTx;
+}): Promise<string> {
+  const { config, txSource, smartAccount, onProgress, submitTx } = input;
+  if (await readCtRegistered(config, smartAccount)) {
+    return '';
+  }
+  const keys = getOrCreateCtKeys(config, smartAccount);
+  onProgress?.('Generating confidential registration proof…');
+  const witness = buildRegisterWitness(keys);
+  const proof = await proveCtCircuit('register', witness.inputs);
+  onProgress?.('Registering confidential account on Stellar…');
+  const registerTx = await buildCtRegisterTransaction(
+    config,
+    txSource,
+    smartAccount,
+    config.confidentialAuditorIdNum ?? 1,
+    witness,
+    proof,
+  );
+  return submitTx(registerTx, 'register');
+}
+
 export async function executeConfidentialEurcSettlement(input: {
   config: DeploymentConfig;
   txSource: string;
@@ -187,17 +214,6 @@ export async function executeConfidentialEurcSettlement(input: {
     onProgress?.({ step, message });
   };
 
-  const recipientRegistered = await readCtRegistered(config, recipient);
-  if (!recipientRegistered) {
-    throw new Error(
-      'Recipient is not registered for confidential EURC. They must complete a confidential registration first.',
-    );
-  }
-  const recipientAccount = await client.confidentialBalance(recipient);
-  if (!recipientAccount) {
-    throw new Error('Recipient confidential account could not be read from Stellar.');
-  }
-
   let registered = await readCtRegistered(config, smartAccount);
   if (!registered) {
     progress('register', 'Generating confidential registration proof…');
@@ -214,6 +230,18 @@ export async function executeConfidentialEurcSettlement(input: {
     );
     hashes.push(await submitTx(registerTx, 'register'));
     registered = true;
+  }
+
+  const recipientRegistered = await readCtRegistered(config, recipient);
+  if (!recipientRegistered) {
+    throw new Error(
+      `Recipient ${recipient} is not registered for confidential EURC. ` +
+        'The recipient must open Lumengate, complete passport verification, and register their confidential account in Settings before receiving.',
+    );
+  }
+  const recipientAccount = await client.confidentialBalance(recipient);
+  if (!recipientAccount) {
+    throw new Error('Recipient confidential account could not be read from Stellar.');
   }
 
   progress('register', 'Syncing confidential balance…');

@@ -56,6 +56,10 @@ check "disclose query" bash -c 'curl -sf -X POST "$1/disclose" -H "Content-Type:
 
 check "issuer by id" bash -c 'curl -sf "$1/issuer/2" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"issuerId\" in d"' _ "$ISSUER"
 
+check "ct deployments" bash -c 'curl -sf "$1/ct/deployments" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get(\"deployment\",{}).get(\"token\",\"\").startswith(\"C\")"' _ "$ISSUER"
+check "ct events" bash -c 'curl -sf "$1/ct/events" | python3 -c "import sys,json; d=json.load(sys.stdin); assert \"events\" in d"' _ "$ISSUER"
+check "ct sync" bash -c 'curl -sf -X POST "$1/ct/sync" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get(\"ok\") is True"' _ "$ISSUER"
+
 COMMITMENT="0x2222222222222222222222222222222222222222222222222222222222222222"
 REVOKE_KEY="${REVOKE_API_KEY:-}"
 if [[ -n "$REVOKE_KEY" ]]; then
