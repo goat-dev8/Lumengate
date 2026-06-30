@@ -133,11 +133,23 @@ function ConfidentialAmountHero({
 
 function isConfidentialReceipt(receipt: ProofReceipt): boolean {
   if (receipt.transferResult?.confidential) return true;
-  const assetText = `${receipt.asset?.label ?? ''} ${receipt.transferResult?.amount ?? ''}`.toLowerCase();
+  const amountText = `${receipt.transferResult?.amount ?? ''}`.toLowerCase();
+  if (amountText.includes('amount private') || amountText.includes('shielded')) return true;
+  const assetText = `${receipt.asset?.label ?? ''} ${amountText}`.toLowerCase();
   return assetText.includes('eurc') && receipt.events.some((event) => {
     const topicText = `${event.kind} ${event.summary} ${JSON.stringify(event.rawTopic ?? [])}`.toLowerCase();
-    return topicText.includes('confidential_transfer') || topicText.includes('confidential');
+    return (
+      topicText.includes('confidential_transfer') ||
+      topicText.includes('confidential') ||
+      topicText.includes('ct_transfer')
+    );
   });
+}
+
+function shouldMaskReceiptAmount(receipt: ProofReceipt): boolean {
+  if (isConfidentialReceipt(receipt)) return true;
+  const label = receiptDisplayAssetLabel(receipt).toLowerCase();
+  return label.includes('eurc') && Boolean(receipt.transferResult?.amount);
 }
 
 function buildReceiptTimeline(receipt: ProofReceipt): TimelineStep[] {
@@ -269,10 +281,9 @@ export function ProofReceiptHero({
     ? `RCPT-${receipt.transactions.transfer.slice(0, 8).toUpperCase()}`
     : 'RCPT-PENDING';
   const confidentialReceipt = isConfidentialReceipt(receipt);
+  const maskReceiptAmount = shouldMaskReceiptAmount(receipt);
   const rawAmount = receipt.transferResult?.amount ?? '';
-  const displayAmount = confidentialReceipt
-    ? rawAmount || '—'
-    : rawAmount || '—';
+  const displayAmount = rawAmount || '—';
   const assetLabel = receiptDisplayAssetLabel(receipt);
   const ledger =
     receipt.events.find((e) => e.txHash === receipt.transactions.transfer)?.ledger ??
@@ -343,7 +354,7 @@ export function ProofReceiptHero({
 
         <div className="relative mt-8 grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:items-end">
           <div>
-            {confidentialReceipt ? (
+            {maskReceiptAmount ? (
               <ConfidentialAmountHero
                 amount={displayAmount}
                 assetLabel={assetLabel}
@@ -359,7 +370,7 @@ export function ProofReceiptHero({
               animate={{ opacity: 1 }}
               transition={{ delay: 0.35, duration: 0.5 }}
             >
-              {confidentialReceipt
+              {maskReceiptAmount
                 ? `${assetLabel} · amount private by default · Stellar ${receipt.network}`
                 : `${assetLabel} · Stellar ${receipt.network}`}
             </motion.p>

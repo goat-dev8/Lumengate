@@ -12,6 +12,7 @@ import { Pill } from '../design/Primitives';
 import { Button } from '../ui/Button';
 import { truncateMiddle } from '../../lib/utils';
 import { ConfidentialEurcShieldControls } from '../product/ConfidentialEurcShieldControls';
+import { MaskedPrivateBalance } from '../product/MaskedPrivateBalance';
 
 type AssetKind = 'rwa' | 'usdc' | 'eurc';
 
@@ -311,9 +312,15 @@ export function SendTransferForm({
             {fromAddress ? (
               <p className="mt-1 font-mono text-xs text-[#64748b]">{truncateMiddle(fromAddress, 8, 6)}</p>
             ) : null}
-            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#f6f9fc] px-4 py-3">
-              <span className="text-sm text-[#64748b]">Available balance</span>
-              <span className="text-base font-semibold tabular-nums text-[#012b54]">{balanceLabel}</span>
+            <div className="mt-5">
+              {confidentialMode ? (
+                <MaskedPrivateBalance revealedValue={balanceLabel} />
+              ) : (
+                <div className="flex items-center justify-between rounded-xl bg-[#f6f9fc] px-4 py-3">
+                  <span className="text-sm text-[#64748b]">Available balance</span>
+                  <span className="text-base font-semibold tabular-nums text-[#012b54]">{balanceLabel}</span>
+                </div>
+              )}
             </div>
           </motion.div>
           <motion.div

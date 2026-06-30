@@ -96,3 +96,47 @@ export function registryRootMismatchMessage(): string {
     'Wait a few seconds and try Send again, or go to Verify → Request new passport if it persists.'
   );
 }
+
+/** Sync issuer root on-chain and poll until credential roots match (auto-retries once). */
+export async function ensureCredentialRootsReady(
+  config: DeploymentConfig,
+  credential: IssuerCredentialResponse,
+  options: {
+    walletField?: string;
+    policyKey: string;
+    issuerServiceUrl: string;
+    existingProof?: ProofBundle | null;
+    onProgress?: (message: string) => void;
+  },
+): Promise<{ ready: boolean; credential: IssuerCredentialResponse }> {
+  let activeCredential = credential;
+  const { walletField, policyKey, issuerServiceUrl, existingProof, onProgress } = options;
+
+  const syncRoot = async () => {
+    if (!walletField) return;
+    onProgress?.('Confirming eligibility registry on-chain…');
+    const syncResult = await ensureRegistryRootForWallet(issuerServiceUrl, walletField, policyKey).catch(
+      () => null,
+    );
+    if (syncResult?.root) {
+      activeCredential = {
+        ...activeCredential,
+        credential: { ...activeCredential.credential, root: syncResult.root },
+      };
+    }
+  };
+
+  for (let round = 0; round < 2; round += 1) {
+    if (round > 0) {
+      onProgress?.('Refreshing eligibility registry…');
+    }
+    await syncRoot();
+    await new Promise((resolve) => setTimeout(resolve, round === 0 ? 3500 : 2500));
+    const ready = await waitForCredentialRootsReady(config, activeCredential, existingProof, onProgress);
+    if (ready) {
+      return { ready: true, credential: activeCredential };
+    }
+  }
+
+  return { ready: false, credential: activeCredential };
+}
