@@ -1,6 +1,7 @@
 import type { DeploymentConfig } from './config';
 import { getOrCreateCtKeys } from './confidentialFlow';
 import { ChainClient } from './confidentialToken/chain/client';
+import { IndexerClient } from './confidentialToken/chain/indexer';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
 import { readCtRegistered } from './confidentialSettlement';
@@ -27,6 +28,12 @@ function ctChainClient(config: DeploymentConfig): ChainClient {
   });
 }
 
+function ctIndexer(config: DeploymentConfig): IndexerClient | undefined {
+  return config.confidentialIndexerUrl
+    ? new IndexerClient({ baseUrl: config.confidentialIndexerUrl })
+    : undefined;
+}
+
 export async function readConfidentialEurcBalance(
   config: DeploymentConfig,
   smartAccount: string,
@@ -47,6 +54,7 @@ export async function readConfidentialEurcBalance(
     keys,
     address: smartAccount,
     fromLedger,
+    indexer: ctIndexer(config),
   });
   const state = await engine.sync();
   const spendable = state.spendable.v;

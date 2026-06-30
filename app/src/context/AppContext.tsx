@@ -1324,7 +1324,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settlementAddress,
         proofBundle,
       );
-      const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      let bindHash: string;
+      try {
+        bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      } catch {
+        bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      }
       setSessionProofBound(true);
       markProofBoundLocally(proofBundle);
       setReceiptTransactions((prev) => {
@@ -1809,7 +1814,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             settlementFrom,
             proof,
           );
-          const bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+          let bindHash: string;
+          try {
+            bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+          } catch {
+            bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+          }
           setSessionProofBound(true);
           markProofBoundLocally(proof);
           setReceiptTransactions((prev) => {

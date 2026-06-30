@@ -111,7 +111,7 @@ async function simulateAssembledTx(
   if (rpc.Api.isSimulationError(sim)) {
     throw new Error(sim.error || 'Transaction simulation failed');
   }
-  return { built: draft, simulationData: sim };
+  return { built: rpc.assembleTransaction(draft, sim).build(), simulationData: sim };
 }
 
 async function passkeySimulationAccount(config: DeploymentConfig, source: string) {

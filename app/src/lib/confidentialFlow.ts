@@ -17,6 +17,7 @@ import { buildTransferWitness } from './confidentialToken/witness/transfer';
 import { buildWithdrawWitness } from './confidentialToken/witness/withdraw';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
+import { IndexerClient } from './confidentialToken/chain/indexer';
 import {
   buildCtConfidentialTransferTransaction,
   buildCtDepositTransaction,
@@ -57,6 +58,12 @@ function ctChainClient(config: DeploymentConfig): ChainClient {
     networkPassphrase: config.networkPassphrase,
     contracts,
   });
+}
+
+function ctIndexer(config: DeploymentConfig): IndexerClient | undefined {
+  return config.confidentialIndexerUrl
+    ? new IndexerClient({ baseUrl: config.confidentialIndexerUrl })
+    : undefined;
 }
 
 function ctKeysStorageKey(smartAccount: string, tokenId: string): string {
@@ -146,6 +153,7 @@ async function ctStateEngine(
     keys,
     address: smartAccount,
     fromLedger,
+    indexer: ctIndexer(config),
   });
 }
 
@@ -357,10 +365,27 @@ export async function shieldConfidentialEurc(input: {
 
   progress('deposit', `Shielding ${amount} EURC…`);
   const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
-  const txHash = await submitTx(depositTx, 'deposit');
-  hashes.push(txHash);
-  await engine.sync();
-  return { txHash, steps: hashes };
+  const depositHash = await submitTx(depositTx, 'deposit');
+  hashes.push(depositHash);
+  let state = await engine.sync();
+  const depositSynced = await engine.verifyAgainstChain();
+  if (!depositSynced.receivingOk) {
+    throw new Error('Shield deposit succeeded, but the private receiving balance could not be reconstructed from chain events yet. Refresh and retry merge.');
+  }
+  if (state.receiving.v <= 0n && state.receiving.r === 0n) {
+    throw new Error('Shield deposit succeeded, but no private receiving balance event was found.');
+  }
+
+  progress('merge', 'Moving shielded EURC into spendable private balance…');
+  const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
+  const mergeHash = await submitTx(mergeTx, 'merge');
+  hashes.push(mergeHash);
+  state = await engine.sync();
+  const merged = await engine.verifyAgainstChain();
+  if (!merged.ok || state.spendable.v < amountRaw) {
+    throw new Error('Shield merge completed, but private spendable balance did not match Stellar state. Refresh and retry.');
+  }
+  return { txHash: mergeHash, steps: hashes };
 }
 
 export async function mergeConfidentialEurc(input: {

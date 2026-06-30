@@ -255,6 +255,10 @@ export function createSmartAccountKit(config: DeploymentConfig): SmartAccountKit
     webauthnVerifierAddress: config.webauthnVerifierId,
     relayerUrl: config.relayerEnabled ? config.openZeppelinRelayerUrl : undefined,
     storage,
+    contextRuleProbe: {
+      maxRuleId: 64,
+      maxConsecutiveMisses: 8,
+    },
     rpName: 'Lumengate',
     rpId:
       config.passkeyRpId ??
