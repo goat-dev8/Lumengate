@@ -117,6 +117,82 @@ async function loadHorizonAccount(horizon, publicKey, friendbotUrl) {
   }
 }
 
+function humanAmountToStroops(human) {
+  const raw = String(human || '0').trim();
+  const [whole, frac = ''] = raw.split('.');
+  const padded = `${frac}0000000`.slice(0, 7);
+  return BigInt(whole || '0') * 10000000n + BigInt(padded || '0');
+}
+
+function getUsdcAsset(env = process.env) {
+  const issuer = env.VITE_USDC_ISSUER || env.USDC_ISSUER;
+  if (!issuer) throw new Error('USDC issuer not configured');
+  return new Asset('USDC', issuer);
+}
+
+async function readClassicUsdcStroops(publicKey, env = process.env) {
+  const horizonUrl = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+  const friendbotUrl = env.FRIENDBOT_URL;
+  const usdc = getUsdcAsset(env);
+  const horizon = new Horizon.Server(horizonUrl);
+  const account = await loadHorizonAccount(horizon, publicKey, friendbotUrl);
+  const row = account.balances.find(
+    (balance) => balance.asset_code === 'USDC' && balance.asset_issuer === usdc.getIssuer(),
+  );
+  if (!row) return 0n;
+  return humanAmountToStroops(row.balance);
+}
+
+async function ensureClassicUsdcOnAccount(publicKey, secret, minStroops, env = process.env) {
+  const usdc = getUsdcAsset(env);
+  let classic = await readClassicUsdcStroops(publicKey, env);
+  if (classic >= minStroops) return;
+
+  try {
+    await submitClassic(secret, [Operation.changeTrust({ asset: usdc, limit: '10000000' })], env);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/exists|trustline/i.test(message)) throw err;
+  }
+
+  classic = await readClassicUsdcStroops(publicKey, env);
+  if (classic >= minStroops) return;
+
+  await submitClassic(
+    secret,
+    [
+      Operation.pathPaymentStrictSend({
+        sendAsset: Asset.native(),
+        sendAmount: '25',
+        destination: publicKey,
+        destAsset: usdc,
+        destMin: '1',
+      }),
+    ],
+    env,
+  );
+}
+
+async function ensureUsdcSacLiquidity(sacId, amountRaw, env = process.env) {
+  const needed = BigInt(amountRaw);
+  for (const candidate of fundingCandidates(env)) {
+    if (!candidate.secret) continue;
+    try {
+      const depositAmount = needed * 50n;
+      await ensureClassicUsdcOnAccount(candidate.publicKey, candidate.secret, depositAmount, env);
+      const sacBalance = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+      if (sacBalance < needed) {
+        await depositClassicToSac(sacId, candidate.secret, String(depositAmount), env);
+      }
+      const toppedUp = await readSacBalanceRaw(sacId, candidate.publicKey, env);
+      if (toppedUp >= needed) return true;
+    } catch {
+      // Try the next configured funder wallet.
+    }
+  }
+  return false;
+}
+
 async function submitClassic(sourceSecret, ops, env = process.env) {
   const horizonUrl = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
   const passphrase = env.STELLAR_NETWORK_PASSPHRASE || env.VITE_NETWORK_PASSPHRASE;
@@ -226,6 +302,7 @@ async function ensureSacFaucetLiquidity(sacId, amountRaw, assetLabel, env = proc
   if (funder) return funder;
 
   const eurcSac = env.VITE_EURC_SAC_ID || env.EURC_SAC_ID;
+  const usdcSac = env.VITE_USDC_SAC_ID || env.USDC_SAC_ID;
   if (assetLabel === 'EURC' && sacId === eurcSac) {
     const bootstrapped = await ensureDeployerIssuedEurcLiquidity(sacId, amountRaw, env);
     if (bootstrapped) {
@@ -234,8 +311,16 @@ async function ensureSacFaucetLiquidity(sacId, amountRaw, assetLabel, env = proc
     }
   }
 
+  if (assetLabel === 'USDC' && sacId === usdcSac) {
+    const bootstrapped = await ensureUsdcSacLiquidity(sacId, amountRaw, env);
+    if (bootstrapped) {
+      const retry = await pickSacFunder(sacId, amountRaw, env);
+      if (retry) return retry;
+    }
+  }
+
   throw new Error(
-    `${assetLabel} faucet treasury is empty on SAC ${sacId}. Fund CONTRACT_ADMIN with ${assetLabel} on this SAC, or configure deployer-issued EURC.`,
+    `${assetLabel} faucet treasury is empty on SAC ${sacId}. Fund a faucet wallet with ${assetLabel} on this SAC, or configure issuer bootstrap keys.`,
   );
 }
 
@@ -247,6 +332,7 @@ async function sacTransferForFaucet(sacId, toAddress, amountRaw, assetLabel, env
 module.exports = {
   ensureDeployerIssuedEurcLiquidity,
   ensureSacFaucetLiquidity,
+  ensureUsdcSacLiquidity,
   fundingCandidates,
   mintSacToAddress,
   pickSacFunder,

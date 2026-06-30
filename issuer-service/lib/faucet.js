@@ -77,7 +77,7 @@ async function claimTestnetFunds(smartAccountAddress, asset, env = process.env) 
   if (asset === 'usdc') {
     const sacId = env.VITE_USDC_SAC_ID || env.USDC_SAC_ID;
     if (!sacId) throw new Error('USDC SAC not configured');
-    txHash = await adminSacTransfer(sacId, normalized, spec.amount, env);
+    txHash = await sacTransferForFaucet(sacId, normalized, spec.amount, 'USDC', env);
   } else if (asset === 'eurc') {
     const sacId = env.VITE_EURC_SAC_ID || env.EURC_SAC_ID;
     if (!sacId) throw new Error('EURC SAC not configured');
