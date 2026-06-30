@@ -54,9 +54,9 @@ function AppRoutes() {
       <Route path="/receipt" element={<Navigate to="/app/compliance" replace />} />
       <Route path="/audit" element={<Navigate to="/app/auditor" replace />} />
       <Route path="/operators" element={<Navigate to="/app/admin" replace />} />
-      <Route path="/app" element={<Navigate to="/app/welcome" replace />} />
       <Route path="/app/welcome" element={<WelcomeGate><WelcomePage /></WelcomeGate>} />
       <Route path="/app" element={<AppLayout />}>
+        <Route index element={<Navigate to="/app/welcome" replace />} />
         <Route path="home" element={<DashboardPage />} />
         <Route path="dashboard" element={<Navigate to="/app/home" replace />} />
         <Route path="verify" element={<VerifyPage />} />

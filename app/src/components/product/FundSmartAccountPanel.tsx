@@ -159,7 +159,11 @@ export function FundSmartAccountPanel({
         </div>
         <div>
           <p className="text-xs text-slate-muted">Treasury units</p>
-          <p className="text-lg font-semibold text-navy">{rwaBalance ?? '…'}</p>
+          <p className="text-lg font-semibold text-navy">
+            {rwaBalance !== null
+              ? `${BigInt(rwaBalance).toLocaleString()} ${BigInt(rwaBalance) === 1n ? 'unit' : 'units'}`
+              : '…'}
+          </p>
         </div>
       </div>
 

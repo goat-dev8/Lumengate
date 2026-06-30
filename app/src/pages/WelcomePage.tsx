@@ -6,13 +6,16 @@ import { microcopy } from '../lib/microcopy';
 import { setOnboardingPath } from '../components/product/OnboardingPathPicker';
 import { PrivacySplitCard } from '../components/design/PrivacySplitCard';
 import { loadPasskeySession } from '../lib/passkeySession';
+import { getBrandHomeHref } from '../lib/brandNav';
 import { useState } from 'react';
 
 export function WelcomePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const intent = searchParams.get('intent');
-  const { signInWithPasskey, smartAccountCreating, createSmartAccount, config } = useApp();
+  const { signInWithPasskey, smartAccountCreating, createSmartAccount, config, settlementAddress } =
+    useApp();
+  const brandHref = getBrandHomeHref(settlementAddress);
   const [signingIn, setSigningIn] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +58,8 @@ export function WelcomePage() {
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--lg-background)]">
       <header className="flex h-16 items-center justify-between border-b border-[var(--lg-border)] px-6">
-        <Link to="/" className="text-sm font-semibold text-[#012b54]">
-          ← Lumengate
+        <Link to={brandHref} className="text-sm font-semibold text-[#012b54]">
+          {brandHref === '/app/home' ? '← Home' : '← Lumengate'}
         </Link>
         <span className="rounded-full bg-[#007dfc]/10 px-3 py-1 text-xs font-medium text-[#007dfc]">
           Stellar · {config.network}

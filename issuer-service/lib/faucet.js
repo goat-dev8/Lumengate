@@ -7,11 +7,12 @@ const DATA_DIR = join(__dirname, '..', 'data');
 const CLAIMS_PATH = join(DATA_DIR, 'faucet_claims.json');
 const CLAIM_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
+// SAC amounts use 7-decimal stroops; RWA treasury token uses whole integer units.
 const LIMITS = {
-  usdc: { amount: '10000000', label: '1 USDC' },
-  eurc: { amount: '10000000', label: '1 EURC' },
-  xlm: { amount: '20000000', label: '2 XLM' },
-  treasury: { amount: '1000000', label: '1 treasury unit' },
+  usdc: { amount: '2000000000', label: '200 USDC' },
+  eurc: { amount: '2000000000', label: '200 EURC' },
+  xlm: { amount: '100000000000', label: '10000 XLM' },
+  treasury: { amount: '10', label: '10 treasury units' },
 };
 
 function loadClaims() {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { getBrandHomeHref } from '../../lib/brandNav';
 
 const links = [
   { href: '#architecture', label: 'Architecture' },
@@ -11,6 +13,8 @@ const links = [
 ];
 
 export function MarketingNavbar() {
+  const { settlementAddress } = useApp();
+  const brandHref = getBrandHomeHref(settlementAddress);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -27,7 +31,7 @@ export function MarketingNavbar() {
       }`}
     >
       <div className="mx-auto flex h-[86px] max-w-[1300px] items-center justify-between px-4 md:px-6">
-        <Link to="/" className="flex items-center gap-3">
+        <Link to={brandHref} className="flex items-center gap-3">
           <img src="/stellar-mark.svg" alt="" className="h-9 w-9" />
           <span className="text-lg font-semibold tracking-tight text-[#012b54]">Lumengate</span>
         </Link>
