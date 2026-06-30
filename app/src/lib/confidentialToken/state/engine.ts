@@ -37,6 +37,15 @@ import type { IndexerClient } from "../chain/indexer.js";
 import type { StateStore } from "./store.js";
 import { freshState, type AccountState, type Opening } from "./types.js";
 
+export type WaitUntilVerifiedOptions = {
+  afterTxHash?: string;
+  rpcUrl?: string;
+  maxAttempts?: number;
+  intervalMs?: number;
+  requireSpendable?: boolean;
+  requireReceiving?: boolean;
+};
+
 export interface StateEngineConfig {
   client: ChainClient;
   store: StateStore;
@@ -165,5 +174,53 @@ export class StateEngine {
     const spendableOk = commit(state.spendable.v, state.spendable.r).equals(onchain.spendableBalance);
     const receivingOk = commit(state.receiving.v, state.receiving.r).equals(onchain.receivingBalance);
     return { ok: spendableOk && receivingOk, spendableOk, receivingOk };
+  }
+
+  /** Credit receiving locally after a deposit tx is confirmed (events may lag behind RPC). */
+  async creditReceiving(amount: bigint): Promise<AccountState> {
+    const state = await this.current();
+    state.receiving = { v: state.receiving.v + amount, r: state.receiving.r };
+    await this.cfg.store.save(state);
+    return state;
+  }
+
+  /** Move receiving into spendable locally after a merge tx is confirmed. */
+  async applyMergeLocal(): Promise<AccountState> {
+    const state = await this.current();
+    state.spendable = {
+      v: state.spendable.v + state.receiving.v,
+      r: frAdd(state.spendable.r, state.receiving.r),
+    };
+    state.receiving = { v: 0n, r: 0n };
+    await this.cfg.store.save(state);
+    return state;
+  }
+
+  /**
+   * Poll event replay until local openings match on-chain commitments.
+   * Soroban RPC event indexing can lag behind transaction SUCCESS.
+   */
+  async waitUntilVerified(options?: WaitUntilVerifiedOptions): Promise<AccountState> {
+    if (options?.afterTxHash && options.rpcUrl) {
+      const { waitForTransactionStatus } = await import("../../contracts.js");
+      await waitForTransactionStatus(options.rpcUrl, options.afterTxHash);
+    }
+    const maxAttempts = options?.maxAttempts ?? 40;
+    const intervalMs = options?.intervalMs ?? 1500;
+    let state = await this.sync();
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const verified = await this.verifyAgainstChain();
+      const ok =
+        options?.requireReceiving || options?.requireSpendable
+          ? (!options?.requireReceiving || verified.receivingOk) &&
+            (!options?.requireSpendable || verified.spendableOk)
+          : verified.ok;
+      if (ok) return state;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        state = await this.sync();
+      }
+    }
+    throw new Error("Confidential balance sync timed out waiting for Stellar events.");
   }
 }

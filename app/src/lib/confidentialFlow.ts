@@ -17,7 +17,7 @@ import { buildTransferWitness } from './confidentialToken/witness/transfer';
 import { buildWithdrawWitness } from './confidentialToken/witness/withdraw';
 import { LocalStorageStore } from './confidentialToken/state/browser-store';
 import { StateEngine } from './confidentialToken/state/engine';
-import { IndexerClient } from './confidentialToken/chain/indexer';
+import { createConfidentialEurcStateEngine } from './confidentialBalance';
 import {
   buildCtConfidentialTransferTransaction,
   buildCtDepositTransaction,
@@ -58,12 +58,6 @@ function ctChainClient(config: DeploymentConfig): ChainClient {
     networkPassphrase: config.networkPassphrase,
     contracts,
   });
-}
-
-function ctIndexer(config: DeploymentConfig): IndexerClient | undefined {
-  return config.confidentialIndexerUrl
-    ? new IndexerClient({ baseUrl: config.confidentialIndexerUrl })
-    : undefined;
 }
 
 function ctKeysStorageKey(smartAccount: string, tokenId: string): string {
@@ -139,22 +133,9 @@ function ctStateStore(tokenId: string): LocalStorageStore {
 async function ctStateEngine(
   config: DeploymentConfig,
   smartAccount: string,
-  keys: KeyPair,
+  _keys: KeyPair,
 ): Promise<StateEngine> {
-  const client = ctChainClient(config);
-  const tokenId = requireCtConfig(config).token;
-  const fromLedger = Math.max(
-    0,
-    config.confidentialDeployedAtLedger ?? (await client.latestLedger()) - 50_000,
-  );
-  return new StateEngine({
-    client,
-    store: ctStateStore(tokenId),
-    keys,
-    address: smartAccount,
-    fromLedger,
-    indexer: ctIndexer(config),
-  });
+  return createConfidentialEurcStateEngine(config, smartAccount);
 }
 
 export type ConfidentialSettlementStep =
@@ -257,11 +238,7 @@ export async function executeConfidentialEurcSettlement(input: {
   }
 
   progress('register', 'Syncing confidential balance…');
-  let state = await engine.sync();
-  const synced = await engine.verifyAgainstChain();
-  if (!synced.ok) {
-    throw new Error('Confidential EURC local state is out of sync. Refresh the balance before sending.');
-  }
+  let state = await engine.waitUntilVerified({ rpcUrl: config.rpcUrl });
   if (!state.registered && registered) {
     state.registered = true;
     await ctStateStore(contracts.token).save(state);
@@ -278,15 +255,27 @@ export async function executeConfidentialEurcSettlement(input: {
       smartAccount,
       depositRaw,
     );
-    hashes.push(await submitTx(depositTx, 'deposit'));
-    state = await engine.sync();
+    const depositHash = await submitTx(depositTx, 'deposit');
+    hashes.push(depositHash);
+    await engine.creditReceiving(depositRaw);
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      afterTxHash: depositHash,
+      requireReceiving: true,
+    });
   }
 
   if (state.receiving.v > 0n || state.receiving.r !== 0n) {
     progress('merge', 'Consolidating confidential balance…');
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
-    hashes.push(await submitTx(mergeTx, 'merge'));
-    state = await engine.sync();
+    const mergeHash = await submitTx(mergeTx, 'merge');
+    hashes.push(mergeHash);
+    await engine.applyMergeLocal();
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      afterTxHash: mergeHash,
+      requireSpendable: true,
+    });
   }
 
   if (state.spendable.v < amountRaw) {
@@ -367,23 +356,28 @@ export async function shieldConfidentialEurc(input: {
   const depositTx = await buildCtDepositTransaction(config, txSource, smartAccount, smartAccount, amountRaw);
   const depositHash = await submitTx(depositTx, 'deposit');
   hashes.push(depositHash);
-  let state = await engine.sync();
-  const depositSynced = await engine.verifyAgainstChain();
-  if (!depositSynced.receivingOk) {
-    throw new Error('Shield deposit succeeded, but the private receiving balance could not be reconstructed from chain events yet. Refresh and retry merge.');
-  }
+  await engine.creditReceiving(amountRaw);
+  let state = await engine.waitUntilVerified({
+    rpcUrl: config.rpcUrl,
+    afterTxHash: depositHash,
+    requireReceiving: true,
+  });
   if (state.receiving.v <= 0n && state.receiving.r === 0n) {
-    throw new Error('Shield deposit succeeded, but no private receiving balance event was found.');
+    throw new Error('Shield deposit succeeded, but no private receiving balance was found.');
   }
 
   progress('merge', 'Moving shielded EURC into spendable private balance…');
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const mergeHash = await submitTx(mergeTx, 'merge');
   hashes.push(mergeHash);
-  state = await engine.sync();
-  const merged = await engine.verifyAgainstChain();
-  if (!merged.ok || state.spendable.v < amountRaw) {
-    throw new Error('Shield merge completed, but private spendable balance did not match Stellar state. Refresh and retry.');
+  await engine.applyMergeLocal();
+  state = await engine.waitUntilVerified({
+    rpcUrl: config.rpcUrl,
+    afterTxHash: mergeHash,
+    requireSpendable: true,
+  });
+  if (state.spendable.v < amountRaw) {
+    throw new Error('Shield merge completed, but private spendable balance did not match the shielded amount.');
   }
   return { txHash: mergeHash, steps: hashes };
 }
@@ -405,7 +399,12 @@ export async function mergeConfidentialEurc(input: {
   onProgress?.({ step: 'merge', message: 'Moving received private EURC into spendable balance…' });
   const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
   const txHash = await submitTx(mergeTx, 'merge');
-  await engine.sync();
+  await engine.applyMergeLocal();
+  await engine.waitUntilVerified({
+    rpcUrl: config.rpcUrl,
+    afterTxHash: txHash,
+    requireSpendable: true,
+  });
   return { txHash, steps: [txHash] };
 }
 
@@ -426,16 +425,18 @@ export async function unshieldConfidentialEurc(input: {
   const hashes: string[] = [];
   const progress = (step: ConfidentialSettlementStep, message: string) => onProgress?.({ step, message });
 
-  let state = await engine.sync();
-  const synced = await engine.verifyAgainstChain();
-  if (!synced.ok) {
-    throw new Error('Confidential EURC local state is out of sync. Refresh the balance before unshielding.');
-  }
+  let state = await engine.waitUntilVerified({ rpcUrl: config.rpcUrl });
   if (state.spendable.v < amountRaw && state.receiving.v > 0n) {
     progress('merge', 'Preparing received private EURC for unshield…');
     const mergeTx = await buildCtMergeTransaction(config, txSource, smartAccount);
-    hashes.push(await submitTx(mergeTx, 'merge'));
-    state = await engine.sync();
+    const mergeHash = await submitTx(mergeTx, 'merge');
+    hashes.push(mergeHash);
+    await engine.applyMergeLocal();
+    state = await engine.waitUntilVerified({
+      rpcUrl: config.rpcUrl,
+      afterTxHash: mergeHash,
+      requireSpendable: true,
+    });
   }
   if (state.spendable.v < amountRaw) {
     throw new Error(

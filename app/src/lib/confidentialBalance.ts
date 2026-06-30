@@ -11,6 +11,7 @@ export type ConfidentialEurcBalance = {
   spendable: bigint;
   receiving: bigint;
   total: bigint;
+  synced: boolean;
 };
 
 function ctChainClient(config: DeploymentConfig): ChainClient {
@@ -34,21 +35,17 @@ function ctIndexer(config: DeploymentConfig): IndexerClient | undefined {
     : undefined;
 }
 
-export async function readConfidentialEurcBalance(
+export async function createConfidentialEurcStateEngine(
   config: DeploymentConfig,
   smartAccount: string,
-): Promise<ConfidentialEurcBalance> {
-  const registered = await readCtRegistered(config, smartAccount);
-  if (!registered || !config.confidentialTokenId) {
-    return { registered: false, spendable: 0n, receiving: 0n, total: 0n };
-  }
+): Promise<StateEngine> {
   const keys = getOrCreateCtKeys(config, smartAccount);
   const client = ctChainClient(config);
   const fromLedger = Math.max(
     0,
     config.confidentialDeployedAtLedger ?? (await client.latestLedger()) - 50_000,
   );
-  const engine = new StateEngine({
+  return new StateEngine({
     client,
     store: new LocalStorageStore(`lumengate:ct:state:${config.confidentialTokenId}:`),
     keys,
@@ -56,7 +53,19 @@ export async function readConfidentialEurcBalance(
     fromLedger,
     indexer: ctIndexer(config),
   });
+}
+
+export async function readConfidentialEurcBalance(
+  config: DeploymentConfig,
+  smartAccount: string,
+): Promise<ConfidentialEurcBalance> {
+  const registered = await readCtRegistered(config, smartAccount);
+  if (!registered || !config.confidentialTokenId) {
+    return { registered: false, spendable: 0n, receiving: 0n, total: 0n, synced: true };
+  }
+  const engine = await createConfidentialEurcStateEngine(config, smartAccount);
   const state = await engine.sync();
+  const verified = await engine.verifyAgainstChain();
   const spendable = state.spendable.v;
   const receiving = state.receiving.v;
   return {
@@ -64,6 +73,7 @@ export async function readConfidentialEurcBalance(
     spendable,
     receiving,
     total: spendable + receiving,
+    synced: verified.ok,
   };
 }
 

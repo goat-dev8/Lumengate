@@ -49,7 +49,7 @@ import type { ProofLifecycleState } from '../lib/proofLifecycle';
 
 import { explorerTxUrl, truncateMiddle } from '../lib/utils';
 import { executeConfidentialEurcSettlement, readConfidentialEurcRegistered } from '../lib/confidentialFlow';
-import { formatConfidentialAmount, readConfidentialEurcBalance } from '../lib/confidentialBalance';
+import { formatConfidentialAmount } from '../lib/confidentialBalance';
 import { ZkExplainerSection } from '../components/education/ZkExplainerSection';
 import {
   SettlementPrivacyDiagram,
@@ -87,6 +87,10 @@ export function TransferPage() {
     fundSmartAccountUsdc,
     fundSmartAccountEurc,
     fundSmartAccountXlm,
+    confidentialEurcBalance,
+    confidentialBalanceLoading,
+    refreshConfidentialEurcBalance,
+    lumengateSessionStatus,
   } = useApp();
 
   const navigate = useNavigate();
@@ -113,8 +117,6 @@ export function TransferPage() {
   const [confidentialMode, setConfidentialMode] = useState(false);
   const [ctRecipientRegistered, setCtRecipientRegistered] = useState<boolean | null>(null);
   const [senderCtRegistered, setSenderCtRegistered] = useState<boolean | null>(null);
-  const [confidentialSpendableBalance, setConfidentialSpendableBalance] = useState<string | null>(null);
-  const [confidentialReceivingBalance, setConfidentialReceivingBalance] = useState<string | null>(null);
   useEffect(() => {
     const prefilled = searchParams.get('to');
     if (prefilled && validateStellarAddress(prefilled)) {
@@ -209,34 +211,23 @@ export function TransferPage() {
   useEffect(() => {
     if (!confidentialMode || !config.confidentialTokenId || !settlementAddress) {
       setSenderCtRegistered(null);
-      setConfidentialSpendableBalance(null);
-      setConfidentialReceivingBalance(null);
       return;
     }
     let cancelled = false;
-    void (async () => {
-      const ok = await readConfidentialEurcRegistered(config, settlementAddress);
-      if (cancelled) return;
-      setSenderCtRegistered(ok);
-      if (!ok) {
-        setConfidentialSpendableBalance('0');
-        setConfidentialReceivingBalance('0');
-        return;
-      }
-      const balance = await readConfidentialEurcBalance(config, settlementAddress);
-      if (cancelled) return;
-      setConfidentialSpendableBalance(formatConfidentialAmount(balance.spendable));
-      setConfidentialReceivingBalance(formatConfidentialAmount(balance.receiving));
-    })().catch(() => {
-      if (!cancelled) {
-        setConfidentialSpendableBalance(null);
-        setConfidentialReceivingBalance(null);
-      }
+    void readConfidentialEurcRegistered(config, settlementAddress).then((ok) => {
+      if (!cancelled) setSenderCtRegistered(ok);
     });
     return () => {
       cancelled = true;
     };
-  }, [confidentialMode, config, settlementAddress, txHash, balanceRefresh]);
+  }, [confidentialMode, config, settlementAddress]);
+
+  const confidentialSpendableBalance = confidentialEurcBalance
+    ? formatConfidentialAmount(confidentialEurcBalance.spendable)
+    : null;
+  const confidentialReceivingBalance = confidentialEurcBalance
+    ? formatConfidentialAmount(confidentialEurcBalance.receiving)
+    : null;
 
   const handleTransfer = async () => {
     if (!credential || !to || !amount) return;
@@ -309,6 +300,17 @@ export function TransferPage() {
       );
       return;
     }
+    if (asset === 'eurc' && confidentialMode) {
+      if (!lumengateSessionStatus?.enabled) {
+        setError('Enable Trusted device (7 days) on your dashboard before confidential settlement.');
+        return;
+      }
+      const balance = confidentialEurcBalance ?? (await refreshConfidentialEurcBalance());
+      if (!balance?.synced) {
+        setError('Confidential balance is syncing with Stellar. Wait a moment and try again.');
+        return;
+      }
+    }
 
     setLoading(true);
     setError(null);
@@ -375,18 +377,9 @@ export function TransferPage() {
             }
           },
           submitTx: async (ctTx, _stepLabel) => {
-            setSettlementPhase('waiting-passkey');
-            setStatusMessage('Waiting for secure confirmation…');
-            return signAndSubmitSettlement(settlementFrom, scopedProof, ctTx, (step, index, total) => {
-              setPasskeyStep({ index, total });
-              if (step === 'bind') {
-                setSettlementPhase('authorizing-bind');
-                setStatusMessage(`Passkey confirmation required (${index} of ${total}) — eligibility binding`);
-              } else {
-                setSettlementPhase('authorizing-settle');
-                setStatusMessage(`Passkey confirmation required (${index} of ${total}) — approve confidential step`);
-              }
-            });
+            setSettlementPhase('authorizing-settle');
+            setStatusMessage('Submitting with trusted device session…');
+            return signAndSubmitSettlement(settlementFrom, scopedProof, ctTx);
           },
         });
         hash = result.txHash;
@@ -438,6 +431,10 @@ export function TransferPage() {
         confidential: asset === 'eurc' && confidentialMode,
 
       });
+      if (asset === 'eurc' && confidentialMode) {
+        await refreshConfidentialEurcBalance();
+      }
+      setBalanceRefresh((value) => value + 1);
 
       pushActivity({
         kind: 'transfer',
@@ -505,13 +502,15 @@ export function TransferPage() {
         : 'USDC unavailable'
       : asset === 'eurc'
         ? confidentialMode
-          ? confidentialSpendableBalance !== null
-            ? `${confidentialSpendableBalance} private EURC${
-                confidentialReceivingBalance && confidentialReceivingBalance !== '0'
-                  ? ` · ${confidentialReceivingBalance} receiving`
-                  : ''
-              }`
-            : 'Private EURC unavailable'
+          ? confidentialBalanceLoading
+            ? 'Syncing private EURC…'
+            : confidentialSpendableBalance !== null
+              ? `${confidentialSpendableBalance} spendable private EURC${
+                  confidentialReceivingBalance && confidentialReceivingBalance !== '0'
+                    ? ` · ${confidentialReceivingBalance} receiving`
+                    : ''
+                }`
+              : 'Private EURC unavailable'
           : eurcBalance !== null
           ? `${eurcBalance} EURC`
           : 'EURC unavailable'

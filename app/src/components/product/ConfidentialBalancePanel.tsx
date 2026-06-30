@@ -8,12 +8,9 @@ import {
   shieldConfidentialEurc,
   unshieldConfidentialEurc,
 } from '../../lib/confidentialFlow';
-import {
-  formatConfidentialAmount,
-  readConfidentialEurcBalance,
-  type ConfidentialEurcBalance,
-} from '../../lib/confidentialBalance';
+import { formatConfidentialAmount } from '../../lib/confidentialBalance';
 import { readEurcSacBalance } from '../../lib/contracts';
+import { TrustedDeviceSessionPanel } from './TrustedDeviceSessionPanel';
 
 export function ConfidentialBalancePanel() {
   const {
@@ -21,10 +18,11 @@ export function ConfidentialBalancePanel() {
     settlementAddress,
     ensureProofForAsset,
     signAndSubmitSettlement,
+    confidentialEurcBalance,
+    confidentialBalanceLoading,
+    refreshConfidentialEurcBalance,
   } = useApp();
-  const [balance, setBalance] = useState<ConfidentialEurcBalance | null>(null);
   const [publicBalance, setPublicBalance] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<'shield' | 'merge' | 'unshield' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -33,24 +31,19 @@ export function ConfidentialBalancePanel() {
 
   const refresh = useCallback(async () => {
     if (!settlementAddress || !config.confidentialTokenId) {
-      setBalance(null);
       return;
     }
-    setLoading(true);
     setError(null);
     try {
-      const [confidential, publicEurc] = await Promise.all([
-        readConfidentialEurcBalance(config, settlementAddress),
-        config.eurcSacId ? readEurcSacBalance(config, settlementAddress).catch(() => null) : Promise.resolve(null),
-      ]);
-      setBalance(confidential);
+      await refreshConfidentialEurcBalance();
+      const publicEurc = config.eurcSacId
+        ? await readEurcSacBalance(config, settlementAddress).catch(() => null)
+        : null;
       setPublicBalance(publicEurc);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
     }
-  }, [config, settlementAddress]);
+  }, [config, settlementAddress, refreshConfidentialEurcBalance]);
 
   useEffect(() => {
     void refresh();
@@ -58,6 +51,8 @@ export function ConfidentialBalancePanel() {
 
   if (!config.confidentialTokenId || !settlementAddress) return null;
 
+  const balance = confidentialEurcBalance;
+  const loading = confidentialBalanceLoading;
   const registered = balance?.registered === true;
   const hasShielded = balance ? balance.total > 0n : false;
   const publicEurcAvailable = publicBalance !== null && Number(publicBalance) > 0;
@@ -108,7 +103,9 @@ export function ConfidentialBalancePanel() {
   };
 
   return (
-    <div className="lg-surface-card p-6">
+    <div className="space-y-4">
+      <TrustedDeviceSessionPanel />
+      <div className="lg-surface-card p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-[#012b54]">Confidential EURC balance</p>
@@ -220,6 +217,7 @@ export function ConfidentialBalancePanel() {
           {status}
         </p>
       ) : null}
+      </div>
     </div>
   );
 }

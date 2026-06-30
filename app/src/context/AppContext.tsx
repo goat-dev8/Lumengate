@@ -99,13 +99,18 @@ import {
   isContractAddress,
   resolveLegacySmartAccountPolicyForUi,
   resolvePasskeySimulationSource,
+  revokeLumengateSession as clearLumengateSession,
+  submitSmartAccountOperation,
   submitWithLumengateSession,
-  submitWithSmartAccount,
   type SignableTransaction,
   type LumengateSessionStatus,
   type SmartAccountAssembledTransaction,
   type SmartAccountState,
 } from '../lib/smartAccount';
+import {
+  readConfidentialEurcBalance,
+  type ConfidentialEurcBalance,
+} from '../lib/confidentialBalance';
 import {
   buildFundSmartAccountEurcXdr,
   buildFundSmartAccountUsdcXdr,
@@ -140,6 +145,11 @@ type AppContextValue = {
   sessionProofBound: boolean | null;
   lumengateSessionStatus: LumengateSessionStatus | null;
   enableLumengateSession: () => Promise<LumengateSessionStatus>;
+  revokeLumengateSession: () => Promise<void>;
+  refreshLumengateSessionStatus: () => Promise<LumengateSessionStatus | null>;
+  confidentialEurcBalance: ConfidentialEurcBalance | null;
+  confidentialBalanceLoading: boolean;
+  refreshConfidentialEurcBalance: () => Promise<ConfidentialEurcBalance | null>;
   passkeyBusy: boolean;
   proverReady: boolean;
   proverWarmupMessage: string | null;
@@ -247,6 +257,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
   const [lumengateSessionStatus, setLumengateSessionStatus] = useState<LumengateSessionStatus | null>(null);
+  const [confidentialEurcBalance, setConfidentialEurcBalance] = useState<ConfidentialEurcBalance | null>(null);
+  const [confidentialBalanceLoading, setConfidentialBalanceLoading] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
@@ -1331,11 +1343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         proofBundle,
       );
       let bindHash: string;
-      try {
-        bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
-      } catch {
-        bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
-      }
+      bindHash = await submitSmartAccountOperation(config, smartAccount, bindTx, { forceMethod: 'rpc' });
       setSessionProofBound(true);
       markProofBoundLocally(proofBundle);
       setReceiptTransactions((prev) => {
@@ -1378,6 +1386,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refreshLumengateSessionStatus();
   }, [refreshLumengateSessionStatus]);
 
+  const refreshConfidentialEurcBalance = useCallback(async (): Promise<ConfidentialEurcBalance | null> => {
+    if (!settlementAddress || !config.confidentialTokenId) {
+      setConfidentialEurcBalance(null);
+      return null;
+    }
+    setConfidentialBalanceLoading(true);
+    try {
+      const balance = await readConfidentialEurcBalance(config, settlementAddress);
+      setConfidentialEurcBalance(balance);
+      return balance;
+    } catch {
+      setConfidentialEurcBalance(null);
+      return null;
+    } finally {
+      setConfidentialBalanceLoading(false);
+    }
+  }, [config, settlementAddress]);
+
+  useEffect(() => {
+    void refreshConfidentialEurcBalance();
+  }, [refreshConfidentialEurcBalance]);
+
   const enableLumengateSession = useCallback(async (): Promise<LumengateSessionStatus> => {
     if (!smartAccount) {
       throw new Error('Create your passkey smart account before enabling a Lumengate session.');
@@ -1394,6 +1424,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return status;
   }, [config, smartAccount, pushActivity]);
+
+  const revokeLumengateSession = useCallback(async (): Promise<void> => {
+    if (!smartAccount) return;
+    clearLumengateSession(smartAccount.smartAccountAddress);
+    const status = await refreshLumengateSessionStatus();
+    pushActivity({
+      kind: 'proof',
+      title: 'Trusted device session revoked',
+      detail: status?.enabled
+        ? 'Local session key cleared; on-chain rules expire at ledger deadline'
+        : 'Local session key cleared',
+      status: 'info',
+    });
+  }, [smartAccount, refreshLumengateSessionStatus, pushActivity]);
 
   const confirmPassportEligibility = useCallback(
     async (
@@ -1810,7 +1854,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!smartAccount) {
           throw new Error('Create and fund your smart account before settlement.');
         }
-        return submitWithSmartAccount(config, smartAccount, tx);
+        return submitSmartAccountOperation(config, smartAccount, tx);
       }
       const { signedTxXdr } = await kit.signTransaction(tx, {
         networkPassphrase: config.networkPassphrase,
@@ -1832,31 +1876,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error('Create and fund your smart account before settlement.');
       }
       await assertSmartAccountReadyForSettlement(config, smartAccount);
+      const sessionStatus = await getLumengateSessionStatus(config, smartAccount);
+      if (!sessionStatus.enabled) {
+        throw new Error('Enable Trusted device (7 days) before settlement.');
+      }
       const bindSource = resolvePasskeySimulationSource(address);
       let boundOnChain = false;
       if (config.sessionStoreId && isContractAddress(settlementFrom)) {
         const bound = await readSessionProofBound(config, settlementFrom);
         boundOnChain = Boolean(bound && sessionProofMatchesBound(bound, proof));
       }
-      const passkeySteps = boundOnChain ? 1 : 2;
-      let passkeyIndex = 0;
 
       if (config.sessionStoreId && isContractAddress(settlementFrom) && !boundOnChain) {
         try {
-          passkeyIndex += 1;
-          onPasskeyStep?.('bind', passkeyIndex, passkeySteps);
+          onPasskeyStep?.('bind', 1, 1);
           const bindTx = await buildBindSessionProofTransaction(
             config,
             bindSource,
             settlementFrom,
             proof,
           );
-          let bindHash: string;
-          try {
-            bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
-          } catch {
-            bindHash = await submitWithSmartAccount(config, smartAccount, bindTx, { forceMethod: 'rpc' });
-          }
+          const bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
           setSessionProofBound(true);
           markProofBoundLocally(proof);
           setReceiptTransactions((prev) => {
@@ -1882,19 +1922,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         markProofBoundLocally(proof);
       }
       try {
-        passkeyIndex += 1;
-        onPasskeyStep?.('settle', passkeyIndex, passkeySteps);
-        try {
-          return await submitWithLumengateSession(config, smartAccount, tx);
-        } catch {
-          return await submitWithSmartAccount(config, smartAccount, tx);
-        }
+        onPasskeyStep?.('settle', 1, 1);
+        const hash = await submitWithLumengateSession(config, smartAccount, tx);
+        await refreshConfidentialEurcBalance();
+        return hash;
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount, walletField, persistSession, persistPasskeySession],
+    [config, address, smartAccount, walletField, persistSession, persistPasskeySession, refreshConfidentialEurcBalance],
   );
 
   const fundSmartAccountUsdc = useCallback(
@@ -1996,6 +2033,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionProofBound,
     lumengateSessionStatus,
     enableLumengateSession,
+    revokeLumengateSession,
+    refreshLumengateSessionStatus,
+    confidentialEurcBalance,
+    confidentialBalanceLoading,
+    refreshConfidentialEurcBalance,
     passkeyBusy,
     refreshSessionProofBound,
     proverReady,
