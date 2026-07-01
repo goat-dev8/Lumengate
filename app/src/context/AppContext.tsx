@@ -283,6 +283,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     Partial<Record<ConfidentialAssetKey, boolean>>
   >({});
   const ctResyncAttemptsRef = useRef<Partial<Record<ConfidentialAssetKey, number>>>({});
+  const ctRefreshInFlightRef = useRef<
+    Partial<Record<ConfidentialAssetKey, Promise<ConfidentialAssetBalance | null>>>
+  >({});
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [proverReady, setProverReady] = useState(false);
   const [proverWarmupMessage, setProverWarmupMessage] = useState<string | null>(null);
@@ -1414,41 +1417,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     assetKey: ConfidentialAssetKey,
     options?: { background?: boolean },
   ): Promise<ConfidentialAssetBalance | null> => {
-    const asset = resolveConfidentialAsset(config, assetKey);
-    if (!settlementAddress || !asset.contracts) {
-      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: undefined }));
-      return null;
-    }
-    if (!options?.background) {
-      setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: true }));
-      const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
-      if (cached) {
-        setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached }));
+    const inFlight = ctRefreshInFlightRef.current[assetKey];
+    if (inFlight) return inFlight;
+
+    const run = (async (): Promise<ConfidentialAssetBalance | null> => {
+      const asset = resolveConfidentialAsset(config, assetKey);
+      if (!settlementAddress || !asset.contracts) {
+        setConfidentialBalances((prev) => ({ ...prev, [assetKey]: undefined }));
+        return null;
       }
-    }
-    try {
-      ctTrace('app.refresh.start', { account: settlementAddress, assetKey, background: Boolean(options?.background) });
-      const balance = await readConfidentialAssetBalance(config, settlementAddress, assetKey);
-      ctTrace('app.refresh.result', {
-        account: settlementAddress,
-        assetKey,
-        registered: balance.registered,
-        spendableSynced: balance.spendableSynced,
-        receivingSynced: balance.receivingSynced,
-        syncError: balance.syncError,
-      });
-      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: balance }));
-      if (balance.spendableSynced) {
-        ctResyncAttemptsRef.current[assetKey] = 0;
-      }
-      return balance;
-    } catch {
-      const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
-      setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached ?? undefined }));
-      return cached;
-    } finally {
       if (!options?.background) {
-        setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: false }));
+        setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: true }));
+        const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
+        if (cached) {
+          setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached }));
+        }
+      }
+      try {
+        ctTrace('app.refresh.start', { account: settlementAddress, assetKey, background: Boolean(options?.background) });
+        const balance = await readConfidentialAssetBalance(config, settlementAddress, assetKey);
+        ctTrace('app.refresh.result', {
+          account: settlementAddress,
+          assetKey,
+          registered: balance.registered,
+          spendableSynced: balance.spendableSynced,
+          receivingSynced: balance.receivingSynced,
+          syncError: balance.syncError,
+        });
+        setConfidentialBalances((prev) => ({ ...prev, [assetKey]: balance }));
+        if (balance.spendableSynced) {
+          ctResyncAttemptsRef.current[assetKey] = 0;
+        }
+        return balance;
+      } catch {
+        const cached = readCachedConfidentialAssetBalance(config, settlementAddress, assetKey);
+        setConfidentialBalances((prev) => ({ ...prev, [assetKey]: prev[assetKey] ?? cached ?? undefined }));
+        return cached;
+      } finally {
+        if (!options?.background) {
+          setConfidentialBalanceLoadingMap((prev) => ({ ...prev, [assetKey]: false }));
+        }
+      }
+    })();
+
+    ctRefreshInFlightRef.current[assetKey] = run;
+    try {
+      return await run;
+    } finally {
+      if (ctRefreshInFlightRef.current[assetKey] === run) {
+        delete ctRefreshInFlightRef.current[assetKey];
       }
     }
   }, [config, settlementAddress]);
@@ -1460,25 +1477,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     ctResyncAttemptsRef.current = {};
+    ctRefreshInFlightRef.current = {};
     setConfidentialBalances({});
-    void refreshConfidentialBalance('eurc');
-    void refreshConfidentialBalance('usdc');
-  }, [settlementAddress, config.confidentialTokenId, config.confidentialTokens?.usdc?.token, refreshConfidentialBalance]);
+    setConfidentialBalanceLoadingMap({});
+    if (settlementAddress && config.confidentialTokenId) {
+      void refreshConfidentialBalance('eurc');
+    }
+  }, [settlementAddress, config.confidentialTokenId, refreshConfidentialBalance]);
 
   useEffect(() => {
-    for (const assetKey of ['eurc', 'usdc'] as const) {
-      const balance = confidentialBalances[assetKey];
-      const loading = confidentialBalanceLoadingMap[assetKey];
-      if (!balance || balance.spendableSynced || loading) continue;
-      const attempts = ctResyncAttemptsRef.current[assetKey] ?? 0;
-      if (attempts >= 15) continue;
-      ctResyncAttemptsRef.current[assetKey] = attempts + 1;
-      const delayMs = retryDelay(attempts + 1, { baseDelayMs: 2000, maxDelayMs: 12_000 });
-      window.setTimeout(() => {
-        void refreshConfidentialBalance(assetKey, { background: true });
-      }, delayMs);
-    }
-  }, [confidentialBalances, confidentialBalanceLoadingMap, refreshConfidentialBalance]);
+    const balance = confidentialBalances.eurc;
+    const loading = confidentialBalanceLoadingMap.eurc;
+    if (!balance?.registered || balance.spendableSynced || loading) return;
+    const attempts = ctResyncAttemptsRef.current.eurc ?? 0;
+    if (attempts >= 15) return;
+    ctResyncAttemptsRef.current.eurc = attempts + 1;
+    const delayMs = retryDelay(attempts + 1, { baseDelayMs: 2000, maxDelayMs: 12_000 });
+    const timer = window.setTimeout(() => {
+      void refreshConfidentialBalance('eurc', { background: true });
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [confidentialBalances.eurc, confidentialBalanceLoadingMap.eurc, refreshConfidentialBalance]);
+
+  useEffect(() => {
+    if (!config.confidentialTokens?.usdc?.token) return;
+    const balance = confidentialBalances.usdc;
+    const loading = confidentialBalanceLoadingMap.usdc;
+    if (!balance?.registered || balance.spendableSynced || loading) return;
+    const attempts = ctResyncAttemptsRef.current.usdc ?? 0;
+    if (attempts >= 15) return;
+    ctResyncAttemptsRef.current.usdc = attempts + 1;
+    const delayMs = retryDelay(attempts + 1, { baseDelayMs: 2000, maxDelayMs: 12_000 });
+    const timer = window.setTimeout(() => {
+      void refreshConfidentialBalance('usdc', { background: true });
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [
+    confidentialBalances.usdc,
+    confidentialBalanceLoadingMap.usdc,
+    config.confidentialTokens?.usdc?.token,
+    refreshConfidentialBalance,
+  ]);
 
   const enableLumengateSession = useCallback(async (options?: {
     onProgress?: (progress: LumengateSessionEnableProgress) => void;

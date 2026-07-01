@@ -97,7 +97,6 @@ export function TransferPage() {
     confidentialBalanceLoading,
     confidentialBalanceLoadingFor,
     refreshConfidentialBalance,
-    refreshConfidentialEurcBalance,
     lumengateSessionStatus,
   } = useApp();
 
@@ -241,6 +240,13 @@ export function TransferPage() {
       cancelled = true;
     };
   }, [confidentialMode, config, settlementAddress, ctAssetKey]);
+
+  useEffect(() => {
+    if (!confidentialMode || !ctAssetKey || !confidentialAssetReady(config, ctAssetKey) || !settlementAddress) {
+      return;
+    }
+    void refreshConfidentialBalance(ctAssetKey, { background: true });
+  }, [confidentialMode, ctAssetKey, settlementAddress, config, refreshConfidentialBalance]);
 
   const confidentialSpendableBalance = activeConfidentialBalance
     ? formatConfidentialAmount(activeConfidentialBalance.spendable)
@@ -686,7 +692,9 @@ export function TransferPage() {
                 onConfidentialModeChange={setConfidentialMode}
                 ctRecipientRegistered={ctRecipientRegistered}
                 confidentialRecipientWarning={confidentialRecipientWarning}
-                onConfidentialBalanceRefresh={() => void refreshConfidentialEurcBalance()}
+                onConfidentialBalanceRefresh={() => {
+                  if (ctAssetKey) void refreshConfidentialBalance(ctAssetKey);
+                }}
               />
             )}
 

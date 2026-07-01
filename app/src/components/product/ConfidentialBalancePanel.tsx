@@ -49,27 +49,30 @@ export function ConfidentialBalancePanel() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
+  const refreshPublicBalance = useCallback(async () => {
+    if (!settlementAddress || !config.eurcSacId) return;
+    const publicEurc = await withRetry(() => readEurcSacBalance(config, settlementAddress), {
+      attempts: 5,
+      baseDelayMs: 900,
+      maxDelayMs: 6_000,
+    }).catch(() => null);
+    setPublicBalance(publicEurc);
+  }, [config, settlementAddress]);
+
   const refresh = useCallback(async () => {
     if (!settlementAddress || !config.confidentialTokenId) return;
     setError(null);
     try {
       await refreshConfidentialEurcBalance();
-      const publicEurc = config.eurcSacId
-        ? await withRetry(() => readEurcSacBalance(config, settlementAddress), {
-            attempts: 5,
-            baseDelayMs: 900,
-            maxDelayMs: 6_000,
-          }).catch(() => null)
-        : null;
-      setPublicBalance(publicEurc);
+      await refreshPublicBalance();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [config, settlementAddress, refreshConfidentialEurcBalance]);
+  }, [config.confidentialTokenId, settlementAddress, refreshConfidentialEurcBalance, refreshPublicBalance]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshPublicBalance();
+  }, [refreshPublicBalance]);
 
   if (!config.confidentialTokenId || !settlementAddress) return null;
 

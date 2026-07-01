@@ -107,34 +107,39 @@ export function ConfidentialEurcShieldControls({
   const [amount, setAmount] = useState('');
   const [revealed, setRevealed] = useState(false);
 
+  const refreshPublicBalance = useCallback(async () => {
+    if (!settlementAddress || !assetConfig.contracts) return;
+    if (assetKey === 'eurc' && config.eurcSacId) {
+      const publicEurc = await withRetry(() => readEurcSacBalance(config, settlementAddress), {
+        attempts: 5,
+        baseDelayMs: 900,
+        maxDelayMs: 6_000,
+      }).catch(() => null);
+      setPublicBalance(publicEurc);
+    } else if (assetKey === 'usdc') {
+      const snap = await withRetry(() => readComplianceAdminUsdcBalance(config, settlementAddress), {
+        attempts: 5,
+        baseDelayMs: 900,
+        maxDelayMs: 6_000,
+      }).catch(() => null);
+      setPublicBalance(snap?.formatted ?? null);
+    }
+  }, [assetConfig.contracts, assetKey, config, settlementAddress]);
+
   const refresh = useCallback(async () => {
     if (!settlementAddress || !assetConfig.contracts) return;
     setError(null);
     try {
       await refreshConfidentialBalance(assetKey);
-      if (assetKey === 'eurc' && config.eurcSacId) {
-        const publicEurc = await withRetry(() => readEurcSacBalance(config, settlementAddress), {
-          attempts: 5,
-          baseDelayMs: 900,
-          maxDelayMs: 6_000,
-        }).catch(() => null);
-        setPublicBalance(publicEurc);
-      } else if (assetKey === 'usdc') {
-        const snap = await withRetry(() => readComplianceAdminUsdcBalance(config, settlementAddress), {
-          attempts: 5,
-          baseDelayMs: 900,
-          maxDelayMs: 6_000,
-        }).catch(() => null);
-        setPublicBalance(snap?.formatted ?? null);
-      }
+      await refreshPublicBalance();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [assetConfig.contracts, assetKey, config, settlementAddress, refreshConfidentialBalance]);
+  }, [assetConfig.contracts, assetKey, refreshConfidentialBalance, refreshPublicBalance, settlementAddress]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshPublicBalance();
+  }, [refreshPublicBalance]);
 
   useEffect(() => {
     if (suggestedAmount) {
