@@ -116,6 +116,8 @@ export function VerifyPage() {
     proverWarmupMessage,
     proverWarmupError,
     passkeyBusy,
+    lumengateSessionStatus,
+    lumengateSessionEnabling,
   } = useApp();
   const [credLoading, setCredLoading] = useState(false);
   const [credentialStage, setCredentialStage] = useState<PassportRequestStage | null>(null);
@@ -202,6 +204,12 @@ export function VerifyPage() {
       passkeyFirst,
     ],
   );
+
+  const needsSessionEnable =
+    Boolean(activeProof) &&
+    !lumengateSessionStatus?.enabled &&
+    (sessionProofBound !== false || lumengateSessionEnabling);
+  const showPasskeyAuthorizePanel = lumengateSessionEnabling || needsSessionEnable;
 
   const runCredentialRequest = async (pk: typeof policyKey) => {
     setCredLoading(true);
@@ -363,16 +371,13 @@ export function VerifyPage() {
           settlementAddress={settlementAddress}
         />
 
-        {!onboardingBannerDismissed && onboardingNextStep.kind !== 'none' && !advanced ? (
-          onboardingNextStep.kind === 'confirm-eligibility' &&
-          onboardingNextStep.cta === 'Authorize passkey' ? (
-            <PasskeyAuthorizePanel />
-          ) : (
-            <OnboardingNextStepBanner
-              step={onboardingNextStep}
-              onDismiss={() => setOnboardingBannerDismissed(true)}
-            />
-          )
+        {showPasskeyAuthorizePanel ? (
+          <PasskeyAuthorizePanel />
+        ) : !onboardingBannerDismissed && onboardingNextStep.kind !== 'none' && !advanced ? (
+          <OnboardingNextStepBanner
+            step={onboardingNextStep}
+            onDismiss={() => setOnboardingBannerDismissed(true)}
+          />
         ) : null}
 
         <nav aria-label="Verification progress" className="grid gap-3 sm:grid-cols-4">

@@ -150,6 +150,7 @@ type AppContextValue = {
   ) => Promise<{ proof: ProofBundle; credential: IssuerCredentialResponse; bindHash: string | null }>;
   sessionProofBound: boolean | null;
   lumengateSessionStatus: LumengateSessionStatus | null;
+  lumengateSessionEnabling: boolean;
   enableLumengateSession: (options?: {
     onProgress?: (progress: LumengateSessionEnableProgress) => void;
   }) => Promise<LumengateSessionStatus>;
@@ -276,6 +277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [smartAccountStale, setSmartAccountStale] = useState(false);
   const [sessionProofBound, setSessionProofBound] = useState<boolean | null>(null);
   const [lumengateSessionStatus, setLumengateSessionStatus] = useState<LumengateSessionStatus | null>(null);
+  const [lumengateSessionEnabling, setLumengateSessionEnabling] = useState(false);
   const [confidentialBalances, setConfidentialBalances] = useState<
     Partial<Record<ConfidentialAssetKey, ConfidentialAssetBalance>>
   >({});
@@ -1529,45 +1531,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw new Error('Smart account settlement address is not ready yet.');
     }
 
-    // CompliancePolicy.enforce reads session_store.get_proof for every smart-account
-    // auth except session_store.set_proof. add_context_rule fails with Auth InvalidAction
-    // when eligibility is not bound yet — bind first, then install the session rule.
-    if (!proof || !credential || !proofMatchesCredential(proof, credential)) {
-      throw new Error(
-        'Request and confirm your Private Financial Passport on Verify before enabling the 7-day session.',
-      );
-    }
-    const proofAlreadyBound =
-      isProofBoundLocally(proof) ||
-      (await isSessionProofBoundOnChain(config, settlementAddress, proof));
-    if (!proofAlreadyBound) {
-      options?.onProgress?.({
-        stage: 'bind-eligibility',
-        message: 'Passkey step 1 of 2 — approve with Face ID, fingerprint, or device PIN to bind eligibility.',
-      });
-      await bindSessionProofIfNeeded(proof);
-      setSessionProofBound(true);
-    }
+    setLumengateSessionEnabling(true);
+    try {
+      // CompliancePolicy.enforce reads session_store.get_proof for every smart-account
+      // auth except session_store.set_proof. add_context_rule fails with Auth InvalidAction
+      // when eligibility is not bound yet — bind first, then install the session rule.
+      if (!proof || !credential || !proofMatchesCredential(proof, credential)) {
+        throw new Error(
+          'Request and confirm your Private Financial Passport on Verify before enabling the 7-day session.',
+        );
+      }
+      const proofAlreadyBound =
+        isProofBoundLocally(proof) ||
+        (await isSessionProofBoundOnChain(config, settlementAddress, proof));
+      if (!proofAlreadyBound) {
+        options?.onProgress?.({
+          stage: 'bind-eligibility',
+          message: 'Passkey step 1 of 2 — approve with Face ID, fingerprint, or device PIN to bind eligibility.',
+        });
+        await bindSessionProofIfNeeded(proof);
+        setSessionProofBound(true);
+      } else {
+        setSessionProofBound(true);
+      }
 
-    options?.onProgress?.({
-      stage: 'install-session',
-      message: 'Passkey step 2 of 2 — approve again to install the 7-day session rule on-chain.',
-    });
-    const status = await installLumengateSession(config, smartAccount);
-    options?.onProgress?.({
-      stage: 'done',
-      message: 'Trusted device session is active for 7 days.',
-    });
-    setLumengateSessionStatus(status);
-    pushActivity({
-      kind: 'proof',
-      title: '7-day session enabled',
-      detail: status.enabled
-        ? 'Delegated Lumengate session rules installed on-chain'
-        : `${status.installedContracts.length} session rules installed; ${status.missingContracts.length} missing`,
-      status: status.enabled ? 'success' : 'info',
-    });
-    return status;
+      options?.onProgress?.({
+        stage: 'install-session',
+        message: 'Passkey step 2 of 2 — approve again to install the 7-day session rule on-chain.',
+      });
+      const status = await installLumengateSession(config, smartAccount);
+      options?.onProgress?.({
+        stage: 'done',
+        message: 'Trusted device session is active for 7 days.',
+      });
+      setLumengateSessionStatus(status);
+      pushActivity({
+        kind: 'proof',
+        title: '7-day session enabled',
+        detail: status.enabled
+          ? 'Delegated Lumengate session rules installed on-chain'
+          : `${status.installedContracts.length} session rules installed; ${status.missingContracts.length} missing`,
+        status: status.enabled ? 'success' : 'info',
+      });
+      return status;
+    } finally {
+      setLumengateSessionEnabling(false);
+    }
   }, [
     config,
     smartAccount,
@@ -2213,6 +2222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     confirmPassportEligibility,
     sessionProofBound,
     lumengateSessionStatus,
+    lumengateSessionEnabling,
     enableLumengateSession,
     revokeLumengateSession,
     refreshLumengateSessionStatus,

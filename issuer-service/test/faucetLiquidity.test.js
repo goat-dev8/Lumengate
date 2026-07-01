@@ -49,3 +49,14 @@ test('fundingCandidates prefers configured admin first in code ordering', () => 
     assert.equal(rows[0]?.publicKey, process.env.CONTRACT_ADMIN_PUBLIC_KEY);
   }
 });
+
+test('faucet claim limits stay within testnet treasury capacity', () => {
+  assert.equal(LIMITS.usdc.label, '10 USDC');
+  assert.equal(LIMITS.usdc.amount, '100000000');
+  assert.equal(LIMITS.eurc.label, '10 EURC');
+  assert.equal(LIMITS.eurc.amount, '100000000');
+  assert.equal(LIMITS.xlm.label, '500 XLM');
+  assert.equal(LIMITS.xlm.amount, '5000000000');
+  assert.equal(LIMITS.treasury.label, '10 treasury units');
+  assert.equal(LIMITS.treasury.amount, '10');
+});

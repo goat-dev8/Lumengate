@@ -22,6 +22,7 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
     proofLifecycle,
     sessionProofBound,
     lumengateSessionStatus,
+    lumengateSessionEnabling,
     ensureProofForAsset,
     bindSessionProofIfNeeded,
     enableLumengateSession,
@@ -44,6 +45,7 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
   const requestedScopeAuthorized =
     Boolean(activeProof && activeProofMatchesScope && sessionProofBound === true);
   const sessionEnabled = lumengateSessionStatus?.enabled === true;
+  const enablingSession = loading || lumengateSessionEnabling;
 
   if (!credential) return null;
   if (asset) {
@@ -59,6 +61,8 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
     setStatus(null);
     try {
       if (!sessionEnabled) {
+        setSessionStage('bind-eligibility');
+        setStatus('Passkey step 1 of 2 — approve with Face ID, fingerprint, or device PIN to bind eligibility.');
         await enableLumengateSession({
           onProgress: (progress) => {
             setSessionStage(progress.stage);
@@ -111,15 +115,15 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
               You will see two passkey prompts in order: bind eligibility, then install the session rule.
             </p>
           ) : null}
-          <Button className="mt-4" size="sm" loading={loading} onClick={() => void handleAuthorize()}>
+          <Button className="mt-4" size="sm" loading={enablingSession} onClick={() => void handleAuthorize()}>
             {sessionEnabled ? 'Authorize passkey' : 'Enable 7-day session'}
           </Button>
-          {loading && !sessionEnabled ? (
+          {enablingSession && !sessionEnabled ? (
             <div className="mt-4 rounded-2xl border border-[#007dfc]/15 bg-white px-4 py-4 shadow-[0_12px_32px_rgba(1,43,84,0.06)]">
               <StageProgress
                 stages={SESSION_ENABLE_STAGES}
                 currentStageId={sessionStage}
-                indeterminate={sessionStage !== 'done' && sessionStage !== null}
+                indeterminate={sessionStage === null}
                 aria-label="Enable 7-day session progress"
               />
             </div>
