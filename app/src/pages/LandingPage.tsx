@@ -14,6 +14,16 @@ import { MetricsShowcase } from '../components/marketing/MetricsShowcase';
 import { CtaPremium } from '../components/marketing/CtaPremium';
 import { MarketingFooter } from '../components/marketing/MarketingFooter';
 import { ProductStoryStrip } from '../components/marketing/ProductStoryStrip';
+import { TheProblemSection } from '../components/marketing/TheProblemSection';
+import { IdentityWithoutExposureSection } from '../components/marketing/IdentityWithoutExposureSection';
+import { TokenizedAssetsSection } from '../components/marketing/TokenizedAssetsSection';
+import { PublicSettlementSection } from '../components/marketing/PublicSettlementSection';
+import { ConfidentialAssetsSection } from '../components/marketing/ConfidentialAssetsSection';
+import { SelectiveDisclosureSection } from '../components/marketing/SelectiveDisclosureSection';
+import { ReceiptsSection } from '../components/marketing/ReceiptsSection';
+import { SecuritySection } from '../components/marketing/SecuritySection';
+import { TechnicalMetricsSection } from '../components/marketing/TechnicalMetricsSection';
+import { FaqSection } from '../components/marketing/FaqSection';
 import { loadDeploymentConfig } from '../lib/config';
 import { useScrollReveal } from '../hooks/useScrollReveal';
 import { cn } from '../lib/cn';
@@ -101,14 +111,31 @@ export function LandingPage() {
 
       <ProductStoryStrip />
 
+      {/* THE PROBLEM */}
+      <section id="problem" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="01" label="The problem" />
+            <h2 className="lg-section-heading">
+              Regulated settlement forces a <span className="font-serif italic text-[#007dfc]">bad trade-off</span>
+            </h2>
+            <p className="lg-section-desc">
+              Proving eligibility usually means putting identity attributes on-chain permanently, linking who you are
+              to every transaction you ever make.
+            </p>
+          </div>
+          <TheProblemSection />
+        </div>
+      </section>
+
       {/* ARCHITECTURE */}
       <section id="architecture" className="lg-section lg-section-tight lg-grid-section">
         <GridWallpaper />
         <div className="lg-container relative z-10">
           <div className="lg-section-top">
-            <SectionBadge suffix="01" label="Architecture" />
+            <SectionBadge suffix="02" label="Architecture" />
             <h2 className="lg-section-heading">
-              Eligibility-first settlement, <span className="font-serif italic text-[#007dfc]">end to end</span>
+              How Lumengate <span className="font-serif italic text-[#007dfc]">solves it</span>
             </h2>
             <p className="lg-section-desc">
               From passport issuance to a passkey-approved investment and receipt.
@@ -118,11 +145,28 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* IDENTITY WITHOUT EXPOSURE */}
+      <section id="identity" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="03" label="Identity" />
+            <h2 className="lg-section-heading">
+              Identity <span className="font-serif italic text-[#007dfc]">without exposure</span>
+            </h2>
+            <p className="lg-section-desc">
+              A passkey authorizes a smart account, which enforces compliance on every operation and installs a
+              session so you are not re-prompted for each step.
+            </p>
+          </div>
+          <IdentityWithoutExposureSection />
+        </div>
+      </section>
+
       {/* WORKFLOW */}
       <section id="workflow" className="lg-section lg-section-tight">
         <div className="lg-container">
           <div className="lg-section-top">
-            <SectionBadge suffix="02" label="Workflow" />
+            <SectionBadge suffix="04" label="Workflow" />
             <h2 className="lg-section-heading">Four steps to private investing</h2>
             <p className="lg-section-desc">Connect, verify, invest, and keep an audit-ready receipt.</p>
           </div>
@@ -131,13 +175,13 @@ export function LandingPage() {
       </section>
 
       {/* CROSS-CHAIN */}
-      <section className="lg-section lg-grid-section">
+      <section id="trust" className="lg-section lg-grid-section">
         <GridWallpaper />
         <div className="lg-container relative z-10">
           <div ref={cross.ref} className={cn('lg-reveal lg-dark-section', cross.visible && 'lg-revealed')}>
             <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
               <div>
-                <SectionBadge suffix="03" label="Trust model" dark />
+                <SectionBadge suffix="05" label="Trust model" dark />
                 <h2 className="mt-4 text-3xl font-semibold md:text-4xl">
                   Passkey-approved.{' '}
                   <span className="font-serif italic text-[#c9f31d]">Receipt-ready.</span>
@@ -163,14 +207,114 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* TOKENIZED ASSETS */}
+      <section id="assets" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="06" label="Tokenized assets" />
+            <h2 className="lg-section-heading">
+              Gated by <span className="font-serif italic text-[#007dfc]">eligibility</span>, not paperwork
+            </h2>
+            <p className="lg-section-desc">
+              The marketplace checks smart account, credential, policy match, session status, and minimum balance
+              before it ever builds a transaction.
+            </p>
+          </div>
+          <TokenizedAssetsSection />
+        </div>
+      </section>
+
+      {/* PUBLIC SETTLEMENT */}
+      <section id="public-settlement" className="lg-section lg-section-tight lg-grid-section">
+        <GridWallpaper />
+        <div className="lg-container relative z-10">
+          <div className="lg-section-top">
+            <SectionBadge suffix="07" label="Public settlement" />
+            <h2 className="lg-section-heading">
+              Public settlement, <span className="font-serif italic text-[#007dfc]">still compliance-gated</span>
+            </h2>
+            <p className="lg-section-desc">
+              Not every settlement needs to be confidential. USDC and EURC treasury flows settle transparently, with
+              the same on-chain eligibility check enforced first.
+            </p>
+          </div>
+          <PublicSettlementSection />
+        </div>
+      </section>
+
+      {/* CONFIDENTIAL ASSETS */}
+      <section id="confidential-assets" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="08" label="Confidential assets" />
+            <h2 className="lg-section-heading">
+              Shielded balances, <span className="font-serif italic text-[#007dfc]">receipt-ready</span>
+            </h2>
+            <p className="lg-section-desc">
+              Stellar Confidential Tokens wrap SAC EURC and SAC USDC in Pedersen commitments — amounts hidden,
+              counterparties still public addresses.
+            </p>
+          </div>
+          <ConfidentialAssetsSection />
+        </div>
+      </section>
+
       {/* COMPARE */}
       <section id="compare" className="lg-section">
         <div className="lg-container">
           <div className="lg-section-top">
-            <SectionBadge suffix="04" label="Comparison" />
+            <SectionBadge suffix="09" label="Comparison" />
             <h2 className="lg-section-heading">Private access vs traditional onboarding</h2>
           </div>
           <CompareShowcase />
+        </div>
+      </section>
+
+      {/* SELECTIVE DISCLOSURE */}
+      <section id="disclosure" className="lg-section lg-section-tight lg-grid-section">
+        <GridWallpaper />
+        <div className="lg-container relative z-10">
+          <div className="lg-section-top">
+            <SectionBadge suffix="10" label="Selective disclosure" />
+            <h2 className="lg-section-heading">
+              Auditable, <span className="font-serif italic text-[#007dfc]">not transparent by default</span>
+            </h2>
+            <p className="lg-section-desc">
+              A viewing key scoped to one receipt lets an auditor confirm a regulated fact without seeing a wallet's
+              full history or a user's private eligibility inputs.
+            </p>
+          </div>
+          <SelectiveDisclosureSection />
+        </div>
+      </section>
+
+      {/* RECEIPTS */}
+      <section id="receipts" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="11" label="Receipts" />
+            <h2 className="lg-section-heading">Every settlement produces a receipt</h2>
+            <p className="lg-section-desc">
+              A compliance team has something concrete to review the moment a transfer completes — not something
+              reconstructed later from raw ledger data.
+            </p>
+          </div>
+          <ReceiptsSection />
+        </div>
+      </section>
+
+      {/* SECURITY */}
+      <section id="security" className="lg-section lg-section-tight lg-grid-section">
+        <GridWallpaper />
+        <div className="lg-container relative z-10">
+          <div className="lg-section-top">
+            <SectionBadge suffix="12" label="Security" />
+            <h2 className="lg-section-heading">Compliance is a contract invariant</h2>
+            <p className="lg-section-desc">
+              Not a UI checkbox that a client could skip — every control below is enforced on-chain.
+            </p>
+          </div>
+          <SecuritySection />
         </div>
       </section>
 
@@ -179,7 +323,7 @@ export function LandingPage() {
         <GridWallpaper />
         <div className="lg-container relative z-10">
           <div className="lg-section-top">
-            <SectionBadge suffix="05" label="Live records" />
+            <SectionBadge suffix="13" label="Live records" />
             <h2 className="lg-section-heading">Real Stellar settlement references</h2>
           </div>
           <MetricsShowcase
@@ -192,16 +336,38 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* TECHNICAL METRICS */}
+      <section id="technical-metrics" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="14" label="Verified counts" />
+            <h2 className="lg-section-heading">Built, tested, and counted — not estimated</h2>
+          </div>
+          <TechnicalMetricsSection />
+        </div>
+      </section>
+
       {/* PROTOCOLS */}
       <section id="protocols" className="lg-section lg-section-tight">
         <div className="lg-container">
           <div className="lg-section-top">
-            <SectionBadge suffix="06" label="Stellar native" />
+            <SectionBadge suffix="15" label="Stellar native" />
             <h2 className="lg-section-heading">
               Built for <span className="font-serif italic">regulated assets</span>
             </h2>
           </div>
           <ProtocolShowcase />
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="lg-section lg-section-tight">
+        <div className="lg-container">
+          <div className="lg-section-top">
+            <SectionBadge suffix="16" label="FAQ" />
+            <h2 className="lg-section-heading">Frequently asked questions</h2>
+          </div>
+          <FaqSection />
         </div>
       </section>
 

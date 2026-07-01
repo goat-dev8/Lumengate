@@ -667,6 +667,17 @@
   font-size: 20px;
 }
 
+/* FAQ accordion */
+.lg-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.lg-faq-item summary::marker {
+  content: '';
+}
+.lg-faq-item + .lg-faq-item {
+  border-top: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lg-fade-up, .lg-border-dot, .lg-nav-dot, .lg-dashboard-stat,
   .lg-pipeline-progress, .lg-dashboard-live-dot, .lg-grid-wallpaper {

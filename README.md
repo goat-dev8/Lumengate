@@ -32,7 +32,7 @@ Lumengate separates **what must be proven** (scoped nullifier + policy complianc
 
 ---
 
-## Why this stack
+## Why Lumengate
 
 ### Why zero-knowledge
 
@@ -56,7 +56,31 @@ Binding eligibility and installing a delegated Ed25519 signer lets shield, merge
 
 ### Why confidential tokens
 
-Public EURC amounts are visible on-chain. Stellar Confidential Tokens wrap SAC EURC in Pedersen commitments—amounts hidden, counterparties remain public addresses, auditors receive selective disclosure via viewing keys.
+Public EURC and USDC amounts are visible on-chain. Stellar Confidential Tokens (Developer Preview) wrap SAC EURC and SAC USDC in Pedersen commitments—amounts hidden, counterparties remain public addresses, auditors receive selective disclosure via viewing keys. Both wrappers share the same `ConfidentialAssetConfig` client code and `LumengateConfidentialToken` / `LumengateConfidentialPolicy` contracts, selected by `assetKey` (`eurc` | `usdc`) rather than by duplicated implementations.
+
+### Why a passport
+
+A one-time issuer-signed credential plus a browser-generated zero-knowledge proof lets a user prove accreditation, sanctions clearance, jurisdiction, and age **once**, then reuse that eligibility across every asset scope (RWA, USDC, EURC) without re-submitting personal data or re-running KYC per transaction. The passport never leaves the browser as raw attributes—only a Merkle-anchored commitment and a scoped nullifier reach the chain.
+
+### Why compliance is enforced on-chain, not by policy documents
+
+`CompliancePolicy` and `LumengateConfidentialPolicy` read a session-bound proof from `SessionStore` on **every** smart-account authorization (public settlement, marketplace investment, or confidential register/shield/transfer). An account cannot sign a compliant operation without a currently valid, scope-matched proof—compliance is a contract invariant, not a UI checkbox that a client could skip.
+
+### Why a marketplace instead of a generic wallet
+
+Regulated assets need per-offering eligibility gating, not just a working transfer function. `MarketplacePage` is a proof-gated settlement router: it checks smart account, credential, policy match, session status, and minimum balance before ever building a transaction, then routes to the correct compliant contract (`RwaToken`, `ComplianceSacAdmin`, `CompliantDex`, or `CompliantPayroll`) for that specific offering.
+
+### Why every settlement produces a receipt
+
+Institutional settlement requires an audit trail without exposing counterparties' full transaction history. `buildProofReceipt()` seals proof roots, nullifier reference, policy ID, and on-chain evidence into a single record immediately after settlement—so a compliance team has something concrete to review the moment a transfer completes, not something reconstructed later from raw ledger data.
+
+### Why an auditor portal instead of blanket chain access
+
+Auditors should be able to verify a specific disclosure without being handed a wallet's full history or a user's private eligibility inputs. `AuditorPage` accepts a viewing key scoped to one receipt; `verifyAuditorInput()` checks the disclosure pack, public inputs, and nullifier client-side, and `CtAuditorPanel` can decrypt one confidential transfer amount when the auditor key matches the on-chain `ConfidentialAuditorContract`—nothing broader is exposed.
+
+### Why selective disclosure instead of full transparency or full secrecy
+
+Full transparency leaks identity and amounts to anyone watching the ledger; full secrecy is unauditable. Selective disclosure lets the settling party generate a `lgvk_`-prefixed viewing key per receipt and hand it only to the auditor who needs it—compliance review stays possible without making every private balance and counterparty public by default.
 
 ---
 
@@ -123,6 +147,23 @@ flowchart TD
 ```
 
 A new user on testnet typically: **Welcome → Verify (account + passport + proof + session) → Home (CT register + shield) → Send (confidential) → Receipts (viewing key) → Auditor**.
+
+---
+
+## Verified user journeys
+
+Every journey below runs on the deployed testnet contracts and issuer service listed in this document. Each maps to the code paths detailed in [Product walkthrough by area](#product-walkthrough-by-area) below — this section is the scannable index; that section is the implementation depth.
+
+1. **Identity → Marketplace → Settlement → Receipt → Viewing key → Auditor.** Passkey registration deploys a `LumengateSmartAccount` (`/app/welcome`) → passport request (`POST /credential`) → local UltraHonk proof generation → 7-day session bind → browse `/app/marketplace` → `canSettle()` gates → settlement via the offering's route contract → `recordTransferTx()` builds a receipt → optional viewing key → `/app/auditor` verifies the disclosure pack.
+2. **Public settlement.** Session-signed USDC or EURC transfer through `ComplianceSacAdmin.transfer_compliant` / `transfer_compliant_eurc`, gated by `PolicyVerifier.verify_passport` on asset-scoped nullifiers (USDC=2, EURC=3).
+3. **Confidential EURC.** Register (`registerConfidentialAccount({ assetKey: 'eurc' })`) → shield public EURC → merge → private `confidential_transfer` → receipt shows "Shielded amount" → optional viewing key → auditor decrypt via `ConfidentialAuditorContract`.
+4. **Confidential USDC.** Identical lifecycle to EURC through the generic `ConfidentialAssetConfig` (`assetKey: 'usdc'`), using the independently deployed USDC confidential stack (`deployments.json` → `confidential_tokens.usdc`, token `CBIGJFIRVZRNUJ45TN5EMLMMIBJY4GHELFLVYCJ4HUZLWUWA2VSSWOWF`).
+5. **Marketplace investment.** `useOfferings()` loads issuer fixtures (`issuer-service/fixtures/offerings.json`: treasury, real-estate, private-credit categories) → `MarketplacePage.handleSettle()` resolves the correct contract by `settlementRoute` (`dex`, `payroll`, `sac`, or default RWA).
+6. **Treasury purchase.** RWA-scoped proof + `RwaToken.transfer` through `RwaAdapter.verify_passport`, or SAC-routed USDC/EURC treasury settlement offerings (`ComplianceSacAdmin`).
+7. **Receipt lifecycle.** Settlement tx confirmed → proof archived to session storage → nullifier marked consumed → `buildProofReceipt()` fetches chain events → `/app/compliance` renders the receipt and timeline on mount.
+8. **Selective disclosure.** From a sealed receipt, `generateViewingKey()` creates an `lgvk_`-prefixed key → `buildDisclosure()` packs claims → `POST /disclose/store` indexes the pack by `SHA-256(viewing_key)`.
+9. **Auditor verification.** Auditor enters a viewing key at `/app/auditor` → `POST /disclose` returns the stored pack → `verifyAuditorInput()` validates disclosure JSON, public inputs hex, or nullifier modes → `CtAuditorPanel` optionally decrypts one confidential transfer amount.
+10. **Private compliance flow (no personal data on-chain).** Across every journey above, the only data reaching Soroban is a Merkle root, policy ID, asset ID, action ID, and a scoped nullifier — accreditation status, sanctions result, jurisdiction, age, and (for confidential assets) the transfer amount stay off the public ledger by default.
 
 ---
 
@@ -745,10 +786,10 @@ All contract IDs live in `deployments.json` at repository root. The subsections 
 | **Purpose** | Reusable OpenZeppelin spending-limit policy (ledger window). |
 | **Responsibilities** | Enforce per-context spending caps via `spending_limit` module. |
 | **Public methods** | `Policy` trait: `install`, `uninstall`, `enforce`; `get_spending_limit_data`, `set_spending_limit` |
-| **Called by** | Not wired in current app session setup |
+| **Called by** | Not wired into any current app session setup |
 | **Dependents** | None in production app flows |
-| **Protocol role** | Optional delegated-signer spending cap (future hardening) |
-| **Security role** | Would limit session key blast radius if attached to session context rule |
+| **Protocol role** | Deployed, standalone OpenZeppelin spending-limit policy module; not attached to any Lumengate session context rule |
+| **Security role** | Not part of the enforced session authorization path — session scope limits are currently enforced by `SessionStore` proof binding, not by this contract |
 | **Frontend pages** | None (deployed only) |
 
 ### TimelockController
@@ -876,7 +917,7 @@ Registered in `PolicyVerifier.register_policy`; proofs are exactly **14592 bytes
 | `/app/admin` | Admin | Operator revoke |
 | `/app/settings` | Settings | Account settings |
 
-91 React components across `app/src/components/` in directories: `product/` (31), `fintech/` (16), `marketing/` (14), `dashboard/` (6), `design/` (7), `education/` (5), plus `layout`, `send`, `compliance`, `ui`, `lumengate`, `marketplace`.
+93 React components across `app/src/components/` in directories: `product/` (33), `fintech/` (16), `marketing/` (14), `dashboard/` (6), `design/` (7), `education/` (5, including `education/diagrams/`), `ui/` (4), `layout/` (2), `send/` (2), `lumengate/` (2), `compliance/` (1), `marketplace/` (1).
 
 ---
 
@@ -902,97 +943,9 @@ Registered in `PolicyVerifier.register_policy`; proofs are exactly **14592 bytes
 
 ---
 
-## Repository layout
-
-```
-Lumengate/
-├── app/                    # React/Vite frontend (Vercel)
-│   ├── src/pages/          # 13 route screens
-│   ├── src/components/     # 91 UI components
-│   ├── src/lib/            # 99 TypeScript modules + confidentialToken SDK
-│   ├── src/context/        # AppContext orchestration
-│   ├── e2e/                # 3 Playwright specs (25 runtime tests)
-│   └── public/circuit/     # Noir JSON artifacts
-├── issuer-service/         # Express API (Render)
-├── contracts/              # 19 Soroban Rust crates
-├── circuits/               # 2 Noir sources + 6 CT VK sets
-├── scripts/                # Deploy, verify, regression (57 automation files)
-├── vendor/                 # UltraHonk verifier, stellar-contracts refs
-├── deployments.json        # Testnet contract IDs
-└── docs/                   # Supplementary project notes (not required to run Lumengate)
-```
-
----
-
-## Technology
-
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18, Vite 5, TypeScript 5.6, Tailwind 3.4 |
-| Chain SDK | `@stellar/stellar-sdk` 16.x |
-| Smart accounts | OpenZeppelin stellar-accounts 0.7.2, smart-account-kit 0.3.0 |
-| ZK | Noir 1.0.0-beta.9, `@aztec/bb.js` 0.87 UltraHonk (keccak transcript) |
-| Passkeys | `@simplewebauthn/browser`, WebauthnVerifier contract |
-| Backend | Node 20, Express |
-| Contracts | soroban-sdk 26.0.1 |
-
----
-
-## Installation and local development
-
-### Prerequisites
-
-- Node.js 20+
-- Rust + `stellar` CLI
-- `nargo` + `bb` for circuit builds
-- Playwright deps: `npx playwright install-deps chromium`
-
-### Issuer
-
-```bash
-cp issuer-service/.env.example issuer-service/.env
-cd issuer-service && npm install && npm start
-```
-
-### Frontend
-
-```bash
-cp app/.env.example app/.env.local
-cd app && npm install && npm run dev
-```
-
-Vite dev server sets COOP/COEP headers required for in-browser proving.
-
-### Contracts
-
-```bash
-bash scripts/build_contracts.sh
-bash scripts/build_circuit.sh
-```
-
-Contract IDs: copy from `deployments.json` into `app/.env.local` as `VITE_*` keys (for example `VITE_POLICY_VERIFIER_ID`, `VITE_COMPLIANCE_SAC_ADMIN_ID`, `VITE_CONFIDENTIAL_TOKEN_ID`). Issuer secrets go in `issuer-service/.env`. Template files: `.env.example`, `app/.env.example`, `issuer-service/.env.example`.
-
----
-
-## Deployment
-
-| Component | Platform | Configuration |
-|-----------|----------|---------------|
-| Frontend | Vercel | `app/vercel.json`, build `npm run build`, output `dist/` |
-| Issuer | Render | `render.yaml`, health check `/health` |
-
-After issuer or contract changes, redeploy both Render and Vercel. Set `VITE_PASSKEY_RP_ID` to production hostname.
-
-```bash
-node scripts/sync_vercel_env.mjs
-node scripts/sync_render_env.mjs
-```
-
----
-
 ## Test Coverage
 
-All counts below are from executed passing tests documented in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) (verified 2026-06-30). Reproduce with the commands in that file. **207** total passing tests across all suites.
+All counts below were re-executed and reconfirmed on 2026-07-01 (consistent with [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md), verified 2026-06-30). Reproduce with the commands in that file. **219** total passing tests across all suites, 0 failures.
 
 **Prerequisites:** `.env` with testnet keys, `stellar` CLI, local issuer on port 3001 for API/CT integration scripts.
 
@@ -1090,16 +1043,91 @@ Crates without Rust unit tests (`lumengate-smart-account`, `webauthn-verifier`) 
 
 ---
 
-## Screenshots
+## Repository layout
 
-| Screen | Description |
-|--------|-------------|
-| _Placeholder_ | Welcome — passkey account creation |
-| _Placeholder_ | Verify — passport request progress |
-| _Placeholder_ | Dashboard — confidential EURC + session panel |
-| _Placeholder_ | Send — confidential EURC settlement |
-| _Placeholder_ | Compliance — shielded amount receipt |
-| _Placeholder_ | Auditor — viewing key query |
+```
+Lumengate/
+├── app/                    # React/Vite frontend (Vercel)
+│   ├── src/pages/          # 13 route screens
+│   ├── src/components/     # 93 UI components
+│   ├── src/lib/            # 101 TypeScript modules + confidentialToken SDK
+│   ├── src/context/        # AppContext orchestration
+│   ├── e2e/                # 3 Playwright specs (25 runtime tests)
+│   └── public/circuit/     # Noir JSON artifacts
+├── issuer-service/         # Express API (Render)
+├── contracts/              # 19 Soroban Rust crates
+├── circuits/               # 2 Noir sources + 6 CT VK sets
+├── scripts/                # Deploy, verify, regression (63 automation files)
+├── vendor/                 # UltraHonk verifier, stellar-contracts refs
+├── deployments.json        # Testnet contract IDs
+└── docs/                   # Supplementary engineering history (this README is self-sufficient; docs/ is optional deep-dive/point-in-time material)
+```
+
+---
+
+## Technology
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, Vite 5, TypeScript 5.6, Tailwind 3.4 |
+| Chain SDK | `@stellar/stellar-sdk` 16.x |
+| Smart accounts | OpenZeppelin stellar-accounts 0.7.2, smart-account-kit 0.3.0 |
+| ZK | Noir 1.0.0-beta.9, `@aztec/bb.js` 0.87 UltraHonk (keccak transcript) |
+| Passkeys | `@simplewebauthn/browser`, WebauthnVerifier contract |
+| Backend | Node 20, Express |
+| Contracts | soroban-sdk 26.0.1 |
+
+---
+
+## Installation and local development
+
+### Prerequisites
+
+- Node.js 20+
+- Rust + `stellar` CLI
+- `nargo` + `bb` for circuit builds
+- Playwright deps: `npx playwright install-deps chromium`
+
+### Issuer
+
+```bash
+cp issuer-service/.env.example issuer-service/.env
+cd issuer-service && npm install && npm start
+```
+
+### Frontend
+
+```bash
+cp app/.env.example app/.env.local
+cd app && npm install && npm run dev
+```
+
+Vite dev server sets COOP/COEP headers required for in-browser proving.
+
+### Contracts
+
+```bash
+bash scripts/build_contracts.sh
+bash scripts/build_circuit.sh
+```
+
+Contract IDs: copy from `deployments.json` into `app/.env.local` as `VITE_*` keys (for example `VITE_POLICY_VERIFIER_ID`, `VITE_COMPLIANCE_SAC_ADMIN_ID`, `VITE_CONFIDENTIAL_TOKEN_ID`). Issuer secrets go in `issuer-service/.env`. Template files: `.env.example`, `app/.env.example`, `issuer-service/.env.example`.
+
+---
+
+## Deployment
+
+| Component | Platform | Configuration |
+|-----------|----------|---------------|
+| Frontend | Vercel | `app/vercel.json`, build `npm run build`, output `dist/` |
+| Issuer | Render | `render.yaml`, health check `/health` |
+
+After issuer or contract changes, redeploy both Render and Vercel. Set `VITE_PASSKEY_RP_ID` to production hostname.
+
+```bash
+node scripts/sync_vercel_env.mjs
+node scripts/sync_render_env.mjs
+```
 
 ---
 
