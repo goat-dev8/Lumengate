@@ -34,7 +34,7 @@ import { StaleSmartAccountUpgradePanel } from '../components/product/StaleSmartA
 import { WalletSigningNotice } from '../components/product/WalletSigningNotice';
 import { AdvancedModeToggle, useAdvancedMode } from '../components/product/AdvancedModeToggle';
 import { microcopy } from '../lib/microcopy';
-import { resolveMarketplaceAction } from '../lib/marketplaceActions';
+import { resolveMarketplaceAction, isOfferingScopeReady } from '../lib/marketplaceActions';
 import { offeringSettlementAsset } from '../lib/passportScopeStatus';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
 import { isProofUsable, syncProofLifecycleOnChain } from '../lib/proofLifecycle';
@@ -113,7 +113,7 @@ export function MarketplacePage() {
   } = useApp();
 
   const advanced = useAdvancedMode();
-  const { rows: scopeRows } = usePassportScopeStatuses();
+  const { rows: scopeRows, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -136,18 +136,6 @@ export function MarketplacePage() {
   const selected =
 
     offerings.find((o) => o.id === selectedOfferingId) ?? offerings[0] ?? null;
-  const selectedAsset =
-    selected?.settlementAsset === 'usdc' || selected?.settlementAsset === 'eurc'
-      ? selected.settlementAsset
-      : 'rwa';
-  const selectedScope = ASSET_SCOPES[selectedAsset];
-  const activeProof =
-    proofLifecycle.lifecycle === 'ready' &&
-    proofMatchesCredential(proof, credential) &&
-    proof?.publicInputs.assetId === selectedScope.assetId &&
-    proof.publicInputs.actionId === selectedScope.actionId
-      ? proof
-      : null;
   const proofConsumed = proofLifecycle.lifecycle === 'consumed';
 
   const [balance, setBalance] = useState<string | null>(null);
@@ -174,7 +162,10 @@ export function MarketplacePage() {
 
   const [pofTxHash, setPofTxHash] = useState<string | null>(null);
 
-
+  useEffect(() => {
+    void syncProofLifecycle();
+    void refreshScopeStatuses();
+  }, [syncProofLifecycle, refreshScopeStatuses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,7 +291,7 @@ export function MarketplacePage() {
 
     }
 
-    if (activeProof && Number(activeProof.publicInputs.policyId) !== policyByKey(offering.requiredPolicy).policyId) {
+    if (proof && proofMatchesCredential(proof, credential) && Number(proof.publicInputs.policyId) !== policyByKey(offering.requiredPolicy).policyId) {
 
       return 'Renew your passport for this investment';
 
@@ -388,7 +379,15 @@ export function MarketplacePage() {
           : 'rwa';
       const scope = ASSET_SCOPES[settlementAsset];
 
-      let scopedProof = activeProof;
+      let scopedProof =
+        proofLifecycle.lifecycle === 'ready' &&
+        proof &&
+        credential &&
+        proofMatchesCredential(proof, credential) &&
+        proof.publicInputs.assetId === scope.assetId &&
+        proof.publicInputs.actionId === scope.actionId
+          ? proof
+          : null;
       if (!scopedProof) {
         setSettlementPhase('preparing');
         setStatusMessage(`Preparing private eligibility for ${friendlyAssetName(settlementAsset)}…`);
@@ -710,8 +709,8 @@ export function MarketplacePage() {
           description={
             scopeRows?.some((r) => r.status === 'renewal_required')
               ? 'Some asset scopes need renewal. Others may still be ready — check each offering below.'
-              : activeProof
-                ? 'You are verified. Choose an offering and authorize with your passkey.'
+              : credential && scopeRows?.some((r) => r.status === 'ready')
+                ? 'Choose an offering and tap Invest — passkey confirmation runs inline with progress.'
                 : credential
                   ? 'Finish eligibility to unlock investing.'
                   : 'Every offering is permissioned. Your passport unlocks eligibility automatically.'
@@ -788,7 +787,7 @@ export function MarketplacePage() {
         </div>
       ) : null}
 
-      {address && activeProof ? (
+      {address && credential && settlementAddress ? (
         <div className="mb-6">
           <WalletSigningNotice compact />
         </div>
@@ -849,7 +848,7 @@ export function MarketplacePage() {
             scopeRows,
             hasSettlementAddress: Boolean(settlementAddress),
             hasCredential: Boolean(credential),
-            hasActiveProof: Boolean(activeProof),
+            offeringScopeReady: isOfferingScopeReady(offering, scopeRows),
           });
 
           return (

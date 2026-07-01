@@ -3,6 +3,16 @@ import { offeringSettlementAsset } from './passportScopeStatus';
 import type { LiveOffering } from './offerings';
 import { microcopy } from './microcopy';
 
+/** True when this offering's settlement asset scope is ready on Passport (independent of selected card). */
+export function isOfferingScopeReady(
+  offering: LiveOffering,
+  scopeRows: PassportScopeRow[] | null,
+): boolean {
+  const asset = offeringSettlementAsset(offering.settlementAsset);
+  const row = scopeRows?.find((r) => r.asset === asset);
+  return row?.status === 'ready';
+}
+
 export type MarketplaceAction = {
   message: string;
   cta: string;
@@ -16,9 +26,9 @@ export function resolveMarketplaceAction(input: {
   scopeRows: PassportScopeRow[] | null;
   hasSettlementAddress: boolean;
   hasCredential: boolean;
-  hasActiveProof: boolean;
+  offeringScopeReady: boolean;
 }): MarketplaceAction | null {
-  const { offering, block, scopeRows, hasSettlementAddress, hasCredential, hasActiveProof } = input;
+  const { offering, block, scopeRows, hasSettlementAddress, hasCredential, offeringScopeReady } = input;
 
   if (!hasSettlementAddress) {
     return {
@@ -49,7 +59,7 @@ export function resolveMarketplaceAction(input: {
     };
   }
 
-  if (!hasActiveProof) {
+  if (!offeringScopeReady) {
     return {
       message: 'Confirm eligibility privately on Passport before investing in this offering.',
       cta: 'Complete eligibility',

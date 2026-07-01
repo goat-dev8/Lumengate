@@ -13,9 +13,10 @@ import {
 
 type Props = {
   asset?: SettlementAsset;
+  onAuthorized?: () => void;
 };
 
-export function PasskeyAuthorizePanel({ asset }: Props) {
+export function PasskeyAuthorizePanel({ asset, onAuthorized }: Props) {
   const {
     credential,
     proof,
@@ -91,6 +92,7 @@ export function PasskeyAuthorizePanel({ asset }: Props) {
             : '7-day Lumengate session is ready.',
         );
       }
+      onAuthorized?.();
     } catch (err) {
       setSessionStage(null);
       setStatus(null);

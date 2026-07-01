@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -240,6 +240,19 @@ export function TransferPage() {
       cancelled = true;
     };
   }, [confidentialMode, config, settlementAddress, ctAssetKey]);
+
+  useEffect(() => {
+    if (activeConfidentialBalance?.registered === true) {
+      setSenderCtRegistered(true);
+    }
+  }, [activeConfidentialBalance?.registered]);
+
+  const refreshConfidentialRegistrationState = useCallback(async () => {
+    if (!ctAssetKey || !settlementAddress) return;
+    await refreshConfidentialBalance(ctAssetKey);
+    const ok = await readConfidentialRegistered(config, settlementAddress, ctAssetKey);
+    setSenderCtRegistered(ok);
+  }, [ctAssetKey, settlementAddress, config, refreshConfidentialBalance]);
 
   useEffect(() => {
     if (!confidentialMode || !ctAssetKey || !confidentialAssetReady(config, ctAssetKey) || !settlementAddress) {
@@ -693,7 +706,7 @@ export function TransferPage() {
                 ctRecipientRegistered={ctRecipientRegistered}
                 confidentialRecipientWarning={confidentialRecipientWarning}
                 onConfidentialBalanceRefresh={() => {
-                  if (ctAssetKey) void refreshConfidentialBalance(ctAssetKey);
+                  void refreshConfidentialRegistrationState();
                 }}
               />
             )}

@@ -92,6 +92,8 @@ export function ConfidentialEurcShieldControls({
     refreshConfidentialBalance,
     consumedTxHash,
     proofLifecycle,
+    sessionProofBound,
+    refreshSessionProofBound,
   } = useApp();
   const assetConfig = resolveConfidentialAsset(config, assetKey);
   const scope = ASSET_SCOPES[assetKey];
@@ -154,7 +156,7 @@ export function ConfidentialEurcShieldControls({
       setScopeProofBound(null);
       return;
     }
-    if (isProofBoundLocally(proof)) {
+    if (sessionProofBound === true || isProofBoundLocally(proof)) {
       setScopeProofBound(true);
       return;
     }
@@ -165,7 +167,9 @@ export function ConfidentialEurcShieldControls({
     return () => {
       cancelled = true;
     };
-  }, [config, settlementAddress, proof, credential, scope.assetId]);
+  }, [config, settlementAddress, proof, credential, scope.assetId, sessionProofBound]);
+
+  const effectiveScopeProofBound = scopeProofBound === true || sessionProofBound === true;
 
   useEffect(() => {
     if (suggestedAmount) {
@@ -190,7 +194,7 @@ export function ConfidentialEurcShieldControls({
       !credential ||
       !proofMatchesCredential(proof, credential) ||
       proof.publicInputs.assetId !== scope.assetId ||
-      scopeProofBound !== true) &&
+      effectiveScopeProofBound !== true) &&
     proofLifecycle.lifecycle === 'ready';
 
   const proofReadyAndBound =
@@ -199,7 +203,7 @@ export function ConfidentialEurcShieldControls({
     credential &&
     proofMatchesCredential(proof, credential) &&
     proof.publicInputs.assetId === scope.assetId &&
-    scopeProofBound === true;
+    effectiveScopeProofBound === true;
 
   const handleRegister = async () => {
     if (!smartAccount || !settlementAddress) {
@@ -237,6 +241,7 @@ export function ConfidentialEurcShieldControls({
         throw new Error(lifecycle.reason ?? 'Passport not ready for confidential registration.');
       }
       await bindSessionProofIfNeeded(scopedProof);
+      await refreshSessionProofBound(scopedProof);
       setScopeProofBound(true);
       setRegisterStage('submit');
       setStatus(`Confirm with your passkey to register confidential ${assetConfig.assetCode}…`);
@@ -370,7 +375,14 @@ export function ConfidentialEurcShieldControls({
 
         {needsPasskeyAuth ? (
           <div className="mt-4">
-            <PasskeyAuthorizePanel asset={assetKey} />
+            <PasskeyAuthorizePanel
+              asset={assetKey}
+              onAuthorized={() => {
+                void refreshSessionProofBound(proof ?? undefined);
+                void refresh();
+                onRegistered?.();
+              }}
+            />
           </div>
         ) : null}
 
