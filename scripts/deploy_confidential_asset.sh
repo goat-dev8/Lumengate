@@ -15,7 +15,10 @@ get_env() { grep "^$1=" "$ROOT/.env" | cut -d= -f2- | tr -d '\r'; }
 
 ADMIN=$(get_env CONTRACT_ADMIN_PUBLIC_KEY)
 POLICY_ID=$(get_env POLICY_ID)
-POLICY_VERIFIER=$(node -e "console.log(require('$ROOT/deployments.json').policy_verifier)")
+POLICY_VERIFIER=$(node -e "
+  const d=require('$ROOT/deployments.json');
+  console.log(d.confidential_token?.policy_verifier || d.policy_verifier);
+")
 SESSION_STORE=$(node -e "console.log(require('$ROOT/deployments.json').session_store)")
 
 if [[ "$ASSET" == "usdc" ]]; then

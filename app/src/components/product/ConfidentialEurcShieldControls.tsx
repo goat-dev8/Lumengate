@@ -17,10 +17,11 @@ import {
   type ConfidentialAssetKey,
 } from '../../lib/confidentialAssetConfig';
 import { formatConfidentialAmount } from '../../lib/confidentialBalance';
-import { readComplianceAdminUsdcBalance, readEurcSacBalance, formatSorobanUserError } from '../../lib/contracts';
+import { readComplianceAdminUsdcBalance, readEurcSacBalance, formatSorobanUserError, isSessionProofBoundOnChain } from '../../lib/contracts';
 import { withRetry } from '../../lib/retry';
 import { ASSET_SCOPES } from '../../lib/assetScope';
 import { proofMatchesCredential } from '../../lib/credentialProof';
+import { isProofBoundLocally } from '../../lib/proofBindCache';
 import { assertScopeNullifierAvailable } from '../../lib/scopeNullifier';
 import { syncProofLifecycleOnChain } from '../../lib/proofLifecycle';
 import { resolvePasskeySimulationSource } from '../../lib/smartAccount';
@@ -90,10 +91,10 @@ export function ConfidentialEurcShieldControls({
     confidentialBalanceLoadingFor,
     refreshConfidentialBalance,
     consumedTxHash,
-    sessionProofBound,
     proofLifecycle,
   } = useApp();
   const assetConfig = resolveConfidentialAsset(config, assetKey);
+  const scope = ASSET_SCOPES[assetKey];
   const ctConfig = assetConfig.contracts ? withConfidentialContracts(config, assetConfig) : config;
   const actionStages = useMemo(() => ctActionStages(assetConfig.assetCode), [assetConfig.assetCode]);
   const registerStages = useMemo(() => ctRegisterStages(assetConfig.assetCode), [assetConfig.assetCode]);
@@ -106,6 +107,7 @@ export function ConfidentialEurcShieldControls({
   const [actionStage, setActionStage] = useState<CtActionStage | null>(null);
   const [amount, setAmount] = useState('');
   const [revealed, setRevealed] = useState(false);
+  const [scopeProofBound, setScopeProofBound] = useState<boolean | null>(null);
 
   const refreshPublicBalance = useCallback(async () => {
     if (!settlementAddress || !assetConfig.contracts) return;
@@ -142,6 +144,30 @@ export function ConfidentialEurcShieldControls({
   }, [refreshPublicBalance]);
 
   useEffect(() => {
+    if (
+      !settlementAddress ||
+      !proof ||
+      !credential ||
+      !proofMatchesCredential(proof, credential) ||
+      proof.publicInputs.assetId !== scope.assetId
+    ) {
+      setScopeProofBound(null);
+      return;
+    }
+    if (isProofBoundLocally(proof)) {
+      setScopeProofBound(true);
+      return;
+    }
+    let cancelled = false;
+    void isSessionProofBoundOnChain(config, settlementAddress, proof).then((bound) => {
+      if (!cancelled) setScopeProofBound(bound);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [config, settlementAddress, proof, credential, scope.assetId]);
+
+  useEffect(() => {
     if (suggestedAmount) {
       setAmount(suggestedAmount);
     }
@@ -155,7 +181,6 @@ export function ConfidentialEurcShieldControls({
   const registered = balance?.registered === true;
   const publicAssetAvailable = publicBalance !== null && Number(publicBalance) > 0;
   const compact = variant === 'send';
-  const scope = ASSET_SCOPES[assetKey];
 
   const needsPasskeyAuth =
     registrationSettled &&
@@ -165,7 +190,7 @@ export function ConfidentialEurcShieldControls({
       !credential ||
       !proofMatchesCredential(proof, credential) ||
       proof.publicInputs.assetId !== scope.assetId ||
-      sessionProofBound === false) &&
+      scopeProofBound !== true) &&
     proofLifecycle.lifecycle === 'ready';
 
   const proofReadyAndBound =
@@ -174,7 +199,7 @@ export function ConfidentialEurcShieldControls({
     credential &&
     proofMatchesCredential(proof, credential) &&
     proof.publicInputs.assetId === scope.assetId &&
-    sessionProofBound === true;
+    scopeProofBound === true;
 
   const handleRegister = async () => {
     if (!smartAccount || !settlementAddress) {
@@ -212,6 +237,7 @@ export function ConfidentialEurcShieldControls({
         throw new Error(lifecycle.reason ?? 'Passport not ready for confidential registration.');
       }
       await bindSessionProofIfNeeded(scopedProof);
+      setScopeProofBound(true);
       setRegisterStage('submit');
       setStatus(`Confirm with your passkey to register confidential ${assetConfig.assetCode}…`);
       await registerConfidentialAccount({

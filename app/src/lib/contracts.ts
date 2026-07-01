@@ -899,6 +899,14 @@ export function formatSorobanUserError(message: string): string {
     hints.push('Authorization context was rejected during smart account __check_auth re-simulation.');
   }
 
+  if (message.includes('non-existent contract function') && message.includes('validate')) {
+    hints.push(
+      'Confidential token policy is wired to an outdated PolicyVerifier. Run scripts/upgrade_usdc_ct_policy.sh on testnet, then redeploy.',
+    );
+  }
+  if (message.includes('Error(WasmVm, MissingValue)')) {
+    hints.push('A contract call returned an empty value — often a missing session proof bind for this asset scope.');
+  }
   if (message.includes('Error(Contract, #6)') || message.includes('NullifierSpent')) {
     hints.push(
       'This passport slot was already used on-chain. Renew your passport on Verify, confirm eligibility, authorize with passkey, then retry.',
