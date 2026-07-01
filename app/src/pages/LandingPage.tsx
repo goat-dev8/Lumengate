@@ -29,7 +29,15 @@ import { useScrollReveal } from '../hooks/useScrollReveal';
 import { cn } from '../lib/cn';
 import { setOnboardingPath } from '../components/product/OnboardingPathPicker';
 
-const pipeline = ['Passkey', 'Passport', 'Eligibility', 'Invest', 'Receipt'];
+const pipeline = [
+  'Passkey',
+  'Passport',
+  'ZK proof',
+  'Confidential assets',
+  'Settlement',
+  'Disclosure',
+  'Auditor',
+];
 
 export function LandingPage() {
   const config = loadDeploymentConfig();
@@ -59,13 +67,15 @@ export function LandingPage() {
               <span className="text-sm font-medium text-[#012b54]">Live on Stellar testnet</span>
             </div>
             <h1 className="lg-hero-headline lg-fade-up lg-fade-up-d1">
-              Private access to regulated assets.
+              Prove eligibility. Settle privately. Stay auditable.
               <br />
-              <span className="lg-hero-mark lg-text-frame">Built for real settlement.</span>
+              <span className="lg-hero-mark lg-text-frame">Zero-knowledge compliance on Stellar Soroban.</span>
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-[#31485f] lg-fade-up lg-fade-up-d2">
-              Lumengate helps eligible investors access tokenized assets on Stellar while keeping personal details
-              off the public ledger. Every settlement is passkey-approved and receipt-ready.
+              Lumengate is a passkey smart-account platform — not a wallet. UltraHonk proofs confirm
+              accreditation and sanctions clearance without identity on the ledger. Shield confidential EURC and
+              USDC, invest through a proof-gated marketplace, and seal every transfer with a receipt an auditor
+              can verify on demand.
             </p>
             <div className="flex flex-wrap justify-center gap-3 lg:justify-start lg-fade-up lg-fade-up-d3">
               <Link
@@ -73,7 +83,7 @@ export function LandingPage() {
                 className="lg-btn-primary"
                 onClick={() => setOnboardingPath('passkey')}
               >
-                Start now
+                Create passkey account
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link to="/app/welcome?intent=return" className="lg-btn-white">
@@ -85,7 +95,7 @@ export function LandingPage() {
                 <span key={step} className="inline-flex items-center gap-1">
                   <span
                     className={
-                      i === 2 || i === 3
+                      step === 'ZK proof' || step === 'Settlement'
                         ? 'lg-hero-pipeline-step lg-hero-pipeline-engine'
                         : 'lg-hero-pipeline-step'
                     }
