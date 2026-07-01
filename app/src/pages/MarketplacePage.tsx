@@ -37,8 +37,9 @@ import { microcopy } from '../lib/microcopy';
 import { resolveMarketplaceAction, isOfferingScopeReady } from '../lib/marketplaceActions';
 import { offeringSettlementAsset } from '../lib/passportScopeStatus';
 import { usePassportScopeStatuses } from '../hooks/usePassportScopeStatuses';
-import { isProofUsable, syncProofLifecycleOnChain } from '../lib/proofLifecycle';
+import { syncProofLifecycleOnChain } from '../lib/proofLifecycle';
 import { hasSufficientBalance, parseStellarAmount } from '../lib/assetAmount';
+import { resolvePasskeySimulationSource } from '../lib/smartAccount';
 import {
   SettlementProgressOverlay,
   type SettlementPhase,
@@ -275,11 +276,11 @@ export function MarketplacePage() {
   const canSettle = (offering: LiveOffering): string | null => {
     const asset = offeringSettlementAsset(offering.settlementAsset);
     const scopeRow = scopeRows?.find((r) => r.asset === asset);
-    if (scopeRow?.status === 'renewal_required') {
+    if (scopeRow?.status === 'renewal_required' || scopeRow?.status === 'used') {
       return `${scopeRow.label} renewal required — other assets may still be ready`;
     }
-    if (!isProofUsable(proofLifecycle) && proofLifecycle.lifecycle !== 'ready') {
-      return proofLifecycle.reason ?? 'Complete your passport first';
+    if (!isOfferingScopeReady(offering, scopeRows)) {
+      return 'Confirm eligibility on Passport before investing in this offering.';
     }
     if (!settlementAddress || !credential) return 'Complete your passport first';
     if (!smartAccount) return 'Create your smart account first';
@@ -354,8 +355,9 @@ export function MarketplacePage() {
   const handleSettle = async (offering: LiveOffering) => {
 
     const block = canSettle(offering);
+    const settlementFrom = currentSettlementOwner(config, address, settlementAddress);
 
-    if (block || !address || !credential) {
+    if (block || !credential || !settlementFrom) {
 
       setError(block || 'Complete your passport first');
 
@@ -453,7 +455,12 @@ export function MarketplacePage() {
 
         }
 
-        const verifyXdr = await buildVerifyTransaction(config, address, config.policyId2, pofProof);
+        const verifyXdr = await buildVerifyTransaction(
+          config,
+          resolvePasskeySimulationSource(address),
+          config.policyId2,
+          pofProof,
+        );
 
         const verifyHash = await signAndSubmit(verifyXdr);
 
@@ -486,7 +493,7 @@ export function MarketplacePage() {
       const route =
         offering.settlementRoute ??
         (offering.settlementAsset === 'usdc' || offering.settlementAsset === 'eurc' ? 'sac' : 'rwa');
-      const settlementFrom = currentSettlementOwner(config, address, settlementAddress) ?? address;
+      const txSource = resolvePasskeySimulationSource(address);
 
       setSettlementPhase('preparing');
       setStatusMessage('Building compliant settlement transaction…');
@@ -495,7 +502,7 @@ export function MarketplacePage() {
       if (route === 'dex') {
         tx = await buildSwapCompliantTransaction(
           config,
-          address,
+          txSource,
           settlementFrom,
           recipient,
           amount,
@@ -504,7 +511,7 @@ export function MarketplacePage() {
       } else if (route === 'payroll') {
         tx = await buildPayCompliantTransaction(
           config,
-          address,
+          txSource,
           settlementFrom,
           recipient,
           amount,
@@ -513,7 +520,7 @@ export function MarketplacePage() {
       } else if (offering.settlementAsset === 'usdc') {
         tx = await buildUsdcTransferTransaction(
           config,
-          address,
+          txSource,
           settlementFrom,
           recipient,
           amount,
@@ -523,7 +530,7 @@ export function MarketplacePage() {
       } else if (offering.settlementAsset === 'eurc') {
         tx = await buildEurcTransferTransaction(
           config,
-          address,
+          txSource,
           settlementFrom,
           recipient,
           amount,
@@ -533,7 +540,7 @@ export function MarketplacePage() {
       } else {
         tx = await buildTransferTransaction(
           config,
-          address,
+          txSource,
           settlementFrom,
           recipient,
           amount,
@@ -960,15 +967,19 @@ export function MarketplacePage() {
 
           <p className="text-sm text-status-err">{error}</p>
 
-          <Link to="/app/verify" className="mt-3 inline-block">
-
-            <Button variant="secondary" size="sm">
-
-              Open passport
-
-            </Button>
-
-          </Link>
+          {/balance|minimum|usdc|eurc|fund/i.test(error) ? (
+            <Link to="/app/send" className="mt-3 inline-block">
+              <Button variant="secondary" size="sm">
+                Add funds on Send
+              </Button>
+            </Link>
+          ) : (
+            <Link to="/app/verify" className="mt-3 inline-block">
+              <Button variant="secondary" size="sm">
+                Open passport
+              </Button>
+            </Link>
+          )}
 
         </Card>
 

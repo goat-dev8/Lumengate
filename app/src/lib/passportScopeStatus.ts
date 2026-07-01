@@ -76,8 +76,10 @@ export async function fetchPassportScopeRows(
       status = 'renewal_required';
     } else if (proof && proofScopeMatches(proof, scope)) {
       status = 'ready';
-    } else {
+    } else if (credential) {
       status = 'ready';
+    } else {
+      status = 'none';
     }
 
     rows.push({

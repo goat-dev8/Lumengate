@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import { AppShell } from './Shell';
+import { RouteErrorBoundary } from './RouteErrorBoundary';
 
 function PageTransitionFallback() {
   return (
@@ -17,9 +18,11 @@ function PageTransitionFallback() {
 export function AppLayout() {
   return (
     <AppShell>
-      <Suspense fallback={<PageTransitionFallback />}>
-        <Outlet />
-      </Suspense>
+      <RouteErrorBoundary>
+        <Suspense fallback={<PageTransitionFallback />}>
+          <Outlet />
+        </Suspense>
+      </RouteErrorBoundary>
     </AppShell>
   );
 }

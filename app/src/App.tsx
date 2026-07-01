@@ -1,36 +1,37 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LandingPage } from './pages/LandingPage';
 import { WelcomePage } from './pages/WelcomePage';
 import { WelcomeGate } from './components/product/WelcomeGate';
+import { lazyRoute } from './lib/lazyRoute';
 
-const DashboardPage = lazy(() =>
+const DashboardPage = lazyRoute(() =>
   import('./pages/DashboardPage').then((mod) => ({ default: mod.DashboardPage })),
 );
-const VerifyPage = lazy(() =>
+const VerifyPage = lazyRoute(() =>
   import('./pages/VerifyPage').then((mod) => ({ default: mod.VerifyPage })),
 );
-const TransferPage = lazy(() =>
+const TransferPage = lazyRoute(() =>
   import('./pages/TransferPage').then((mod) => ({ default: mod.TransferPage })),
 );
-const AuditorPage = lazy(() =>
+const AuditorPage = lazyRoute(() =>
   import('./pages/AuditorPage').then((mod) => ({ default: mod.AuditorPage })),
 );
-const AdminPage = lazy(() =>
+const AdminPage = lazyRoute(() =>
   import('./pages/AdminPage').then((mod) => ({ default: mod.AdminPage })),
 );
-const CompliancePage = lazy(() =>
+const CompliancePage = lazyRoute(() =>
   import('./pages/CompliancePage').then((mod) => ({ default: mod.CompliancePage })),
 );
-const MarketplacePage = lazy(() =>
+const MarketplacePage = lazyRoute(() =>
   import('./pages/MarketplacePage').then((mod) => ({ default: mod.MarketplacePage })),
 );
-const SettingsPage = lazy(() =>
+const SettingsPage = lazyRoute(() =>
   import('./pages/SettingsPage').then((mod) => ({ default: mod.SettingsPage })),
 );
-const OfferingDetailRoute = lazy(() =>
+const OfferingDetailRoute = lazyRoute(() =>
   import('./pages/OfferingDetailPage').then((mod) => ({ default: mod.OfferingDetailRoute })),
 );
 
