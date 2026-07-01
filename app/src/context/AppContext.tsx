@@ -38,8 +38,6 @@ import {
   buildBindSessionProofTransaction,
   formatSorobanUserError,
   readBalance,
-  readSessionProofBound,
-  sessionProofMatchesBound,
   isSessionProofBoundOnChain,
   submitSignedTransaction,
 } from '../lib/contracts';
@@ -121,7 +119,7 @@ import {
   buildFundSmartAccountUsdcXdr,
   buildFundSmartAccountXlmXdr,
 } from '../lib/smartAccountFunding';
-import { retryDelay } from '../lib/retry';
+import { retryDelay, withRetry } from '../lib/retry';
 
 type AppContextValue = {
   config: DeploymentConfig;
@@ -1358,7 +1356,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const alreadyBound =
         isProofBoundLocally(proofBundle) ||
-        (await isSessionProofBoundOnChain(config, settlementAddress, proofBundle));
+        (await withRetry(
+          () => isSessionProofBoundOnChain(config, settlementAddress, proofBundle),
+          { attempts: 3, baseDelayMs: 600, maxDelayMs: 3_000 },
+        ).catch(() => false));
       if (alreadyBound) {
         setSessionProofBound(true);
         markProofBoundLocally(proofBundle);
@@ -1371,8 +1372,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settlementAddress,
         proofBundle,
       );
-      let bindHash: string;
-      bindHash = await submitSmartAccountOperation(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      const bindHash = await withRetry(
+        () => submitSmartAccountOperation(config, smartAccount, bindTx, { forceMethod: 'rpc' }),
+        {
+          attempts: 4,
+          baseDelayMs: 900,
+          maxDelayMs: 6_000,
+          shouldRetry: (error) => {
+            const msg = error instanceof Error ? error.message : String(error);
+            return /fetch|network|timeout|503|502|429/i.test(msg);
+          },
+        },
+      );
       setSessionProofBound(true);
       markProofBoundLocally(proofBundle);
       setReceiptTransactions((prev) => {
@@ -2070,50 +2081,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!sessionStatus.enabled) {
         throw new Error('Enable Trusted device (7 days) before settlement.');
       }
-      const bindSource = resolvePasskeySimulationSource(address);
-      let boundOnChain = false;
-      if (config.sessionStoreId && isContractAddress(settlementFrom)) {
-        const bound = await readSessionProofBound(config, settlementFrom);
-        boundOnChain = Boolean(bound && sessionProofMatchesBound(bound, proof));
-      }
 
-      if (config.sessionStoreId && isContractAddress(settlementFrom) && !boundOnChain) {
-        try {
-          onPasskeyStep?.('bind', 1, 1);
-          const bindTx = await buildBindSessionProofTransaction(
-            config,
-            bindSource,
-            settlementFrom,
-            proof,
-          );
-          const bindHash = await submitWithLumengateSession(config, smartAccount, bindTx, { forceMethod: 'rpc' });
+      const needsSessionProofBind =
+        Boolean(config.sessionStoreId) &&
+        isContractAddress(settlementFrom) &&
+        !isProofBoundLocally(proof);
+
+      if (needsSessionProofBind) {
+        const boundOnChain = await isSessionProofBoundOnChain(config, settlementFrom, proof);
+        if (!boundOnChain) {
+          if (!sessionStatus.enabled) {
+            onPasskeyStep?.('bind', 1, 2);
+          }
+          await bindSessionProofIfNeeded(proof);
+        } else {
           setSessionProofBound(true);
           markProofBoundLocally(proof);
-          setReceiptTransactions((prev) => {
-            const txs = { ...prev, sessionBind: bindHash };
-            if (address && walletField) {
-              persistSession({ address, walletField, receiptTransactions: txs });
-            } else if (smartAccount && walletField) {
-              persistPasskeySession({
-                smartAccountAddress: smartAccount.smartAccountAddress,
-                walletField,
-                smartAccount,
-                receiptTransactions: txs,
-              });
-            }
-            return txs;
-          });
-        } catch (err) {
-          const raw = err instanceof Error ? err.message : String(err);
-          throw new Error(`Session proof bind failed: ${formatSorobanUserError(raw)}`);
         }
-      } else if (boundOnChain || isProofBoundLocally(proof)) {
-        setSessionProofBound(true);
-        markProofBoundLocally(proof);
       }
+
       try {
-        onPasskeyStep?.('settle', 1, 1);
-        const hash = await submitWithLumengateSession(config, smartAccount, tx);
+        if (!sessionStatus.enabled) {
+          onPasskeyStep?.('settle', 2, 2);
+        } else {
+          onPasskeyStep?.('settle', 1, 1);
+        }
+        const hash = await withRetry(
+          () => submitWithLumengateSession(config, smartAccount, tx),
+          {
+            attempts: 4,
+            baseDelayMs: 900,
+            maxDelayMs: 6_000,
+            shouldRetry: (error) => {
+              const msg = error instanceof Error ? error.message : String(error);
+              return /fetch|network|timeout|503|502|429/i.test(msg);
+            },
+          },
+        );
         await refreshConfidentialEurcBalance();
         return hash;
       } catch (err) {
@@ -2121,7 +2125,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(`Settlement failed: ${formatSorobanUserError(raw)}`);
       }
     },
-    [config, address, smartAccount, walletField, persistSession, persistPasskeySession, refreshConfidentialEurcBalance],
+    [
+      config,
+      smartAccount,
+      bindSessionProofIfNeeded,
+      refreshConfidentialEurcBalance,
+    ],
   );
 
   const fundSmartAccountUsdc = useCallback(

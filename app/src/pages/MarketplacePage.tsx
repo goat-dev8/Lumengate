@@ -111,10 +111,12 @@ export function MarketplacePage() {
     smartAccountStale,
     replaceSmartAccount,
     ensureProofForAsset,
+    bindSessionProofIfNeeded,
+    lumengateSessionStatus,
   } = useApp();
 
   const advanced = useAdvancedMode();
-  const { rows: scopeRows, refresh: refreshScopeStatuses } = usePassportScopeStatuses();
+  const { rows: scopeRows } = usePassportScopeStatuses();
   const { offerings, loading: offeringsLoading, error: offeringsError } = useOfferings();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -162,11 +164,6 @@ export function MarketplacePage() {
   const [txHash, setTxHash] = useState<string | null>(null);
 
   const [pofTxHash, setPofTxHash] = useState<string | null>(null);
-
-  useEffect(() => {
-    void syncProofLifecycle();
-    void refreshScopeStatuses();
-  }, [syncProofLifecycle, refreshScopeStatuses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -420,6 +417,14 @@ export function MarketplacePage() {
         return;
       }
 
+      setSettlementPhase('authorizing-bind');
+      setStatusMessage(
+        lumengateSessionStatus?.enabled
+          ? 'Binding eligibility to your 7-day session (no extra passkey needed)…'
+          : 'Binding eligibility before settlement…',
+      );
+      await bindSessionProofIfNeeded(scopedProof);
+
       const pid = Number(scopedProof.publicInputs.policyId);
 
       const spent = await readNullifierSpent(config, nullifierHexFromBundle(scopedProof), pid, scope);
@@ -553,6 +558,14 @@ export function MarketplacePage() {
       setStatusMessage('Submitting investment to Stellar…');
 
       const hash = await signAndSubmitSettlement(settlementFrom, scopedProof, tx, (step, index, total) => {
+        if (lumengateSessionStatus?.enabled) {
+          setPasskeyStep(null);
+          if (step === 'settle') {
+            setSettlementPhase('submitting');
+            setStatusMessage('Submitting investment with your 7-day session…');
+          }
+          return;
+        }
         setPasskeyStep({ index, total });
         if (step === 'bind') {
           setSettlementPhase('authorizing-bind');
@@ -1046,7 +1059,9 @@ export function MarketplacePage() {
         }
         subtitle={
           investingOffering && settlementPhase !== 'complete'
-            ? 'You may see two passkey prompts — we guide you through binding eligibility, then authorizing settlement.'
+            ? lumengateSessionStatus?.enabled
+              ? 'Your 7-day session signs this investment — no repeated passkey prompts when the session is active.'
+              : 'You may see two passkey prompts — we guide you through binding eligibility, then authorizing settlement.'
             : undefined
         }
         passkeyStep={passkeyStep}

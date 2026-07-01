@@ -60,37 +60,38 @@ export async function fetchPassportScopeRows(
     }));
   }
 
-  const rows: PassportScopeRow[] = [];
-  for (const asset of SCOPE_ORDER) {
-    const scope = ASSET_SCOPES[asset];
-    const label = friendlyAssetName(asset);
-    let spent = false;
-    try {
-      spent = await isScopeNullifierSpent(config, credential, scope);
-    } catch {
-      spent = false;
-    }
+  const statuses = await Promise.all(
+    SCOPE_ORDER.map(async (asset) => {
+      const scope = ASSET_SCOPES[asset];
+      const label = friendlyAssetName(asset);
+      let spent = false;
+      try {
+        spent = await isScopeNullifierSpent(config, credential, scope);
+      } catch {
+        spent = false;
+      }
 
-    let status: PassportScopeUiStatus;
-    if (spent) {
-      status = 'renewal_required';
-    } else if (proof && proofScopeMatches(proof, scope)) {
-      status = 'ready';
-    } else if (credential) {
-      status = 'ready';
-    } else {
-      status = 'none';
-    }
+      let status: PassportScopeUiStatus;
+      if (spent) {
+        status = 'renewal_required';
+      } else if (proof && proofScopeMatches(proof, scope)) {
+        status = 'ready';
+      } else if (credential) {
+        status = 'ready';
+      } else {
+        status = 'none';
+      }
 
-    rows.push({
-      asset,
-      label,
-      status,
-      badge: scopeStatusBadge(status),
-      detail: scopeStatusDetail(status, label),
-    });
-  }
-  return rows;
+      return {
+        asset,
+        label,
+        status,
+        badge: scopeStatusBadge(status),
+        detail: scopeStatusDetail(status, label),
+      } satisfies PassportScopeRow;
+    }),
+  );
+  return statuses;
 }
 
 export function assetLabelFromProofInputs(assetId: string | undefined): string {
