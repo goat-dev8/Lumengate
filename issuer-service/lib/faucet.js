@@ -1,6 +1,6 @@
 const { readFileSync, writeFileSync, existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
-const { adminSacTransfer, adminMintTreasury } = require('./sorobanAdmin');
+const { adminMintTreasury } = require('./sorobanAdmin');
 const { sacTransferForFaucet } = require('./sacLiquidity');
 
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -85,7 +85,7 @@ async function claimTestnetFunds(smartAccountAddress, asset, env = process.env) 
   } else if (asset === 'xlm') {
     const sacId = env.VITE_NATIVE_SAC_ID || env.NATIVE_SAC_ID;
     if (!sacId) throw new Error('Native XLM SAC not configured');
-    txHash = await adminSacTransfer(sacId, normalized, spec.amount, env);
+    txHash = await sacTransferForFaucet(sacId, normalized, spec.amount, 'XLM', env);
   } else if (asset === 'treasury') {
     const tokenId = env.RWA_TOKEN_ID || env.VITE_RWA_TOKEN_ID;
     if (!tokenId) throw new Error('RWA token not configured');

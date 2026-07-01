@@ -343,6 +343,48 @@ async function ensureDeployerIssuedEurcLiquidity(sacId, minRaw, env = process.en
   return true;
 }
 
+async function readClassicXlmStroops(publicKey, env = process.env) {
+  const horizonUrl = env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+  const horizon = new Horizon.Server(horizonUrl);
+  const account = await loadHorizonAccount(horizon, publicKey, friendbotUrl(env));
+  const row = account.balances.find((balance) => balance.asset_type === 'native');
+  if (!row) return 0n;
+  return humanAmountToStroops(row.balance);
+}
+
+async function ensureNativeSacLiquidity(sacId, amountRaw, env = process.env) {
+  const needed = BigInt(amountRaw);
+
+  async function totalNativeLiquidity() {
+    let total = 0n;
+    for (const candidate of fundingCandidates(env)) {
+      try {
+        total += await readSacBalanceRaw(sacId, candidate.publicKey, env);
+      } catch {
+        // skip unfunded funder
+      }
+    }
+    return total;
+  }
+
+  if ((await totalNativeLiquidity()) >= needed) return true;
+
+  // Native XLM SAC balance mirrors classic XLM for G-address funders on testnet — no deposit().
+  for (let round = 0; round < 24; round += 1) {
+    for (const candidate of fundingCandidates(env)) {
+      try {
+        await fetch(`${friendbotUrl(env)}?addr=${encodeURIComponent(candidate.publicKey)}`);
+      } catch {
+        // Friendbot may rate-limit individual addresses.
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    if ((await totalNativeLiquidity()) >= needed) return true;
+  }
+
+  return (await totalNativeLiquidity()) >= needed;
+}
+
 async function ensureSacFaucetLiquidity(sacId, amountRaw, assetLabel, env = process.env) {
   const funder = await pickSacFunder(sacId, amountRaw, env);
   if (funder) return funder;
@@ -365,6 +407,15 @@ async function ensureSacFaucetLiquidity(sacId, amountRaw, assetLabel, env = proc
     }
   }
 
+  const nativeSac = env.VITE_NATIVE_SAC_ID || env.NATIVE_SAC_ID;
+  if (assetLabel === 'XLM' && sacId === nativeSac) {
+    const bootstrapped = await ensureNativeSacLiquidity(sacId, amountRaw, env);
+    if (bootstrapped) {
+      const retry = await pickSacFunder(sacId, amountRaw, env);
+      if (retry) return retry;
+    }
+  }
+
   throw new Error(
     `${assetLabel} faucet treasury is empty on SAC ${sacId}. Fund a faucet wallet with ${assetLabel} on this SAC, or configure issuer bootstrap keys.`,
   );
@@ -377,12 +428,14 @@ async function sacTransferForFaucet(sacId, toAddress, amountRaw, assetLabel, env
 
 module.exports = {
   ensureDeployerIssuedEurcLiquidity,
+  ensureNativeSacLiquidity,
   ensureSacFaucetLiquidity,
   ensureUsdcSacLiquidity,
   fundingCandidates,
   getUsdcSacId,
   mintSacToAddress,
   pickSacFunder,
+  readClassicXlmStroops,
   readSacBalanceRaw,
   readClassicUsdcStroops,
   sacTransferForFaucet,
