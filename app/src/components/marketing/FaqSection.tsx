@@ -34,12 +34,14 @@ export function FaqSection() {
 
   return (
     <div ref={ref} className={cn('lg-reveal mx-auto max-w-3xl', visible && 'lg-revealed')}>
-      <div className="divide-y divide-[#eef0f3] rounded-2xl border border-[#eef0f3] bg-white">
+      <div className="divide-y divide-[#eef0f3] overflow-hidden rounded-2xl border border-[#eef0f3] bg-white shadow-[0_20px_45px_-32px_rgba(1,43,84,0.35)]">
         {FAQS.map((item, i) => (
           <details key={item.q} className="lg-faq-item group" open={i === 0}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-[#012b54]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-[#012b54] transition-colors hover:bg-[#f7fafe]">
               {item.q}
-              <ChevronDown className="h-4 w-4 shrink-0 text-[#64748b] transition-transform group-open:rotate-180" />
+              <span className="lg-faq-chevron shrink-0 group-open:rotate-180 group-open:bg-[#007dfc] group-open:text-white">
+                <ChevronDown className="h-3.5 w-3.5" />
+              </span>
             </summary>
             <p className="px-5 pb-4 text-sm leading-relaxed text-[#64748b]">{item.a}</p>
           </details>
